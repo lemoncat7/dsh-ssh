@@ -8,8 +8,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import {
   IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconCodeOutline16, IconDataOutline16,
   IconEditOutline16, IconFolderClose16, IconFolderOpenOutline16, IconPanelLeftOutline16, IconPlusOutline16,
-  IconRefreshOutline16, IconSettingsOutline16, IconStopFill16, IconTrashOutline16, IconChevronLeftOutline14,
-  IconChevronUpOutline14, IconDownloadOutline16,
+  IconSettingsOutline16, IconStopFill16, IconTrashOutline16, IconChevronLeftOutline14,
+  IconChevronUpOutline14,
   IconUserOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Terminal } from '@xterm/xterm'
@@ -17,12 +17,13 @@ import { FitAddon } from '@xterm/addon-fit'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
 import {
-  ApiError, api, loadActivity, loadForwards, loadInjection, loadProfiles, loadSftpDirectory, loadSftpFilePreview, loadVaultEntries,
-  profileAddress, resizeActivityTerminal, sendActivityTerminalInput, sftpFileUrl, updateActivityDirectory,
+  ApiError, api, loadActivity, loadForwards, loadInjection, loadProfiles, loadVaultEntries,
+  profileAddress, resizeActivityTerminal, sendActivityTerminalInput,
   type ActivityProfileView, type ActivityTerminalView, type ActivityView, type ForwardStatus, type ForwardView,
-  type InjectionView, type ProfileView, type SettingsView, type SftpDirectoryView, type SftpEntryView, type SftpFilePreviewView, type VaultEntryView,
+  type InjectionView, type ProfileView, type SettingsView, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
+import { ActivitySftpBrowser, ProfileSftpPane } from './sftp-client.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -171,73 +172,7 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
 function DirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
   const profile = profiles.find(item => item.id === selectedProfileId) ?? profiles[0]
   if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先向当前会话注入一个 SSH 连接。</p></div>
-  return <SftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
-}
-
-function SftpBrowser({ sessionId, profile, profiles, onProfile, onSaved }: { sessionId: string; profile: ActivityProfileView; profiles: ActivityProfileView[]; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
-  const [directory, setDirectory] = useState<SftpDirectoryView>()
-  const [openedFile, setOpenedFile] = useState<SftpEntryView>()
-  const [path, setPath] = useState(profile.cwd)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string>()
-  const browse = useCallback(async (target: string, updateCwd: boolean) => {
-    setLoading(true); setError(undefined); setOpenedFile(undefined)
-    try {
-      const cwd = updateCwd ? (await updateActivityDirectory(sessionId, profile.id, target)).cwd : target
-      const next = await loadSftpDirectory(sessionId, profile.id, cwd)
-      setDirectory(next); setPath(next.path)
-      if (updateCwd) await onSaved()
-    } catch (reason) { setError(message(reason)) } finally { setLoading(false) }
-  }, [onSaved, profile.id, sessionId])
-  useEffect(() => { void browse(profile.cwd, false) }, [browse, profile.cwd])
-  const submit = (event: FormEvent): void => { event.preventDefault(); void browse(path, true) }
-  return <div className="dsh-ssh-sftp">
-    <div className="dsh-ssh-sftp-hostbar">
-      <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
-      <label><span className="sr-only">选择远端主机</span><select value={profile.id} onChange={event => onProfile(event.target.value)}>{profiles.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><small>{profile.username}@{profile.host}:{profile.port}</small></label>
-      <button type="button" className="dsh-ssh-icon-button" aria-label="刷新目录" title="刷新目录" onClick={() => { void browse(directory?.path ?? profile.cwd, false) }}><IconRefreshOutline16 size={16} /></button>
-    </div>
-    {openedFile ? <SftpFilePreview sessionId={sessionId} profileId={profile.id} entry={openedFile} onBack={() => setOpenedFile(undefined)} /> : <>
-      <form className="dsh-ssh-sftp-pathbar" onSubmit={submit}>
-        <button type="button" aria-label="返回上级目录" title="返回上级目录" disabled={directory?.parent == null || loading} onClick={() => { if (directory?.parent) void browse(directory.parent, true) }}><IconChevronLeftOutline14 size={14} /></button>
-        <input aria-label="当前远端目录" value={path} spellCheck={false} onChange={event => setPath(event.target.value)} />
-      </form>
-      {error && <p className="dsh-ssh-directory-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-sftp-table" aria-busy={loading}>
-        <div className="dsh-ssh-sftp-columns"><span>名称</span><span>大小</span><span>修改时间</span></div>
-        {loading && directory === undefined ? <p className="dsh-ssh-sftp-state">正在读取远端目录…</p>
-          : directory?.entries.length === 0 ? <p className="dsh-ssh-sftp-state">此目录为空</p>
-            : directory?.entries.map(entry => <button type="button" className={`dsh-ssh-sftp-row is-${entry.kind}`} key={entry.path} onClick={() => { if (entry.kind === 'directory') void browse(entry.path, true); else setOpenedFile(entry) }}>
-              <span>{entry.kind === 'directory' ? <IconFolderClose16 size={16} /> : <IconDataOutline16 size={16} />}<strong title={entry.name}>{entry.name}</strong></span>
-              <small>{entry.kind === 'directory' ? '-' : formatBytes(entry.size)}</small>
-              <small>{formatFileTime(entry.modifiedAt)}</small>
-            </button>)}
-      </div>
-    </>}
-  </div>
-}
-
-function SftpFilePreview({ sessionId, profileId, entry, onBack }: { sessionId: string; profileId: string; entry: SftpEntryView; onBack(): void }): JSX.Element {
-  const [preview, setPreview] = useState<SftpFilePreviewView>()
-  const [error, setError] = useState<string>()
-  useEffect(() => {
-    let cancelled = false
-    setPreview(undefined); setError(undefined)
-    void loadSftpFilePreview(sessionId, profileId, entry.path).then(value => { if (!cancelled) setPreview(value) }).catch(reason => { if (!cancelled) setError(message(reason)) })
-    return () => { cancelled = true }
-  }, [entry.path, profileId, sessionId])
-  const downloadUrl = sftpFileUrl(sessionId, profileId, entry.path)
-  return <section className="dsh-ssh-file-preview">
-    <header><button type="button" className="dsh-ssh-icon-button" aria-label="返回目录" title="返回目录" onClick={onBack}><IconChevronLeftOutline14 size={14} /></button><span><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a></header>
-    <div className="dsh-ssh-file-preview-body">
-      {error ? <p className="dsh-ssh-directory-error" role="alert">{error}</p>
-        : preview === undefined ? <p className="dsh-ssh-sftp-state">正在打开文件…</p>
-          : preview.kind === 'text' ? <><pre>{preview.text || ''}</pre>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
-            : preview.kind === 'image' ? <img src={sftpFileUrl(sessionId, profileId, entry.path, true)} alt={entry.name} />
-              : preview.kind === 'pdf' ? <iframe src={sftpFileUrl(sessionId, profileId, entry.path, true)} title={entry.name} />
-                : <div className="dsh-ssh-file-binary"><IconDataOutline16 size={24} /><strong>此文件无法直接预览</strong><p>{preview.mimeType}</p><a href={downloadUrl}><IconDownloadOutline16 size={16} />下载文件</a></div>}
-    </div>
-  </section>
+  return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
 }
 
 function TerminalActivity({ sessionId, terminals }: { sessionId: string; terminals: ActivityTerminalView[] }): JSX.Element {
@@ -319,19 +254,6 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
   return <div ref={hostRef} className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端" />
 }
 
-function formatBytes(value: number): string {
-  if (value < 1024) return `${value} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let size = value / 1024
-  let unit = 0
-  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1 }
-  return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`
-}
-
-function formatFileTime(value: number): string {
-  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(value)
-}
-
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController }): JSX.Element {
   const ref = useRef<HTMLElement>(null)
   useWorkspaceTopAnchor(ref)
@@ -392,7 +314,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
   const [selectedId, setSelectedId] = useState(props.controller.selected())
-  const [view, setView] = useState<'terminal' | 'forwards' | 'vault' | 'settings'>('terminal')
+  const [view, setView] = useState<'terminal' | 'sftp' | 'forwards' | 'vault' | 'settings'>('terminal')
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string>()
@@ -424,6 +346,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
       <nav className="dsh-ssh-segments" aria-label="远端视图">
         <Segment active={view === 'terminal'} onClick={() => setView('terminal')}>终端</Segment>
+        <Segment active={view === 'sftp'} onClick={() => setView('sftp')}>SFTP</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>端口转发</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
         <Segment active={view === 'settings'} onClick={() => setView('settings')}>设置</Segment>
@@ -437,8 +360,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState onNew={() => setEditing('new')} />
           : view === 'terminal' ? <TerminalPane profile={selected} onEdit={() => setEditing(selected)} />
-            : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
-              : <SettingsPane />}
+            : view === 'sftp' ? <ProfileSftpPane key={selected.id} profile={selected} />
+              : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
+                : <SettingsPane />}
       </section>
       <InjectionInspector sessionId={sessionId === undefined ? undefined : String(sessionId)} profiles={profiles} selected={selected} />
     </div>

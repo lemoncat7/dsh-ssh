@@ -72,6 +72,31 @@ export function sftpFileUrl(sessionId: string, profileId: string, path: string, 
   if (inline) query.set('inline', '1')
   return `${SSH_API}/activity/download?${query.toString()}`
 }
+export function loadProfileSftpDirectory(profileId: string, path = '~'): Promise<SftpDirectoryView> {
+  const query = new URLSearchParams({ path })
+  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/directory?${query.toString()}`)
+}
+export function loadProfileSftpFilePreview(profileId: string, path: string): Promise<SftpFilePreviewView> {
+  const query = new URLSearchParams({ path })
+  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/file?${query.toString()}`)
+}
+export function profileSftpFileUrl(profileId: string, path: string, inline = false): string {
+  const query = new URLSearchParams({ path })
+  if (inline) query.set('inline', '1')
+  return `${SSH_API}/profiles/${encodeURIComponent(profileId)}/sftp/download?${query.toString()}`
+}
+export async function uploadProfileSftpFile(profileId: string, directory: string, file: File, overwrite = false): Promise<{ path: string; name: string; size: number }> {
+  const query = new URLSearchParams({ directory, name: file.name })
+  if (overwrite) query.set('overwrite', '1')
+  const response = await fetch(`${SSH_API}/profiles/${encodeURIComponent(profileId)}/sftp/upload?${query.toString()}`, {
+    method: 'PUT',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream', 'X-DSH-SSH-Request': '1' },
+    body: file,
+  })
+  const body = await response.json().catch(() => ({})) as Record<string, unknown>
+  if (!response.ok) throw new ApiError(response.status, typeof body.error === 'string' ? body.error : `HTTP ${response.status}`, body)
+  return body as { path: string; name: string; size: number }
+}
 export function sendActivityTerminalInput(sessionId: string, terminalId: string, text: string): Promise<void> {
   return api(`/activity/terminals/${encodeURIComponent(terminalId)}/input`, { method: 'POST', body: JSON.stringify({ sessionId, text }) })
 }

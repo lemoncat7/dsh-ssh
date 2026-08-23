@@ -11,9 +11,10 @@ import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
 import { setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
-import { listSftpDirectory, openSftpFile, readSftpFilePreview } from './sftp.js'
+import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
 
 const MAX_BODY_BYTES = 1_048_576
+const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
 
 export interface WebServerLike {
   register(route: {
@@ -71,6 +72,32 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 201, await credentialEntryView(runtime, entry))
     }
     const id = segments[1]
+    if (id !== undefined && segments[2] === 'sftp') {
+      requiredProfile(runtime.store, id)
+      const operation = segments[3]
+      if (method === 'GET' && operation === 'directory' && segments.length === 4) {
+        return sendJson(res, 200, await listSftpDirectory(runtime.connector, id, url.searchParams.get('path') ?? '~'))
+      }
+      if (method === 'GET' && operation === 'file' && segments.length === 4) {
+        return sendJson(res, 200, await readSftpFilePreview(runtime.connector, id, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+      }
+      if (method === 'GET' && operation === 'download' && segments.length === 4) {
+        return streamSftpFile(res, url, runtime, id, requireRawText(url.searchParams.get('path'), 'path', 4096))
+      }
+      if (method === 'PUT' && operation === 'upload' && segments.length === 4) {
+        requireMutationHeader(req)
+        const contentLengthHeader = req.headers['content-length']
+        const contentLength = contentLengthHeader === undefined ? undefined : optionalInteger(Number(contentLengthHeader), 0, Number.MAX_SAFE_INTEGER)
+        if (contentLength !== undefined && contentLength > MAX_SFTP_UPLOAD_BYTES) throw httpError(413, 'upload exceeds the 512 MB limit')
+        const directory = requireRawText(url.searchParams.get('directory'), 'directory', 4096)
+        const filename = requireRemoteFilename(url.searchParams.get('name'))
+        const result = await uploadSftpFile(runtime.connector, id, directory, filename, req, {
+          overwrite: url.searchParams.get('overwrite') === '1',
+          maxBytes: MAX_SFTP_UPLOAD_BYTES,
+        })
+        return sendJson(res, 201, result)
+      }
+    }
     if (id !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const previous = requiredCredentialEntry(runtime.store, id)
@@ -296,16 +323,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const profileId = requireText(url.searchParams.get('profileId'), 'profileId', 100)
       requireActivityProfile(runtime.store, sessionId, profileId)
       const requestedPath = requireRawText(url.searchParams.get('path'), 'path', 4096)
-      const file = await openSftpFile(runtime.connector, profileId, requestedPath)
-      const filename = file.path.replaceAll('\\', '/').split('/').at(-1) || 'download'
-      res.statusCode = 200
-      res.setHeader('Cache-Control', 'private, no-store')
-      res.setHeader('Content-Type', file.mimeType)
-      res.setHeader('Content-Length', String(file.size))
-      res.setHeader('Content-Disposition', `${url.searchParams.get('inline') === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`)
-      res.setHeader('X-Content-Type-Options', 'nosniff')
-      try { await pipeline(file.stream, res) } finally { file.close() }
-      return
+      return streamSftpFile(res, url, runtime, profileId, requestedPath)
     }
     if (method === 'POST' && segments[1] === 'terminals' && segments[2] !== undefined && segments.length === 4) {
       requireMutationHeader(req)
@@ -479,6 +497,12 @@ function requireRawText(value: unknown, label: string, max: number): string {
   return value
 }
 
+function requireRemoteFilename(value: unknown): string {
+  const filename = requireText(value, 'name', 255)
+  if (filename === '.' || filename === '..' || filename.includes('/') || filename.includes('\\')) throw httpError(400, 'name must be a single remote filename')
+  return filename
+}
+
 function requireInteger(value: unknown, label: string, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw httpError(400, `${label} must be an integer between ${min} and ${max}`)
   return value
@@ -490,6 +514,18 @@ function optionalInteger(value: unknown, min: number, max: number): number | und
 }
 
 function httpError(status: number, message: string): Error { return Object.assign(new Error(message), { status }) }
+
+async function streamSftpFile(res: ServerResponse, url: URL, runtime: SshApiRuntime, profileId: string, requestedPath: string): Promise<void> {
+  const file = await openSftpFile(runtime.connector, profileId, requestedPath)
+  const filename = file.path.replaceAll('\\', '/').split('/').at(-1) || 'download'
+  res.statusCode = 200
+  res.setHeader('Cache-Control', 'private, no-store')
+  res.setHeader('Content-Type', file.mimeType)
+  res.setHeader('Content-Length', String(file.size))
+  res.setHeader('Content-Disposition', `${url.searchParams.get('inline') === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  try { await pipeline(file.stream, res) } finally { file.close() }
+}
 
 function sendJson(res: ServerResponse, status: number, value: unknown): void {
   res.statusCode = status

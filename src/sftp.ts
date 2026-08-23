@@ -1,5 +1,6 @@
 import path from 'node:path'
-import type { Readable } from 'node:stream'
+import { Transform, type Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import type { FileEntry, SFTPWrapper } from 'ssh2'
 import { SshConnector } from './connector.js'
 
@@ -33,6 +34,12 @@ export interface SftpFilePreview {
   kind: 'text' | 'image' | 'pdf' | 'binary'
   text?: string
   truncated?: boolean
+}
+
+export interface SftpUploadResult {
+  path: string
+  name: string
+  size: number
 }
 
 export async function listSftpDirectory(
@@ -140,6 +147,41 @@ export async function readSftpFilePreview(
   }
 }
 
+export async function uploadSftpFile(
+  connector: SshConnector,
+  profileId: string,
+  requestedDirectory: string,
+  filename: string,
+  input: Readable,
+  options: { overwrite: boolean; maxBytes: number },
+): Promise<SftpUploadResult> {
+  const connection = await connector.connect(profileId)
+  let sftp: SFTPWrapper | undefined
+  try {
+    sftp = await openSftp(connection.client)
+    const home = await realpath(sftp, '.')
+    const directory = await realpath(sftp, expandHome(requestedDirectory.trim() || '~', home))
+    const target = remoteJoin(directory, filename)
+    if (!options.overwrite && await sftpPathExists(sftp, target)) throw Object.assign(new Error('A file with this name already exists'), { status: 409 })
+
+    let size = 0
+    const limiter = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        size += chunk.length
+        if (size > options.maxBytes) callback(Object.assign(new Error(`Upload exceeds the ${formatByteLimit(options.maxBytes)} limit`), { status: 413 }))
+        else callback(null, chunk)
+      },
+    })
+    const output = sftp.createWriteStream(target, { flags: 'w', mode: 0o600 })
+    output.on('error', () => {})
+    await pipeline(input, limiter, output)
+    return { path: target, name: filename, size }
+  } finally {
+    sftp?.end()
+    connection.close()
+  }
+}
+
 function openSftp(client: import('ssh2').Client, signal?: AbortSignal): Promise<SFTPWrapper> {
   return new Promise((resolve, reject) => {
     const abort = (): void => reject(signal?.reason instanceof Error ? signal.reason : new Error('SFTP request was aborted'))
@@ -168,6 +210,15 @@ function stat(sftp: SFTPWrapper, value: string): Promise<import('ssh2').Stats> {
   return new Promise((resolve, reject) => {
     sftp.stat(value, (error, attributes) => error ? reject(error) : resolve(attributes))
   })
+}
+
+async function sftpPathExists(sftp: SFTPWrapper, value: string): Promise<boolean> {
+  try { await stat(sftp, value); return true }
+  catch (error) {
+    const code = (error as { code?: string | number }).code
+    if (code === 2 || code === 'ENOENT') return false
+    throw error
+  }
 }
 
 function createSftpReadStream(sftp: SFTPWrapper, value: string): ReturnType<SFTPWrapper['createReadStream']> {
@@ -213,6 +264,10 @@ function remoteParent(value: string): string | null {
 
 function remoteName(value: string): string {
   return path.posix.basename(value.replaceAll('\\', '/'))
+}
+
+function formatByteLimit(value: number): string {
+  return value % (1024 * 1024) === 0 ? `${value / (1024 * 1024)} MB` : `${value} bytes`
 }
 
 function previewKind(mimeType: string): SftpFilePreview['kind'] {
