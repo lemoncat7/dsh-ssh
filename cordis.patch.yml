@@ -1,0 +1,10 @@
+- insert:
+    - id: ssh
+      name: '@lemoncat7/dsh-ssh'
+      config:
+        statePath: !!js dshHomePath('ssh/state.json')
+        exposeWeb: true
+        apiPrefix: /ssh-local/v1
+        defaultCommandTimeoutMs: 30000
+        maxOutputChars: 32000
+        allowPublicBind: false
