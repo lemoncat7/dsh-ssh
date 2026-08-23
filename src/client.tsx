@@ -28,15 +28,16 @@ const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
 type SidebarActionProps = PropsRuntime<'sidebar.footer.action'>
 type ConversationProps = PropsRuntime<'conversation'>
-type HeaderActionProps = PropsRuntime<'conversation.session.header.utilities'>
 type DetailsProps = PropsRuntime<'details'>
 
 interface RemoteController {
   open(profileId?: string): void
+  create(): void
   toggle(): void
   close(): void
   isOpen(): boolean
   selected(): string | undefined
+  consumeCreateRequest(): boolean
   subscribe(listener: () => void): () => void
 }
 
@@ -56,15 +57,13 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => { controller.close(); activityController.close() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'ssh-remote', order: -100,
-  }, props => <RemoteSidebar {...props} controller={controller} />))
-  ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
-    name: 'conversation.session.header.utilities', id: 'ssh-activity', order: 60,
-  }, props => <SshActivityButton {...props} controller={activityController} />))
+  }, props => <RemoteSidebar {...props} controller={controller} activityController={activityController} />))
 }
 
 function createController(ctx: ClientContext, beforeOpen: () => void): RemoteController {
   const listeners = new Set<() => void>()
   let selected: string | undefined
+  let createRequested = false
   let dispose: (() => void) | undefined
   const notify = (): void => { for (const listener of listeners) listener() }
   const controller: RemoteController = {
@@ -78,10 +77,12 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
       }
       notify()
     },
+    create() { createRequested = true; controller.open() },
     toggle() { if (dispose === undefined) controller.open(); else controller.close() },
     close() { if (dispose === undefined) return; const current = dispose; dispose = undefined; current(); notify() },
     isOpen: () => dispose !== undefined,
     selected: () => selected,
+    consumeCreateRequest() { const requested = createRequested; createRequested = false; return requested },
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
   }
   return controller
@@ -118,28 +119,6 @@ function createActivityController(ctx: ClientContext): ActivityController {
   return controller
 }
 
-function SshActivityButton(props: HeaderActionProps & { controller: ActivityController }): JSX.Element | null {
-  const sessionId = String(props.sessionId)
-  const [activity, setActivity] = useState<ActivityView>()
-  const [, setRevision] = useState(0)
-  useEffect(() => props.controller.subscribe(() => setRevision(value => value + 1)), [props.controller])
-  useEffect(() => {
-    let cancelled = false
-    const refresh = async (): Promise<void> => {
-      const next = await loadActivity(sessionId).catch(() => undefined)
-      if (!cancelled && next !== undefined) setActivity(next)
-    }
-    void refresh()
-    const timer = window.setInterval(() => { void refresh() }, 2500)
-    return () => { cancelled = true; clearInterval(timer); props.controller.close(sessionId) }
-  }, [props.controller, sessionId])
-  if (activity?.injection === null || activity === undefined) return null
-  const open = props.controller.isOpen(sessionId)
-  return <button type="button" className={`dsh-ssh-activity-trigger${open ? ' is-active' : ''}`} aria-label={open ? '收起远端侧栏' : '展开远端侧栏'} aria-pressed={open} title={open ? '收起远端侧栏' : '展开远端侧栏'} onClick={() => props.controller.toggle(sessionId)}>
-    <IconPanelLeftOutline16 size={17} className="dsh-ssh-panel-right-icon" />
-  </button>
-}
-
 function SshActivityPanel(props: DetailsProps & { controller: ActivityController }): JSX.Element {
   const sessionId = String(props.sessionId)
   const [activity, setActivity] = useState<ActivityView>()
@@ -148,9 +127,8 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
   const refresh = useCallback(async () => {
     try {
       const next = await loadActivity(sessionId)
-      if (next.injection === null) { props.controller.close(sessionId); return }
       setActivity(next)
-      if (next.injection.permission !== 'terminal') setView('directory')
+      if (next.injection?.permission !== 'terminal') setView('directory')
       setError(undefined)
     } catch (reason) { setError(message(reason)) }
   }, [props.controller, sessionId])
@@ -170,8 +148,9 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
     </nav>}
     <div className="dsh-ssh-activity-body">
       {activity === undefined ? <p className="dsh-ssh-activity-state">正在读取 SSH 会话…</p>
-        : view === 'directory' ? <DirectoryActivity sessionId={sessionId} profiles={activity.profiles} onSaved={refresh} />
-          : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} />}
+        : activity.injection === null ? <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>当前会话尚未连接远端</strong><p>从左侧「远端」列表打开一台主机，并授权给当前会话后即可浏览目录和终端。</p></div>
+          : view === 'directory' ? <DirectoryActivity sessionId={sessionId} profiles={activity.profiles} onSaved={refresh} />
+            : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} />}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     </div>
   </section>
@@ -345,7 +324,7 @@ function formatFileTime(value: number): string {
   return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(value)
 }
 
-function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController }): JSX.Element {
+function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController }): JSX.Element {
   const ref = useRef<HTMLElement>(null)
   useWorkspaceTopAnchor(ref)
   const sessionId = props.useSessions(state => state.current)
@@ -360,10 +339,13 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
     setInjection(sessionId === undefined ? null : await loadInjection(String(sessionId)).catch(() => null))
   }, [sessionId])
   useEffect(() => { void refresh() }, [refresh, props.controller.isOpen()])
+  const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
+  const activityOpen = currentSessionId !== undefined && props.activityController.isOpen(currentSessionId)
+  const toggleActivity = (): void => { if (currentSessionId !== undefined) props.activityController.toggle(currentSessionId) }
 
   if (!props.wide) {
     return <section ref={ref} className="dsh-ssh-sidebar is-rail">
-      <button type="button" className={`dsh-ssh-rail-button${props.controller.isOpen() ? ' is-active' : ''}`} title={props.controller.isOpen() ? '返回对话' : '远端'} aria-label={props.controller.isOpen() ? '返回对话' : '打开远端'} aria-pressed={props.controller.isOpen()} onClick={() => props.controller.toggle()}><ServerGlyph /></button>
+      <button type="button" className={`dsh-ssh-rail-button${activityOpen ? ' is-active' : ''}`} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><ServerGlyph /></button>
     </section>
   }
   return <section ref={ref} className="dsh-ssh-sidebar">
@@ -371,7 +353,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
       <button type="button" className="dsh-ssh-sidebar-title" aria-expanded={open} onClick={() => setOpen(value => !value)}>
         <span className="dsh-ssh-disclosure" data-open={open}><IconChevronDownOutline14 size={14} /></span><span>远端</span>
       </button>
-      <button type="button" className={`dsh-ssh-icon-button${props.controller.isOpen() ? ' is-active' : ''}`} aria-label={props.controller.isOpen() ? '返回对话' : '管理远端连接'} title={props.controller.isOpen() ? '返回对话' : '管理远端连接'} aria-pressed={props.controller.isOpen()} onClick={() => props.controller.toggle()}>{props.controller.isOpen() ? <IconCloseOutline16 size={16} /> : <IconPlusOutline16 size={16} />}</button>
+      <button type="button" className={`dsh-ssh-icon-button${activityOpen ? ' is-active' : ''}`} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><IconPanelLeftOutline16 size={16} className="dsh-ssh-panel-right-icon" /></button>
     </div>
     {open && <div className="dsh-ssh-sidebar-list">
       {profiles.length === 0 ? <button type="button" className="dsh-ssh-sidebar-empty" onClick={() => props.controller.open()}>添加第一台主机</button>
@@ -384,6 +366,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
           </button>
         })}
       {profiles.length > 6 && <button type="button" className="dsh-ssh-sidebar-more" onClick={() => props.controller.open()}>查看全部 {profiles.length} 台</button>}
+      <button type="button" className="dsh-ssh-sidebar-create" onClick={() => props.controller.create()}><IconPlusOutline16 size={14} /><span>新建 SSH 会话</span></button>
     </div>}
   </section>
 }
@@ -407,10 +390,15 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       setError(undefined)
     } catch (reason) { setError(message(reason)) }
   }, [])
-  useEffect(() => props.controller.subscribe(() => {
-    const next = props.controller.selected()
-    if (next !== undefined) setSelectedId(next)
-  }), [props.controller])
+  useEffect(() => {
+    const sync = (): void => {
+      const next = props.controller.selected()
+      if (next !== undefined) setSelectedId(next)
+      if (props.controller.consumeCreateRequest()) setEditing('new')
+    }
+    sync()
+    return props.controller.subscribe(sync)
+  }, [props.controller])
   useEffect(() => { void refresh() }, [refresh, refreshKey])
   const selected = profiles.find(item => item.id === selectedId)
   const testConnection = async (): Promise<void> => {
