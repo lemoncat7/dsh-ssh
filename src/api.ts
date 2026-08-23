@@ -98,6 +98,24 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
 
   if (segments[0] === 'profiles') {
     if (method === 'GET' && segments.length === 1) return sendJson(res, 200, await profileViews(runtime))
+    if (method === 'POST' && segments[1] === 'test-draft' && segments.length === 2) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const draft = normalizeProfileDraft(body.profile)
+      const profileId = body.profileId === undefined ? createId('preview') : requireText(body.profileId, 'profileId', 100)
+      const previousSecrets = body.profileId === undefined ? {} : await runtime.credentials.read(requiredProfile(runtime.store, profileId).id)
+      const secrets = { ...previousSecrets, ...normalizeSecrets(body.secrets) }
+      const now = Date.now()
+      const profile: SshProfile = { ...draft, id: profileId, port: draft.port ?? 22, proxy: draft.proxy ?? { type: 'none' }, keepAliveIntervalMs: draft.keepAliveIntervalMs ?? 15_000, connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, terminalType: draft.terminalType ?? 'xterm-256color', tags: draft.tags ?? [], createdAt: now, updatedAt: now }
+      try {
+        const connection = await runtime.connector.connectDraft(profile, secrets)
+        connection.close()
+        return sendJson(res, 200, { ok: true })
+      } catch (error) {
+        if (error instanceof HostKeyRequiredError) return sendJson(res, 409, { ok: false, code: error.code, fingerprint: error.fingerprint })
+        throw error
+      }
+    }
     if (method === 'POST' && segments.length === 1) {
       requireMutationHeader(req)
       const body = await readObject(req)

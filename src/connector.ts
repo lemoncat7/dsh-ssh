@@ -2,7 +2,7 @@ import ssh2, { type Client as SshClient, type ConnectConfig, type ClientChannel 
 import type { Duplex } from 'node:stream'
 import { connectHttpProxy, connectSocks5Proxy } from './proxy.js'
 import { SshCredentialVault } from './credentials.js'
-import type { SshProfile } from './domain.js'
+import type { SshCredentialPayload, SshProfile } from './domain.js'
 import { SshStore } from './store.js'
 
 export class HostKeyRequiredError extends Error {
@@ -20,6 +20,11 @@ export class SshConnector {
     return this.connectRecursive(profileId, new Set(), signal)
   }
 
+  async connectDraft(profile: SshProfile, secrets: SshCredentialPayload, signal?: AbortSignal): Promise<ManagedSshConnection> {
+    const identity = profile.credentialId === undefined ? { profile, secrets } : await this.resolveIdentity(profile)
+    return this.connectResolved(identity.profile, identity.secrets, new Set([profile.id]), signal)
+  }
+
   private async connectRecursive(profileId: string, chain: Set<string>, signal?: AbortSignal): Promise<ManagedSshConnection> {
     signal?.throwIfAborted()
     if (chain.has(profileId)) throw new Error(`SSH jump proxy cycle detected at ${profileId}`)
@@ -27,6 +32,11 @@ export class SshConnector {
     if (storedProfile === undefined) throw Object.assign(new Error(`SSH profile ${profileId} was not found`), { status: 404 })
     const { profile, secrets } = await this.resolveIdentity(storedProfile)
     const nextChain = new Set(chain).add(profileId)
+    return this.connectResolved(profile, secrets, nextChain, signal)
+  }
+
+  private async connectResolved(profile: SshProfile, secrets: SshCredentialPayload, chain: Set<string>, signal?: AbortSignal): Promise<ManagedSshConnection> {
+    signal?.throwIfAborted()
     let socket: Duplex | undefined
     let parent: ManagedSshConnection | undefined
     try {
@@ -41,7 +51,7 @@ export class SshConnector {
           ...secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword },
         }, profile.connectTimeoutMs)
       } else if (profile.proxy.type === 'jump') {
-        parent = await this.connectJumpChain(profile.proxy.profileIds, nextChain, signal)
+        parent = await this.connectJumpChain(profile.proxy.profileIds, chain, signal)
         socket = await forwardOut(parent.client, profile.host, profile.port)
       }
       const client = await connectClient(profile, secrets, socket, signal)

@@ -27,6 +27,20 @@ test('uses a vault credential without copying it into the SSH profile', async t 
   assert.deepEqual(await fixture.vault.read('host-vault'), {})
 })
 
+test('tests an unsaved SSH profile without persisting credentials', async t => {
+  const fixture = await createFixture(t)
+  const target = await createServer(t, { username: 'draft-user', password: 'draft-password', label: 'draft-target' })
+  const draft = profile('preview-draft', target.port, { username: 'draft-user' })
+  let firstSeen
+  try { await fixture.connector.connectDraft(draft, { password: 'draft-password' }) } catch (reason) { firstSeen = reason }
+  assert(firstSeen instanceof HostKeyRequiredError)
+
+  const connection = await fixture.connector.connectDraft({ ...draft, hostFingerprint: firstSeen.fingerprint }, { password: 'draft-password' })
+  connection.close()
+  assert.equal(fixture.store.profile('preview-draft'), undefined)
+  assert.deepEqual(await fixture.vault.read('preview-draft'), {})
+})
+
 test('connects through an ordered two-host SSH jump chain', async t => {
   const fixture = await createFixture(t)
   const jumpOne = await createServer(t, { username: 'jump-one', password: 'one-password', label: 'jump-one', forward: true })
