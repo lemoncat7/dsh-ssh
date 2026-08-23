@@ -78,7 +78,7 @@ export async function openSftpFile(
     const resolved = await realpath(sftp, requestedPath)
     const attributes = await stat(sftp, resolved)
     if ((attributes.mode & 0o170000) === 0o040000) throw new Error('SFTP path points to a directory, not a file')
-    const stream = sftp.createReadStream(resolved)
+    const stream = createSftpReadStream(sftp, resolved)
     let closed = false
     const close = (): void => {
       if (closed) return
@@ -108,25 +108,35 @@ export async function readSftpFilePreview(
   maxTextBytes = 1_048_576,
   signal?: AbortSignal,
 ): Promise<SftpFilePreview> {
-  const file = await openSftpFile(connector, profileId, requestedPath, signal)
-  const kind = previewKind(file.mimeType)
-  const base = { path: file.path, name: remoteName(file.path), size: file.size, mimeType: file.mimeType, kind }
-  if (kind !== 'text') { file.close(); return base }
-  const chunks: Buffer[] = []
-  let total = 0
-  let truncated = false
+  signal?.throwIfAborted()
+  const connection = await connector.connect(profileId, signal)
+  let sftp: SFTPWrapper | undefined
   try {
-    for await (const chunk of file.stream) {
+    sftp = await openSftp(connection.client, signal)
+    const resolved = await realpath(sftp, requestedPath)
+    const attributes = await stat(sftp, resolved)
+    if ((attributes.mode & 0o170000) === 0o040000) throw new Error('SFTP path points to a directory, not a file')
+    const mimeType = mimeTypeFor(resolved)
+    const kind = previewKind(mimeType)
+    const base = { path: resolved, name: remoteName(resolved), size: attributes.size, mimeType, kind }
+    if (kind !== 'text') return base
+
+    const stream = createSftpReadStream(sftp, resolved)
+    const chunks: Buffer[] = []
+    let total = 0
+    let truncated = false
+    for await (const chunk of stream) {
       const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       const remaining = maxTextBytes - total
       if (remaining <= 0) { truncated = true; break }
       chunks.push(value.subarray(0, remaining))
       total += Math.min(value.length, remaining)
-      if (value.length > remaining || total >= maxTextBytes && file.size > total) { truncated = true; break }
+      if (value.length > remaining || total >= maxTextBytes && attributes.size > total) { truncated = true; break }
     }
     return { ...base, text: Buffer.concat(chunks).toString('utf8'), truncated }
   } finally {
-    file.close()
+    sftp?.end()
+    connection.close()
   }
 }
 
@@ -158,6 +168,14 @@ function stat(sftp: SFTPWrapper, value: string): Promise<import('ssh2').Stats> {
   return new Promise((resolve, reject) => {
     sftp.stat(value, (error, attributes) => error ? reject(error) : resolve(attributes))
   })
+}
+
+function createSftpReadStream(sftp: SFTPWrapper, value: string): ReturnType<SFTPWrapper['createReadStream']> {
+  const stream = sftp.createReadStream(value)
+  // ssh2 can emit a second transport error after an iterator or pipeline has already completed.
+  // Keep a listener attached so that this late lifecycle event cannot terminate the DSH process.
+  stream.on('error', () => {})
+  return stream
 }
 
 function expandHome(value: string, home: string): string {
@@ -205,6 +223,8 @@ function previewKind(mimeType: string): SftpFilePreview['kind'] {
 }
 
 function mimeTypeFor(value: string): string {
+  const name = remoteName(value).toLowerCase()
+  if (TEXT_FILENAMES.has(name)) return 'text/plain'
   const extension = path.posix.extname(value).toLowerCase()
   return {
     '.txt': 'text/plain', '.md': 'text/markdown', '.log': 'text/plain', '.csv': 'text/csv', '.tsv': 'text/tab-separated-values',
@@ -217,3 +237,9 @@ function mimeTypeFor(value: string): string {
     '.pdf': 'application/pdf', '.zip': 'application/zip', '.gz': 'application/gzip', '.tar': 'application/x-tar', '.wasm': 'application/wasm',
   }[extension] ?? 'application/octet-stream'
 }
+
+const TEXT_FILENAMES = new Set([
+  '.bashrc', '.bash_profile', '.bash_logout', '.zshrc', '.zprofile', '.zshenv', '.profile',
+  '.gitconfig', '.gitignore', '.gitattributes', '.editorconfig', '.npmrc', '.yarnrc',
+  '.dockerignore', '.env', '.env.local', 'dockerfile', 'makefile', 'license', 'readme',
+])
