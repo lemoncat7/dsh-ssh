@@ -72,32 +72,6 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 201, await credentialEntryView(runtime, entry))
     }
     const id = segments[1]
-    if (id !== undefined && segments[2] === 'sftp') {
-      requiredProfile(runtime.store, id)
-      const operation = segments[3]
-      if (method === 'GET' && operation === 'directory' && segments.length === 4) {
-        return sendJson(res, 200, await listSftpDirectory(runtime.connector, id, url.searchParams.get('path') ?? '~'))
-      }
-      if (method === 'GET' && operation === 'file' && segments.length === 4) {
-        return sendJson(res, 200, await readSftpFilePreview(runtime.connector, id, requireRawText(url.searchParams.get('path'), 'path', 4096)))
-      }
-      if (method === 'GET' && operation === 'download' && segments.length === 4) {
-        return streamSftpFile(res, url, runtime, id, requireRawText(url.searchParams.get('path'), 'path', 4096))
-      }
-      if (method === 'PUT' && operation === 'upload' && segments.length === 4) {
-        requireMutationHeader(req)
-        const contentLengthHeader = req.headers['content-length']
-        const contentLength = contentLengthHeader === undefined ? undefined : optionalInteger(Number(contentLengthHeader), 0, Number.MAX_SAFE_INTEGER)
-        if (contentLength !== undefined && contentLength > MAX_SFTP_UPLOAD_BYTES) throw httpError(413, 'upload exceeds the 512 MB limit')
-        const directory = requireRawText(url.searchParams.get('directory'), 'directory', 4096)
-        const filename = requireRemoteFilename(url.searchParams.get('name'))
-        const result = await uploadSftpFile(runtime.connector, id, directory, filename, req, {
-          overwrite: url.searchParams.get('overwrite') === '1',
-          maxBytes: MAX_SFTP_UPLOAD_BYTES,
-        })
-        return sendJson(res, 201, result)
-      }
-    }
     if (id !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const previous = requiredCredentialEntry(runtime.store, id)
@@ -156,6 +130,32 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 201, await profileView(runtime, profile))
     }
     const id = segments[1]
+    if (id !== undefined && segments[2] === 'sftp') {
+      requiredProfile(runtime.store, id)
+      const operation = segments[3]
+      if (method === 'GET' && operation === 'directory' && segments.length === 4) {
+        return sendJson(res, 200, await listSftpDirectory(runtime.connector, id, url.searchParams.get('path') ?? '~'))
+      }
+      if (method === 'GET' && operation === 'file' && segments.length === 4) {
+        return sendJson(res, 200, await readSftpFilePreview(runtime.connector, id, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+      }
+      if (method === 'GET' && operation === 'download' && segments.length === 4) {
+        return streamSftpFile(res, url, runtime, id, requireRawText(url.searchParams.get('path'), 'path', 4096))
+      }
+      if (method === 'PUT' && operation === 'upload' && segments.length === 4) {
+        requireMutationHeader(req)
+        const contentLengthHeader = req.headers['content-length']
+        const contentLength = contentLengthHeader === undefined ? undefined : optionalInteger(Number(contentLengthHeader), 0, Number.MAX_SAFE_INTEGER)
+        if (contentLength !== undefined && contentLength > MAX_SFTP_UPLOAD_BYTES) throw httpError(413, 'upload exceeds the 512 MB limit')
+        const directory = requireRawText(url.searchParams.get('directory'), 'directory', 4096)
+        const filename = requireRemoteFilename(url.searchParams.get('name'))
+        const result = await uploadSftpFile(runtime.connector, id, directory, filename, req, {
+          overwrite: url.searchParams.get('overwrite') === '1',
+          maxBytes: MAX_SFTP_UPLOAD_BYTES,
+        })
+        return sendJson(res, 201, result)
+      }
+    }
     if (id !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const previous = requiredProfile(runtime.store, id)
