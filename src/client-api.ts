@@ -3,6 +3,7 @@ export const SSH_API = '/ssh-local/v1'
 export interface CredentialView { configured: boolean; writable: boolean; fields: string[]; source: 'profile' | 'vault'; entryId?: string; entryName?: string }
 export interface ProfileView {
   id: string; name: string; host: string; port: number; username: string
+  group?: string
   authType: 'password' | 'private-key' | 'agent'; hostFingerprint?: string
   credentialId?: string
   proxy: { type: 'none' } | { type: 'http' | 'socks5'; host: string; port: number; username?: string } | { type: 'jump'; profileIds: string[] }

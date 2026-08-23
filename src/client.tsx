@@ -40,9 +40,11 @@ interface RemoteController {
 }
 
 interface ActivityController {
+  open(sessionId: string, profileId?: string): void
   toggle(sessionId: string): void
   close(sessionId?: string): void
   isOpen(sessionId: string): boolean
+  selected(sessionId: string): string | undefined
   subscribe(listener: () => void): () => void
 }
 
@@ -86,29 +88,42 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
 function createActivityController(ctx: ClientContext): ActivityController {
   const listeners = new Set<() => void>()
   let openSessionId: string | undefined
+  let selectedProfileId: string | undefined
   let dispose: (() => void) | undefined
   const notify = (): void => { for (const listener of listeners) listener() }
   const controller: ActivityController = {
-    toggle(sessionId) {
-      if (dispose !== undefined && openSessionId === sessionId) return controller.close(sessionId)
+    open(sessionId, profileId) {
+      if (dispose !== undefined && openSessionId === sessionId) {
+        if (profileId !== undefined) selectedProfileId = profileId
+        ctx.layout.openDetails()
+        notify()
+        return
+      }
       controller.close()
       openSessionId = sessionId
+      selectedProfileId = profileId
       dispose = ctx.slots.register({ name: 'details', priority: -2 }, props => (
         <SshActivityPanel {...props} controller={controller} />
       ))
       ctx.layout.openDetails()
       notify()
     },
+    toggle(sessionId) {
+      if (dispose !== undefined && openSessionId === sessionId) return controller.close(sessionId)
+      controller.open(sessionId)
+    },
     close(sessionId) {
       if (sessionId !== undefined && sessionId !== openSessionId) return
       const current = dispose
       dispose = undefined
       openSessionId = undefined
+      selectedProfileId = undefined
       current?.()
       if (current !== undefined) ctx.layout.closeDetails()
       notify()
     },
     isOpen: sessionId => dispose !== undefined && openSessionId === sessionId,
+    selected: sessionId => openSessionId === sessionId ? selectedProfileId : undefined,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
   }
   return controller
@@ -119,6 +134,8 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
   const [activity, setActivity] = useState<ActivityView>()
   const [view, setView] = useState<'directory' | 'terminals'>('directory')
   const [error, setError] = useState<string>()
+  const [, setRevision] = useState(0)
+  useEffect(() => props.controller.subscribe(() => setRevision(value => value + 1)), [props.controller])
   const refresh = useCallback(async () => {
     try {
       const next = await loadActivity(sessionId)
@@ -144,21 +161,17 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
     <div className="dsh-ssh-activity-body">
       {activity === undefined ? <p className="dsh-ssh-activity-state">正在读取 SSH 会话…</p>
         : activity.injection === null ? <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>当前会话尚未连接远端</strong><p>从左侧「远端」列表打开一台主机，并授权给当前会话后即可浏览目录和终端。</p></div>
-          : view === 'directory' ? <DirectoryActivity sessionId={sessionId} profiles={activity.profiles} onSaved={refresh} />
+          : view === 'directory' ? <DirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId)} onSaved={refresh} />
             : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} />}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     </div>
   </section>
 }
 
-function DirectoryActivity({ sessionId, profiles, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; onSaved(): Promise<void> }): JSX.Element {
-  const [profileId, setProfileId] = useState(profiles[0]?.id)
-  const profile = profiles.find(item => item.id === profileId) ?? profiles[0]
-  useEffect(() => {
-    if (profileId === undefined || !profiles.some(item => item.id === profileId)) setProfileId(profiles[0]?.id)
-  }, [profileId, profiles])
+function DirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
+  const profile = profiles.find(item => item.id === selectedProfileId) ?? profiles[0]
   if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先向当前会话注入一个 SSH 连接。</p></div>
-  return <SftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={setProfileId} onSaved={onSaved} />
+  return <SftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
 }
 
 function SftpBrowser({ sessionId, profile, profiles, onProfile, onSaved }: { sessionId: string; profile: ActivityProfileView; profiles: ActivityProfileView[]; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
@@ -255,7 +268,7 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
     const host = hostRef.current
     if (host === null) return
     const terminal = new Terminal({
-      disableStdin: activity.status.kind !== 'running', cursorBlink: activity.status.kind === 'running', cursorInactiveStyle: 'outline', fontSize: 11, lineHeight: 1.35, scrollback: 4000,
+      convertEol: true, disableStdin: activity.status.kind !== 'running', cursorBlink: activity.status.kind === 'running', cursorInactiveStyle: 'outline', fontSize: 11, lineHeight: 1.35, scrollback: 4000,
       fontFamily: '"SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace',
       theme: { background: '#111817', foreground: '#dce5e1', cursor: '#77b6a5', selectionBackground: '#547d7855', black: '#111817', green: '#75a998', brightGreen: '#9acabb' },
     })
@@ -336,7 +349,17 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   useEffect(() => { void refresh() }, [refresh, props.controller.isOpen()])
   const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const activityOpen = currentSessionId !== undefined && props.activityController.isOpen(currentSessionId)
-  const toggleActivity = (): void => { if (currentSessionId !== undefined) props.activityController.toggle(currentSessionId) }
+  const availableProfiles = injection === null ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
+  const openActivity = (profileId?: string): void => {
+    if (currentSessionId === undefined) return
+    props.controller.close()
+    props.activityController.open(currentSessionId, profileId)
+  }
+  const toggleActivity = (): void => {
+    if (currentSessionId === undefined) return
+    if (activityOpen) props.activityController.close(currentSessionId)
+    else openActivity()
+  }
 
   if (!props.wide) {
     return <section ref={ref} className="dsh-ssh-sidebar is-rail">
@@ -352,15 +375,14 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
     </div>
     {open && <div className="dsh-ssh-sidebar-list">
       <button type="button" className="dsh-ssh-sidebar-panel" onClick={() => props.controller.open()}><ServerGlyph /><span>SSH 面板</span></button>
-      {profiles.slice(0, 6).map(profile => {
-          const injected = injection?.profileIds.includes(profile.id) === true
-          return <button type="button" className={`dsh-ssh-sidebar-row${props.controller.selected() === profile.id && props.controller.isOpen() ? ' is-active' : ''}`} key={profile.id} onClick={() => props.controller.open(profile.id)}>
-            <span className={`dsh-ssh-status-dot${injected ? ' is-injected' : ''}`} aria-hidden="true" />
+      {currentSessionId === undefined ? <p className="dsh-ssh-sidebar-note">打开会话后显示可用远端</p>
+        : availableProfiles.length === 0 ? <p className="dsh-ssh-sidebar-note">当前会话未授权远端</p>
+          : availableProfiles.slice(0, 6).map(profile => <button type="button" className={`dsh-ssh-sidebar-row${activityOpen && props.activityController.selected(currentSessionId) === profile.id ? ' is-active' : ''}`} key={profile.id} onClick={() => openActivity(profile.id)}>
+            <span className="dsh-ssh-status-dot is-injected" aria-hidden="true" />
             <span className="dsh-ssh-sidebar-copy"><strong>{profile.name}</strong><small>{profile.host}</small></span>
-            {injected && <span className="dsh-ssh-injected-mark" title="已注入当前会话"><IconCheckOutline14 size={12} /></span>}
-          </button>
-        })}
-      {profiles.length > 6 && <button type="button" className="dsh-ssh-sidebar-more" onClick={() => props.controller.open()}>查看全部 {profiles.length} 台</button>}
+            <span className="dsh-ssh-injected-mark" title="当前会话可用"><IconCheckOutline14 size={12} /></span>
+          </button>)}
+      {availableProfiles.length > 6 && <button type="button" className="dsh-ssh-sidebar-more" onClick={toggleActivity}>还有 {availableProfiles.length - 6} 台可用远端</button>}
     </div>}
   </section>
 }
@@ -426,18 +448,69 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
 
 function ProfileList({ profiles, selectedId, onSelect, onNew }: { profiles: ProfileView[]; selectedId?: string | undefined; onSelect(id: string): void; onNew(): void }): JSX.Element {
   const [query, setQuery] = useState('')
-  const visible = profiles.filter(item => `${item.name} ${item.host} ${item.username} ${item.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const groups = useMemo(() => groupProfiles(profiles.filter(profile => profileSearchText(profile).includes(normalizedQuery))), [normalizedQuery, profiles])
+  const selectedGroup = profiles.find(profile => profile.id === selectedId)?.group?.trim() || '未分组'
+  useEffect(() => {
+    if (selectedId === undefined) return
+    setCollapsedGroups(current => {
+      if (!current.has(selectedGroup)) return current
+      const next = new Set(current)
+      next.delete(selectedGroup)
+      return next
+    })
+  }, [selectedGroup, selectedId])
+  const toggleGroup = (name: string): void => {
+    setCollapsedGroups(current => {
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
   return <aside className="dsh-ssh-profile-panel">
-    <div className="dsh-ssh-panel-heading"><span><strong>连接</strong><small>{profiles.length} 台主机</small></span><button className="dsh-ssh-icon-button" onClick={onNew} aria-label="新建连接"><IconPlusOutline16 size={16} /></button></div>
-    <label className="dsh-ssh-search"><span className="sr-only">搜索连接</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索主机、标签…" /></label>
+    <div className="dsh-ssh-panel-heading"><span><strong>主机</strong><small>{groups.length} 个分组 · {profiles.length} 台主机</small></span><button className="dsh-ssh-icon-button" onClick={onNew} aria-label="新建连接"><IconPlusOutline16 size={16} /></button></div>
+    <label className="dsh-ssh-search"><span className="sr-only">搜索连接</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索主机、分组、标签…" /></label>
     <div className="dsh-ssh-profile-list">
-      {visible.map(profile => <button type="button" key={profile.id} className={`dsh-ssh-profile-row${selectedId === profile.id ? ' is-active' : ''}`} onClick={() => onSelect(profile.id)}>
+      {groups.map(group => <ProfileGroup key={group.name} group={group} open={normalizedQuery !== '' || !collapsedGroups.has(group.name)} selectedId={selectedId} onToggle={() => toggleGroup(group.name)} onSelect={onSelect} />)}
+      {groups.length === 0 && <p className="dsh-ssh-profile-empty">{profiles.length === 0 ? '还没有 SSH 主机' : '没有匹配的主机'}</p>}
+    </div>
+  </aside>
+}
+
+interface ProfileGroupView { name: string; profiles: ProfileView[] }
+
+function groupProfiles(profiles: ProfileView[]): ProfileGroupView[] {
+  const groups = new Map<string, ProfileView[]>()
+  for (const profile of profiles) {
+    const name = profile.group?.trim() || '未分组'
+    const group = groups.get(name)
+    if (group === undefined) groups.set(name, [profile])
+    else group.push(profile)
+  }
+  return [...groups].map(([name, groupedProfiles]) => ({ name, profiles: groupedProfiles }))
+}
+
+function profileSearchText(profile: ProfileView): string {
+  return `${profile.name} ${profile.group ?? ''} ${profile.host} ${profile.username} ${profile.tags.join(' ')}`.toLocaleLowerCase()
+}
+
+function ProfileGroup({ group, open, selectedId, onToggle, onSelect }: { group: ProfileGroupView; open: boolean; selectedId?: string | undefined; onToggle(): void; onSelect(id: string): void }): JSX.Element {
+  return <section className="dsh-ssh-profile-group">
+    <button type="button" className="dsh-ssh-profile-group-heading" aria-expanded={open} onClick={onToggle}>
+      <span className="dsh-ssh-profile-group-chevron" data-open={open}><IconChevronDownOutline14 size={12} /></span>
+      <span className="dsh-ssh-profile-group-folder">{open ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span>
+      <span className="dsh-ssh-profile-group-copy"><strong>{group.name}</strong><small>{group.profiles.length}</small></span>
+    </button>
+    {open && <div className="dsh-ssh-profile-group-children" role="group" aria-label={`${group.name}中的主机`}>
+      {group.profiles.map(profile => <button type="button" key={profile.id} className={`dsh-ssh-profile-row${selectedId === profile.id ? ' is-active' : ''}`} onClick={() => onSelect(profile.id)}>
         <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
         <span><strong>{profile.name}</strong><small>{profileAddress(profile)}</small></span>
         <span className={`dsh-ssh-credential-state${profile.credential.configured ? ' is-ready' : ''}`} title={profile.credential.configured ? '凭据已配置' : '凭据缺失'} />
       </button>)}
-    </div>
-  </aside>
+    </div>}
+  </section>
 }
 
 function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): void }): JSX.Element {
@@ -453,7 +526,7 @@ function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): voi
     const host = hostRef.current
     if (host === null) return
     const terminal = new Terminal({
-      cursorBlink: true, fontSize: 13, lineHeight: 1.35, scrollback: 5000,
+      convertEol: true, cursorBlink: true, fontSize: 13, lineHeight: 1.35, scrollback: 5000,
       fontFamily: '"SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace',
       theme: { background: '#111817', foreground: '#dce5e1', cursor: '#77b6a5', selectionBackground: '#547d7855', black: '#111817', green: '#75a998', brightGreen: '#9acabb' },
     })
@@ -680,7 +753,7 @@ function SettingsPane(): JSX.Element {
 
 function ProfileEditor({ profile, profiles, vaultEntries, onClose, onSaved }: { profile?: ProfileView | undefined; profiles: ProfileView[]; vaultEntries: VaultEntryView[]; onClose(): void; onSaved(): void }): JSX.Element {
   const [form, setForm] = useState(() => ({
-    name: profile?.name ?? '', host: profile?.host ?? '', port: String(profile?.port ?? 22), username: profile?.username ?? '', authType: profile?.authType ?? 'password',
+    name: profile?.name ?? '', group: profile?.group ?? '', host: profile?.host ?? '', port: String(profile?.port ?? 22), username: profile?.username ?? '', authType: profile?.authType ?? 'password',
     credentialId: profile?.credentialId ?? '',
     proxyType: profile?.proxy.type ?? 'none', proxyHost: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.host : '', proxyPort: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? String(profile.proxy.port) : '1080', proxyUsername: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.username ?? '' : '', jumpProfileIds: profile?.proxy.type === 'jump' ? profile.proxy.profileIds : [], tags: profile?.tags.join(', ') ?? '',
     password: '', privateKey: '', passphrase: '', proxyPassword: '', hostFingerprint: profile?.hostFingerprint ?? '',
@@ -700,7 +773,7 @@ function ProfileEditor({ profile, profiles, vaultEntries, onClose, onSaved }: { 
       : form.proxyType === 'jump' ? { type: 'jump', profileIds: form.jumpProfileIds }
         : { type: form.proxyType, host: form.proxyHost, port: Number(form.proxyPort), ...(form.proxyUsername.trim() ? { username: form.proxyUsername.trim() } : {}) }
     return {
-      profile: { name: form.name, host: form.host, port: Number(form.port), username: selectedCredential?.username ?? form.username, authType: selectedCredential?.authType ?? form.authType, ...(form.credentialId ? { credentialId: form.credentialId } : {}), ...(hostFingerprint ? { hostFingerprint } : {}), proxy, keepAliveIntervalMs: profile?.keepAliveIntervalMs ?? 15000, connectTimeoutMs: profile?.connectTimeoutMs ?? 15000, terminalType: profile?.terminalType ?? 'xterm-256color', tags: form.tags.split(',').map(item => item.trim()).filter(Boolean) },
+      profile: { name: form.name, ...(form.group.trim() ? { group: form.group.trim() } : {}), host: form.host, port: Number(form.port), username: selectedCredential?.username ?? form.username, authType: selectedCredential?.authType ?? form.authType, ...(form.credentialId ? { credentialId: form.credentialId } : {}), ...(hostFingerprint ? { hostFingerprint } : {}), proxy, keepAliveIntervalMs: profile?.keepAliveIntervalMs ?? 15000, connectTimeoutMs: profile?.connectTimeoutMs ?? 15000, terminalType: profile?.terminalType ?? 'xterm-256color', tags: form.tags.split(',').map(item => item.trim()).filter(Boolean) },
       secrets: { password: form.password, privateKey: form.privateKey, passphrase: form.passphrase, proxyPassword: form.proxyPassword },
     }
   }
@@ -723,8 +796,9 @@ function ProfileEditor({ profile, profiles, vaultEntries, onClose, onSaved }: { 
   }
   return <Dialog title={profile === undefined ? '新建 SSH 连接' : `编辑 ${profile.name}`} subtitle="凭据保存后不会回显" onClose={onClose}>
     <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
-      <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} placeholder="开发服务器" {...field('name')} /></Field><Field label="标签"><input placeholder="production, linux" {...field('tags')} /></Field></div>
+      <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} placeholder="开发服务器" {...field('name')} /></Field><Field label="分组"><input maxLength={64} placeholder="例如：生产环境" {...field('group')} /></Field></div>
       <div className="dsh-ssh-form-grid is-host"><Field label="主机"><input required placeholder="server.example.com" {...field('host')} /></Field><Field label="端口"><input required type="number" min="1" max="65535" {...field('port')} /></Field></div>
+      <Field label="标签" hint="多个标签使用英文逗号分隔。"><input placeholder="production, linux" {...field('tags')} /></Field>
       <Field label="凭据来源" hint="可使用此连接自己的凭据，或引用密钥库中的常用账号。"><select {...field('credentialId')}><option value="">此连接独立保存</option>{vaultEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.username}</option>)}</select></Field>
       {selectedCredential ? <div className="dsh-ssh-credential-reference"><span><IconUserOutline16 size={16} /></span><span><strong>{selectedCredential.name}</strong><small>{selectedCredential.username} · {selectedCredential.authType === 'password' ? '密码' : '私钥'}</small></span><em>{selectedCredential.credential.configured ? '已就绪' : '缺少凭据'}</em></div> : <>
         <div className="dsh-ssh-form-grid"><Field label="用户名"><input required autoComplete="username" {...field('username')} /></Field><Field label="认证方式"><select {...field('authType')}><option value="password">密码</option><option value="private-key">私钥</option><option value="agent">SSH Agent</option></select></Field></div>

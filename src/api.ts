@@ -136,6 +136,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const draft = normalizeProfileDraft(body.profile)
       const secrets = normalizeSecrets(body.secrets)
       const next: SshProfile = { ...previous, ...draft, port: draft.port ?? 22, proxy: draft.proxy ?? { type: 'none' }, keepAliveIntervalMs: draft.keepAliveIntervalMs ?? 15_000, connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, terminalType: draft.terminalType ?? 'xterm-256color', tags: draft.tags ?? [], id, createdAt: previous.createdAt, updatedAt: Date.now() }
+      if (draft.group === undefined) delete next.group
       const previousSecrets = await runtime.credentials.read(id)
       if (Object.keys(secrets).length > 0) await runtime.credentials.write(id, secrets)
       try { await runtime.store.update(state => { state.profiles = state.profiles.map(profile => profile.id === id ? next : profile) }) }

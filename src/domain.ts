@@ -8,6 +8,7 @@ export type ProxyConfig =
 export interface SshProfile {
   id: string
   name: string
+  group?: string
   host: string
   port: number
   username: string
@@ -81,6 +82,7 @@ export interface SshState {
 
 export interface ProfileDraft {
   name: string
+  group?: string
   host: string
   port?: number
   username: string
@@ -118,6 +120,7 @@ export function normalizeProfileDraft(value: unknown): ProfileDraft {
   const proxy = normalizeProxy(input.proxy)
   return {
     name: text(input.name, 'name', 1, 80),
+    ...optionalText(input.group, 'group', 1, 64),
     host: text(input.host, 'host', 1, 253),
     port: integer(input.port ?? 22, 'port', 1, 65_535),
     username: text(input.username, 'username', 1, 128),

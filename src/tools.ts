@@ -46,6 +46,7 @@ function listTool(store: SshStore): ToolDefinition {
     const injection = requireInjection(store, exec)
     const profiles = injection.profileIds.map(id => store.profile(id)).filter(item => item !== undefined).map(profile => ({
       id: profile.id, name: profile.name, host: profile.host, port: profile.port, username: profile.username,
+      ...(profile.group === undefined ? {} : { group: profile.group }),
       tags: profile.tags, permission: injection.permission, cwd: sessionDirectory(injection, profile.id),
     }))
     return json({ sessionId: injection.sessionId, profiles })
