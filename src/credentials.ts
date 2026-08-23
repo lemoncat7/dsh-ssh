@@ -2,6 +2,7 @@ import { credentialKey, type CredentialProvider, type GrantRecord } from '@deeps
 import { compactSecrets, type SshCredentialPayload } from './domain.js'
 
 const SCOPE = 'dsh-ssh'
+const VAULT_SCOPE = 'dsh-ssh-vault'
 
 export class SshCredentialVault {
   constructor(private readonly provider: CredentialProvider) {}
@@ -36,6 +37,36 @@ export class SshCredentialVault {
 
   async delete(profileId: string): Promise<void> {
     await this.provider.deleteRecord(credentialKey(SCOPE, profileId))
+  }
+
+  async describeEntry(entryId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
+    const info = await this.provider.describeRecord(credentialKey(VAULT_SCOPE, entryId))
+    const payload = await this.readEntry(entryId)
+    return { configured: info.configured, writable: info.writable, fields: Object.keys(payload) }
+  }
+
+  async readEntry(entryId: string): Promise<SshCredentialPayload> {
+    const record = await this.provider.readRecord(credentialKey(VAULT_SCOPE, entryId))
+    if (record === undefined) return {}
+    if (record.kind !== 'grant') throw new Error(`SSH vault entry ${entryId} has an incompatible record type`)
+    return parsePayload(record.payload)
+  }
+
+  async writeEntry(entryId: string, patch: SshCredentialPayload): Promise<void> {
+    const key = credentialKey(VAULT_SCOPE, entryId)
+    await this.provider.modifyRecord(key, async current => {
+      if (current !== undefined && current.kind !== 'grant') throw new Error(`SSH vault entry ${entryId} has an incompatible record type`)
+      const previous = current === undefined ? {} : parsePayload(current.payload)
+      return { kind: 'grant', payload: compactSecrets({ ...previous, ...patch }) } satisfies GrantRecord
+    })
+  }
+
+  async replaceEntry(entryId: string, value: SshCredentialPayload): Promise<void> {
+    await this.provider.modifyRecord(credentialKey(VAULT_SCOPE, entryId), async () => ({ kind: 'grant', payload: compactSecrets(value) }))
+  }
+
+  async deleteEntry(entryId: string): Promise<void> {
+    await this.provider.deleteRecord(credentialKey(VAULT_SCOPE, entryId))
   }
 }
 

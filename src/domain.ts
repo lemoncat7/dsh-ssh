@@ -3,7 +3,7 @@ export type ProxyConfig =
   | { type: 'none' }
   | { type: 'http'; host: string; port: number; username?: string }
   | { type: 'socks5'; host: string; port: number; username?: string }
-  | { type: 'jump'; profileId: string }
+  | { type: 'jump'; profileIds: string[] }
 
 export interface SshProfile {
   id: string
@@ -12,12 +12,22 @@ export interface SshProfile {
   port: number
   username: string
   authType: SshAuthType
+  credentialId?: string
   hostFingerprint?: string
   proxy: ProxyConfig
   keepAliveIntervalMs: number
   connectTimeoutMs: number
   terminalType: string
   tags: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CredentialEntry {
+  id: string
+  name: string
+  username: string
+  authType: Exclude<SshAuthType, 'agent'>
   createdAt: number
   updatedAt: number
 }
@@ -63,6 +73,7 @@ export interface SshSettings {
 export interface SshState {
   schemaVersion: 1
   profiles: SshProfile[]
+  credentialEntries: CredentialEntry[]
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
   settings: SshSettings
@@ -74,12 +85,19 @@ export interface ProfileDraft {
   port?: number
   username: string
   authType: SshAuthType
+  credentialId?: string
   hostFingerprint?: string
   proxy?: ProxyConfig
   keepAliveIntervalMs?: number
   connectTimeoutMs?: number
   terminalType?: string
   tags?: string[]
+}
+
+export interface CredentialEntryDraft {
+  name: string
+  username: string
+  authType: Exclude<SshAuthType, 'agent'>
 }
 
 export interface ForwardDraft {
@@ -104,12 +122,23 @@ export function normalizeProfileDraft(value: unknown): ProfileDraft {
     port: integer(input.port ?? 22, 'port', 1, 65_535),
     username: text(input.username, 'username', 1, 128),
     authType,
+    ...optionalText(input.credentialId, 'credentialId', 1, 100),
     ...optionalText(input.hostFingerprint, 'hostFingerprint', 8, 256),
     proxy,
     keepAliveIntervalMs: integer(input.keepAliveIntervalMs ?? 15_000, 'keepAliveIntervalMs', 0, 120_000),
     connectTimeoutMs: integer(input.connectTimeoutMs ?? 15_000, 'connectTimeoutMs', 1000, 120_000),
     terminalType: text(input.terminalType ?? 'xterm-256color', 'terminalType', 1, 64),
     tags: stringArray(input.tags, 'tags', 20, 32),
+  }
+}
+
+export function normalizeCredentialEntryDraft(value: unknown): CredentialEntryDraft {
+  const input = record(value, 'credential entry')
+  if (input.authType !== 'password' && input.authType !== 'private-key') throw bad('credential authType must be password or private-key')
+  return {
+    name: text(input.name, 'name', 1, 80),
+    username: text(input.username, 'username', 1, 128),
+    authType: input.authType,
   }
 }
 
@@ -159,7 +188,13 @@ function normalizeProxy(value: unknown): ProxyConfig {
   if (value === undefined || value === null) return { type: 'none' }
   const input = record(value, 'proxy')
   if (input.type === 'none') return { type: 'none' }
-  if (input.type === 'jump') return { type: 'jump', profileId: text(input.profileId, 'proxy.profileId', 1, 100) }
+  if (input.type === 'jump') {
+    const profileIds = input.profileIds === undefined
+      ? [text(input.profileId, 'proxy.profileId', 1, 100)]
+      : stringArray(input.profileIds, 'proxy.profileIds', 8, 100)
+    if (profileIds.length === 0) throw bad('proxy.profileIds must contain at least one jump host')
+    return { type: 'jump', profileIds }
+  }
   if (input.type === 'http' || input.type === 'socks5') {
     return {
       type: input.type,

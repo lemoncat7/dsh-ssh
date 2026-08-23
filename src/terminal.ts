@@ -82,6 +82,16 @@ export class SshTerminalSession implements TerminalBackendSession {
     }
   }
 
+  write(text: string): void {
+    if (this.terminalStatus.kind === 'exited') throw new Error('SSH terminal has exited')
+    this.channel.write(text)
+  }
+
+  resize(cols: number, rows: number): void {
+    if (this.terminalStatus.kind === 'exited') return
+    this.channel.setWindow(rows, cols, 0, 0)
+  }
+
   async signal(signal: TerminalSignal): Promise<TerminalSignalResult> {
     this.channel.signal(signal.replace(/^SIG/, ''))
     return { delivered: true, targetPgid: 0 }
@@ -253,6 +263,14 @@ export class AiTerminalManager {
     })
     if (record.commands.length > 80) record.commands.splice(0, record.commands.length - 80)
     return result
+  }
+
+  write(ownerId: string, terminalId: string, text: string): void {
+    this.get(ownerId, terminalId).write(text)
+  }
+
+  resize(ownerId: string, terminalId: string, cols: number, rows: number): void {
+    this.get(ownerId, terminalId).resize(cols, rows)
   }
 
   activity(ownerId: string): AiTerminalActivity[] {

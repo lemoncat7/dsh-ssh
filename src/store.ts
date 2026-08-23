@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { ForwardRule, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
+import type { CredentialEntry, ForwardRule, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
 
 export class SshStore {
   private state: SshState
@@ -13,7 +13,7 @@ export class SshStore {
 
   static async open(path: string, defaults: SshSettings): Promise<SshStore> {
     await mkdir(dirname(path), { recursive: true })
-    let initial: SshState = { schemaVersion: 1, profiles: [], forwardRules: [], injections: [], settings: defaults }
+    let initial: SshState = { schemaVersion: 1, profiles: [], credentialEntries: [], forwardRules: [], injections: [], settings: defaults }
     try {
       const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown
       initial = parseState(parsed, defaults)
@@ -28,6 +28,8 @@ export class SshStore {
   snapshot(): SshState { return structuredClone(this.state) }
   profiles(): SshProfile[] { return structuredClone(this.state.profiles) }
   profile(id: string): SshProfile | undefined { return structuredClone(this.state.profiles.find(profile => profile.id === id)) }
+  credentialEntries(): CredentialEntry[] { return structuredClone(this.state.credentialEntries) }
+  credentialEntry(id: string): CredentialEntry | undefined { return structuredClone(this.state.credentialEntries.find(entry => entry.id === id)) }
   forwards(): ForwardRule[] { return structuredClone(this.state.forwardRules) }
   forward(id: string): ForwardRule | undefined { return structuredClone(this.state.forwardRules.find(rule => rule.id === id)) }
   injection(sessionId: string): SessionInjection | undefined { return structuredClone(this.state.injections.find(item => item.sessionId === sessionId)) }
@@ -78,7 +80,8 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
   if (state.schemaVersion !== 1) throw new Error(`unsupported dsh-ssh state version ${String(state.schemaVersion)}`)
   return {
     schemaVersion: 1,
-    profiles: Array.isArray(state.profiles) ? state.profiles : [],
+    profiles: Array.isArray(state.profiles) ? state.profiles.map(normalizeStoredProfile) : [],
+    credentialEntries: Array.isArray(state.credentialEntries) ? state.credentialEntries : [],
     forwardRules: Array.isArray(state.forwardRules) ? state.forwardRules : [],
     injections: Array.isArray(state.injections) ? state.injections.map(injection => ({
       ...injection,
@@ -90,10 +93,13 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
 
 function validateReferences(state: SshState): void {
   const ids = new Set(state.profiles.map(profile => profile.id))
+  const credentialIds = new Set(state.credentialEntries.map(entry => entry.id))
   if (ids.size !== state.profiles.length) throw new Error('duplicate SSH profile id')
+  if (credentialIds.size !== state.credentialEntries.length) throw new Error('duplicate SSH credential entry id')
   for (const profile of state.profiles) {
-    if (profile.proxy.type === 'jump' && (!ids.has(profile.proxy.profileId) || profile.proxy.profileId === profile.id)) {
-      throw Object.assign(new Error('jump proxy must reference another existing profile'), { status: 400 })
+    if (profile.credentialId !== undefined && !credentialIds.has(profile.credentialId)) throw Object.assign(new Error('SSH profile references a missing credential entry'), { status: 400 })
+    if (profile.proxy.type === 'jump' && (profile.proxy.profileIds.length === 0 || profile.proxy.profileIds.some(id => !ids.has(id) || id === profile.id) || new Set(profile.proxy.profileIds).size !== profile.proxy.profileIds.length)) {
+      throw Object.assign(new Error('jump proxy chain must reference unique existing profiles other than itself'), { status: 400 })
     }
   }
   for (const rule of state.forwardRules) if (!ids.has(rule.profileId)) throw new Error(`forward rule references missing profile ${rule.profileId}`)
@@ -101,6 +107,15 @@ function validateReferences(state: SshState): void {
     injection.profileIds = [...new Set(injection.profileIds.filter(id => ids.has(id)))]
     injection.workingDirectories = Object.fromEntries(Object.entries(injection.workingDirectories).filter(([profileId]) => injection.profileIds.includes(profileId)))
   }
+}
+
+function normalizeStoredProfile(profile: SshProfile): SshProfile {
+  const proxy = profile.proxy as SshProfile['proxy'] & { profileId?: unknown; profileIds?: unknown }
+  if (proxy.type !== 'jump') return profile
+  const profileIds = Array.isArray(proxy.profileIds)
+    ? proxy.profileIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : typeof proxy.profileId === 'string' && proxy.profileId.length > 0 ? [proxy.profileId] : []
+  return { ...profile, proxy: { type: 'jump', profileIds: [...new Set(profileIds)] } }
 }
 
 function normalizeWorkingDirectories(injection: unknown): Record<string, string> {

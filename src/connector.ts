@@ -23,10 +23,10 @@ export class SshConnector {
   private async connectRecursive(profileId: string, chain: Set<string>, signal?: AbortSignal): Promise<ManagedSshConnection> {
     signal?.throwIfAborted()
     if (chain.has(profileId)) throw new Error(`SSH jump proxy cycle detected at ${profileId}`)
-    const profile = this.store.profile(profileId)
-    if (profile === undefined) throw Object.assign(new Error(`SSH profile ${profileId} was not found`), { status: 404 })
+    const storedProfile = this.store.profile(profileId)
+    if (storedProfile === undefined) throw Object.assign(new Error(`SSH profile ${profileId} was not found`), { status: 404 })
+    const { profile, secrets } = await this.resolveIdentity(storedProfile)
     const nextChain = new Set(chain).add(profileId)
-    const secrets = await this.credentials.read(profileId)
     let socket: Duplex | undefined
     let parent: ManagedSshConnection | undefined
     try {
@@ -41,7 +41,7 @@ export class SshConnector {
           ...secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword },
         }, profile.connectTimeoutMs)
       } else if (profile.proxy.type === 'jump') {
-        parent = await this.connectRecursive(profile.proxy.profileId, nextChain, signal)
+        parent = await this.connectJumpChain(profile.proxy.profileIds, nextChain, signal)
         socket = await forwardOut(parent.client, profile.host, profile.port)
       }
       const client = await connectClient(profile, secrets, socket, signal)
@@ -50,6 +50,48 @@ export class SshConnector {
       socket?.destroy()
       parent?.close()
       throw error
+    }
+  }
+
+  private async connectJumpChain(profileIds: string[], chain: Set<string>, signal?: AbortSignal): Promise<ManagedSshConnection> {
+    let parent: ManagedSshConnection | undefined
+    let visited = new Set(chain)
+    try {
+      for (const profileId of profileIds) {
+        signal?.throwIfAborted()
+        if (visited.has(profileId)) throw new Error(`SSH jump proxy cycle detected at ${profileId}`)
+        if (parent === undefined) {
+          parent = await this.connectRecursive(profileId, visited, signal)
+        } else {
+          const storedProfile = this.store.profile(profileId)
+          if (storedProfile === undefined) throw Object.assign(new Error(`SSH profile ${profileId} was not found`), { status: 404 })
+          const { profile, secrets } = await this.resolveIdentity(storedProfile)
+          const socket = await forwardOut(parent.client, profile.host, profile.port)
+          try {
+            const client = await connectClient(profile, secrets, socket, signal)
+            parent = new ManagedSshConnection(client, profile, parent)
+          } catch (error) {
+            socket.destroy()
+            throw error
+          }
+        }
+        visited = new Set(visited).add(profileId)
+      }
+      if (parent === undefined) throw new Error('SSH jump proxy chain is empty')
+      return parent
+    } catch (error) {
+      parent?.close()
+      throw error
+    }
+  }
+
+  private async resolveIdentity(profile: SshProfile): Promise<{ profile: SshProfile; secrets: Awaited<ReturnType<SshCredentialVault['read']>> }> {
+    if (profile.credentialId === undefined) return { profile, secrets: await this.credentials.read(profile.id) }
+    const entry = this.store.credentialEntry(profile.credentialId)
+    if (entry === undefined) throw new Error(`SSH credential entry ${profile.credentialId} was not found`)
+    return {
+      profile: { ...profile, username: entry.username, authType: entry.authType },
+      secrets: await this.credentials.readEntry(entry.id),
     }
   }
 }
