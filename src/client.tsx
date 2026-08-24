@@ -5,6 +5,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import { AdaptiveWorkspace } from '@lemoncat7/dsh-plugin-ui'
+import adaptiveUiCss from '@lemoncat7/dsh-plugin-ui/styles.css'
 import {
   IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconCodeOutline16, IconDataOutline16,
   IconEditOutline16, IconFolderClose16, IconFolderOpenOutline16, IconPanelLeftOutline16, IconPlusOutline16,
@@ -58,7 +60,12 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => { controller.close(); activityController.close() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'ssh-remote', order: -100,
-  }, props => <RemoteSidebar {...props} controller={controller} activityController={activityController} />))
+  }, props => <RemoteSidebar
+    {...props}
+    controller={controller}
+    activityController={activityController}
+    collapseSidebar={() => ctx.layout.toggleSidebar()}
+  />))
 }
 
 function createController(ctx: ClientContext, beforeOpen: () => void): RemoteController {
@@ -254,7 +261,7 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
   return <div ref={hostRef} className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端" />
 }
 
-function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController }): JSX.Element {
+function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {
   const ref = useRef<HTMLElement>(null)
   useWorkspaceTopAnchor(ref)
   const sessionId = props.useSessions(state => state.current)
@@ -282,6 +289,10 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
     if (activityOpen) props.activityController.close(currentSessionId)
     else openActivity()
   }
+  const openWorkspace = (): void => {
+    props.controller.open()
+    if (props.wide && window.matchMedia('(max-width: 820px)').matches) props.collapseSidebar()
+  }
 
   if (!props.wide) {
     return <section ref={ref} className="dsh-ssh-sidebar is-rail">
@@ -296,7 +307,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
       <button type="button" className={`dsh-ssh-icon-button${activityOpen ? ' is-active' : ''}`} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><IconPanelLeftOutline16 size={16} className="dsh-ssh-panel-right-icon" /></button>
     </div>
     {open && <div className="dsh-ssh-sidebar-list">
-      <button type="button" className="dsh-ssh-sidebar-panel" onClick={() => props.controller.open()}><ServerGlyph /><span>SSH 面板</span></button>
+      <button type="button" className="dsh-ssh-sidebar-panel" onClick={openWorkspace}><ServerGlyph /><span>SSH 面板</span></button>
       {currentSessionId === undefined ? <p className="dsh-ssh-sidebar-note">打开会话后显示可用远端</p>
         : availableProfiles.length === 0 ? <p className="dsh-ssh-sidebar-note">当前会话未授权远端</p>
           : availableProfiles.slice(0, 6).map(profile => <button type="button" className={`dsh-ssh-sidebar-row${activityOpen && props.activityController.selected(currentSessionId) === profile.id ? ' is-active' : ''}`} key={profile.id} onClick={() => openActivity(profile.id)}>
@@ -341,8 +352,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === selectedId)
-  return <main className="dsh-ssh-workspace">
-    <header className="dsh-ssh-toolbar">
+  const toolbar = <header className="dsh-ssh-toolbar">
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
       <nav className="dsh-ssh-segments" aria-label="远端视图">
         <Segment active={view === 'terminal'} onClick={() => setView('terminal')}>终端</Segment>
@@ -351,11 +361,21 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
         <Segment active={view === 'settings'} onClick={() => setView('settings')}>设置</Segment>
       </nav>
-      <button type="button" className="dsh-ssh-primary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />新建连接</button>
+      <button type="button" className="dsh-ssh-primary-button" aria-label="新建连接" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} /><span>新建连接</span></button>
     </header>
-    {error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button onClick={() => setError(undefined)} aria-label="关闭"><IconCloseOutline16 size={16} /></button></div>}
-    <div className="dsh-ssh-body">
-      <ProfileList profiles={profiles} selectedId={selectedId} onSelect={id => props.controller.open(id)} onNew={() => setEditing('new')} />
+  const notice = error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button onClick={() => setError(undefined)} aria-label="关闭"><IconCloseOutline16 size={16} /></button></div>
+  return <>
+    <AdaptiveWorkspace
+      className="dsh-ssh-workspace"
+      toolbar={toolbar}
+      notice={notice}
+      navigationLabel="主机"
+      navigationIcon={<IconDataOutline16 size={15} />}
+      navigation={controls => <ProfileList profiles={profiles} selectedId={selectedId} onSelect={id => { props.controller.open(id); controls.closePanel() }} onNew={() => { setEditing('new'); controls.closePanel() }} />}
+      inspectorLabel="会话授权"
+      inspectorIcon={<IconUserOutline16 size={15} />}
+      inspector={<InjectionInspector sessionId={sessionId === undefined ? undefined : String(sessionId)} profiles={profiles} selected={selected} />}
+    >
       <section className="dsh-ssh-main-panel">
         {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState onNew={() => setEditing('new')} />
@@ -364,10 +384,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
               : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
                 : <SettingsPane />}
       </section>
-      <InjectionInspector sessionId={sessionId === undefined ? undefined : String(sessionId)} profiles={profiles} selected={selected} />
-    </div>
+    </AdaptiveWorkspace>
     {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
-  </main>
+  </>
 }
 
 function ProfileList({ profiles, selectedId, onSelect, onNew }: { profiles: ProfileView[]; selectedId?: string | undefined; onSelect(id: string): void; onNew(): void }): JSX.Element {
@@ -804,7 +823,7 @@ function installStyles(): () => void {
   if (previous !== null) return () => {}
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = `${xtermCss}\n${cssText}`
+  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${cssText}`
   document.head.append(style)
   return () => style.remove()
 }
