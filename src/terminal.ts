@@ -35,6 +35,7 @@ export class SshTerminalBackend implements TerminalBackend {
 export class SshTerminalSession implements TerminalBackendSession {
   readonly motd: string
   private scrollback = ''
+  private scrollbackCursor = 0
   private terminalStatus: TerminalSessionStatus = { kind: 'running' }
   private active: SendOperation | undefined
   private closing?: Promise<void>
@@ -82,6 +83,17 @@ export class SshTerminalSession implements TerminalBackendSession {
     }
   }
 
+  readOutput(cursor: number): { data: string; cursor: number; truncated: boolean; closed: boolean } {
+    const safeCursor = Math.max(cursor, this.scrollbackCursor)
+    const index = safeCursor - this.scrollbackCursor
+    return {
+      data: this.scrollback.slice(index),
+      cursor: this.scrollbackCursor + this.scrollback.length,
+      truncated: cursor < this.scrollbackCursor,
+      closed: this.terminalStatus.kind === 'exited',
+    }
+  }
+
   write(text: string): void {
     if (this.terminalStatus.kind === 'exited') throw new Error('SSH terminal has exited')
     this.channel.write(text)
@@ -111,7 +123,12 @@ export class SshTerminalSession implements TerminalBackendSession {
   }
 
   receive(text: string): void {
-    this.scrollback = `${this.scrollback}${text}`.slice(-MAX_SCROLLBACK_CHARS)
+    this.scrollback += text
+    if (this.scrollback.length > MAX_SCROLLBACK_CHARS) {
+      const removed = this.scrollback.length - MAX_SCROLLBACK_CHARS
+      this.scrollback = this.scrollback.slice(removed)
+      this.scrollbackCursor += removed
+    }
     this.active?.push(text)
   }
 
@@ -271,6 +288,10 @@ export class AiTerminalManager {
 
   resize(ownerId: string, terminalId: string, cols: number, rows: number): void {
     this.get(ownerId, terminalId).resize(cols, rows)
+  }
+
+  readOutput(ownerId: string, terminalId: string, cursor: number): { data: string; cursor: number; truncated: boolean; closed: boolean } {
+    return this.get(ownerId, terminalId).readOutput(cursor)
   }
 
   activity(ownerId: string): AiTerminalActivity[] {

@@ -13,7 +13,7 @@ export const Config = ConfigSchema
 export type Config = SshConfig
 export * from './domain.js'
 export const name = 'dsh-ssh'
-export const inject = ['credentials', 'tools']
+export const inject = ['credentials', 'tools', 'agents', 'systemPrompt']
 
 type RuntimeContext = Context & {
   credentials: CredentialProvider
@@ -35,7 +35,7 @@ export function apply(context: Context, config: SshConfig): void {
     const forwards = new ForwardManager(connector, store)
     const terminals = new BrowserTerminalManager(connector)
     const aiTerminals = new AiTerminalManager(connector)
-    registerSshTools(context, store, connector, forwards, aiTerminals)
+    const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals)
     let disposeApi: (() => void) | undefined
     const mountApi = (runtime: RuntimeContext): void => {
       if (!resolved.exposeWeb) return
@@ -49,6 +49,7 @@ export function apply(context: Context, config: SshConfig): void {
     await forwards.startAuto()
     ctx.logger.info(`dsh-ssh: ready with ${store.profiles().length} profiles`)
     return async () => {
+      disposeTools()
       disposeApi?.()
       await terminals.closeAll()
       await aiTerminals.closeAll()

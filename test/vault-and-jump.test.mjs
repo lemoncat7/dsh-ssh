@@ -41,6 +41,27 @@ test('tests an unsaved SSH profile without persisting credentials', async t => {
   assert.deepEqual(await fixture.vault.read('preview-draft'), {})
 })
 
+test('reuses a saved SOCKS5 proxy and keeps its password outside SSH profiles', async t => {
+  const fixture = await createFixture(t)
+  const target = await createServer(t, { username: 'proxy-user', password: 'target-password', label: 'proxy-target' })
+  const proxy = await createSocksProxy(t, { username: 'shared-proxy', password: 'proxy-password' })
+  const now = Date.now()
+  await fixture.store.update(state => {
+    state.proxyEntries.push({ id: 'proxy-shared', name: 'Shared SOCKS', proxyType: 'socks5', host: '127.0.0.1', port: proxy.port, username: 'shared-proxy', createdAt: now, updatedAt: now })
+    state.profiles.push(profile('host-proxy', target.port, { username: 'proxy-user', proxy: { type: 'saved', proxyId: 'proxy-shared' } }))
+  })
+  await fixture.vault.replace('host-proxy', { password: 'target-password' })
+  await fixture.vault.replaceProxyEntry('proxy-shared', { proxyPassword: 'proxy-password' })
+  await pin(fixture.store, fixture.connector, 'host-proxy')
+
+  const result = await executeSshCommand(fixture.connector, 'host-proxy', 'hostname', 5000, 1000)
+  assert.equal(result.exitCode, 0)
+  assert.match(result.stdout, /^proxy-target:/)
+  assert.deepEqual(await fixture.vault.read('host-proxy'), { password: 'target-password' })
+  assert.deepEqual(await fixture.vault.readProxyEntry('proxy-shared'), { proxyPassword: 'proxy-password' })
+  await assert.rejects(fixture.store.update(state => { state.proxyEntries = [] }), /missing proxy entry/)
+})
+
 test('connects through an ordered two-host SSH jump chain', async t => {
   const fixture = await createFixture(t)
   const jumpOne = await createServer(t, { username: 'jump-one', password: 'one-password', label: 'jump-one', forward: true })
@@ -111,6 +132,74 @@ async function createServer(t, options) {
   })
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
   t.after(() => new Promise(resolve => server.close(resolve)))
+  const address = server.address()
+  assert(address && typeof address !== 'string')
+  return { port: address.port }
+}
+
+async function createSocksProxy(t, options) {
+  const sockets = new Set()
+  const server = (await import('node:net')).createServer(socket => {
+    socket.on('error', () => {})
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+    let state = 'greeting'
+    let buffered = Buffer.alloc(0)
+    const consume = () => {
+      if (state === 'greeting') {
+        if (buffered.length < 2) return
+        const length = 2 + buffered[1]
+        if (buffered.length < length) return
+        buffered = buffered.subarray(length)
+        state = 'auth'
+        socket.write(Buffer.from([5, 2]))
+      }
+      if (state === 'auth') {
+        if (buffered.length < 2) return
+        const usernameLength = buffered[1]
+        if (buffered.length < 2 + usernameLength + 1) return
+        const passwordLength = buffered[2 + usernameLength]
+        const length = 3 + usernameLength + passwordLength
+        if (buffered.length < length) return
+        const username = buffered.subarray(2, 2 + usernameLength).toString()
+        const password = buffered.subarray(3 + usernameLength, length).toString()
+        buffered = buffered.subarray(length)
+        if (username !== options.username || password !== options.password) return socket.end(Buffer.from([1, 1]))
+        state = 'request'
+        socket.write(Buffer.from([1, 0]))
+      }
+      if (state === 'request') {
+        if (buffered.length < 4) return
+        const addressType = buffered[3]
+        const addressLength = addressType === 1 ? 4 : addressType === 4 ? 16 : addressType === 3 && buffered.length >= 5 ? 1 + buffered[4] : 0
+        const headerLength = 4 + addressLength + 2
+        if (addressLength === 0 || buffered.length < headerLength) return
+        const host = addressType === 1
+          ? [...buffered.subarray(4, 8)].join('.')
+          : addressType === 3 ? buffered.subarray(5, 4 + addressLength).toString() : '::1'
+        const port = buffered.readUInt16BE(4 + addressLength)
+        buffered = buffered.subarray(headerLength)
+        state = 'tunnel'
+        const upstream = createConnection({ host, port })
+        sockets.add(upstream)
+        upstream.once('close', () => sockets.delete(upstream))
+        upstream.once('connect', () => {
+          socket.off('data', onData)
+          socket.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]))
+          if (buffered.length > 0) upstream.write(buffered)
+          socket.pipe(upstream).pipe(socket)
+        })
+        upstream.once('error', () => socket.destroy())
+      }
+    }
+    const onData = chunk => { buffered = Buffer.concat([buffered, chunk]); consume() }
+    socket.on('data', onData)
+  })
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy()
+    await new Promise(resolve => server.close(resolve))
+  })
   const address = server.address()
   assert(address && typeof address !== 'string')
   return { port: address.port }

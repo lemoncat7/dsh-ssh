@@ -6,12 +6,17 @@ export interface ProfileView {
   group?: string
   authType: 'password' | 'private-key' | 'agent'; hostFingerprint?: string
   credentialId?: string
-  proxy: { type: 'none' } | { type: 'http' | 'socks5'; host: string; port: number; username?: string } | { type: 'jump'; profileIds: string[] }
+  proxy: { type: 'none' } | { type: 'http' | 'socks5'; host: string; port: number; username?: string } | { type: 'saved'; proxyId: string } | { type: 'jump'; profileIds: string[] }
   keepAliveIntervalMs: number; connectTimeoutMs: number; terminalType: string; tags: string[]
   credential: CredentialView
 }
 export interface VaultEntryView {
   id: string; name: string; username: string; authType: 'password' | 'private-key'; createdAt: number; updatedAt: number; references: number
+  credential: { configured: boolean; writable: boolean; fields: string[] }
+}
+export interface ProxyEntryView {
+  id: string; name: string; proxyType: 'http' | 'socks5'; host: string; port: number; username?: string
+  createdAt: number; updatedAt: number; references: number
   credential: { configured: boolean; writable: boolean; fields: string[] }
 }
 export interface ForwardView {
@@ -55,6 +60,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function loadProfiles(): Promise<ProfileView[]> { return api('/profiles') }
 export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vault') }
+export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }
 export function loadInjection(sessionId: string): Promise<InjectionView | null> { return api(`/injections?sessionId=${encodeURIComponent(sessionId)}`) }
 export function loadActivity(sessionId: string): Promise<ActivityView> { return api(`/activity?sessionId=${encodeURIComponent(sessionId)}`) }
@@ -99,6 +105,10 @@ export async function uploadProfileSftpFile(profileId: string, directory: string
 }
 export function sendActivityTerminalInput(sessionId: string, terminalId: string, text: string): Promise<void> {
   return api(`/activity/terminals/${encodeURIComponent(terminalId)}/input`, { method: 'POST', body: JSON.stringify({ sessionId, text }) })
+}
+export function readActivityTerminalOutput(sessionId: string, terminalId: string, cursor: number): Promise<{ data: string; cursor: number; truncated: boolean; closed: boolean }> {
+  const query = new URLSearchParams({ sessionId, cursor: String(cursor) })
+  return api(`/activity/terminals/${encodeURIComponent(terminalId)}/output?${query.toString()}`)
 }
 export function resizeActivityTerminal(sessionId: string, terminalId: string, cols: number, rows: number): Promise<void> {
   return api(`/activity/terminals/${encodeURIComponent(terminalId)}/resize`, { method: 'POST', body: JSON.stringify({ sessionId, cols, rows }) })

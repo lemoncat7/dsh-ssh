@@ -1,4 +1,6 @@
 import type { TerminalSignal } from '@deepseek-ai/dsh-terminal'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import { executeSshCommand } from './exec.js'
@@ -14,8 +16,9 @@ const textOutput = {
 }
 
 const APPROVAL_TOOLS = new Set(['ssh_exec', 'ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_signal', 'ssh_forward_start', 'ssh_forward_stop'])
+const TERMINAL_ONLY_TOOLS = new Set(['ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_read', 'ssh_terminal_signal', 'ssh_terminal_close'])
 
-export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager): void {
+export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager): () => void {
   const tools: ToolDefinition[] = [
     listTool(store),
     cwdTool(store, connector),
@@ -29,9 +32,9 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
     forwardStartTool(store, forwards),
     forwardStopTool(store, forwards),
   ]
-  for (const tool of tools) ctx.tools.register(tool)
+  const disposers = tools.map(tool => ctx.tools.register(tool))
 
-  ctx.on('tools/pre-execute', async (exec, next) => {
+  const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
     if (!APPROVAL_TOOLS.has(exec.name)) return next()
     const sessionId = exec.agent?.session.id
     if (sessionId === undefined) return next()
@@ -39,6 +42,12 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
     if (injection?.requireCommandApproval !== true) return next()
     return { kind: 'ask', reason: `SSH access to an injected remote host was requested by ${exec.name}.` }
   })
+  const disposeVisibility = installModeToolVisibility(ctx, store)
+  return () => {
+    disposeVisibility()
+    disposeApproval()
+    for (const dispose of disposers.reverse()) dispose()
+  }
 }
 
 function listTool(store: SshStore): ToolDefinition {
@@ -60,7 +69,7 @@ function cwdTool(store: SshStore, connector: SshConnector): ToolDefinition {
   }, async (raw, exec) => {
     const args = object(raw)
     const profileId = string(args.profileId, 'profileId', 100)
-    requireProfile(store, exec, profileId, 'exec')
+    requireProfile(store, exec, profileId, 'any')
     const sessionId = exec.agent!.session.id
     const cwd = await setSessionDirectory(store, connector, sessionId, profileId, rawString(args.cwd, 'cwd', 4096), exec.signal)
     return json({ profileId, cwd })
@@ -68,7 +77,7 @@ function cwdTool(store: SshStore, connector: SshConnector): ToolDefinition {
 }
 
 function execTool(store: SshStore, connector: SshConnector): ToolDefinition {
-  return tool('ssh_exec', 'Run one non-interactive command on an SSH connection injected into this conversation. Use ssh_list first and pass an exact profile id. Output is bounded.', {
+  return tool('ssh_exec', 'Run one non-interactive command only when this conversation is injected in exec mode. If ssh_list reports terminal permission, use ssh_terminal_open and ssh_terminal_send instead so activity remains visible.', {
     profileId: { type: 'string', required: true, description: 'Exact injected profile id returned by ssh_list.' },
     command: { type: 'string', required: true, description: 'Command to execute on the remote host.' },
     timeoutMs: { type: 'integer', description: 'Optional timeout between 1000 and 300000 milliseconds.' },
@@ -104,7 +113,7 @@ function terminalSendTool(store: SshStore, terminals: AiTerminalManager): ToolDe
     submit: { type: 'boolean', description: 'Append Enter after text. Defaults to true.' },
   }, async (raw, exec) => {
     const args = object(raw)
-    const owner = requireAnyInjection(store, exec)
+    const owner = requireTerminalInjection(store, exec)
     return json(await terminals.send(owner.session.id, string(args.terminalId, 'terminalId', 200), {
       text: rawString(args.text, 'text', 100_000), submit: args.submit !== false, signal: exec.signal,
     }))
@@ -118,7 +127,7 @@ function terminalReadTool(store: SshStore, terminals: AiTerminalManager): ToolDe
     count: { type: 'integer' },
   }, async (raw, exec) => {
     const args = object(raw)
-    const owner = requireAnyInjection(store, exec)
+    const owner = requireTerminalInjection(store, exec)
     return json(terminals.get(owner.session.id, string(args.terminalId, 'terminalId', 200)).read({
       ...args.offset === undefined ? {} : { offset: integer(args.offset, 'offset', 0, 1_000_000) },
       ...args.count === undefined ? {} : { count: integer(args.count, 'count', 1, 2000) },
@@ -132,7 +141,7 @@ function terminalSignalTool(store: SshStore, terminals: AiTerminalManager): Tool
     signal: { type: 'string', required: true, enum: ['SIGINT', 'SIGTERM', 'SIGKILL', 'SIGTSTP', 'SIGHUP'] },
   }, async (raw, exec) => {
     const args = object(raw)
-    const owner = requireAnyInjection(store, exec)
+    const owner = requireTerminalInjection(store, exec)
     const signal = string(args.signal, 'signal', 16) as TerminalSignal
     return json(await terminals.get(owner.session.id, string(args.terminalId, 'terminalId', 200)).signal(signal))
   })
@@ -140,7 +149,7 @@ function terminalSignalTool(store: SshStore, terminals: AiTerminalManager): Tool
 
 function terminalCloseTool(store: SshStore, terminals: AiTerminalManager): ToolDefinition {
   return tool('ssh_terminal_close', 'Close an owned SSH terminal.', { terminalId: { type: 'string', required: true } }, async (raw, exec) => {
-    const owner = requireAnyInjection(store, exec)
+    const owner = requireTerminalInjection(store, exec)
     const args = object(raw)
     return json({ closed: await terminals.close(owner.session.id, string(args.terminalId, 'terminalId', 200)) })
   })
@@ -212,18 +221,56 @@ function requireInjection(store: SshStore, exec: ToolRunContext) {
   return injection
 }
 
-function requireAnyInjection(store: SshStore, exec: ToolRunContext) {
-  requireInjection(store, exec)
+function requireTerminalInjection(store: SshStore, exec: ToolRunContext) {
+  const injection = requireInjection(store, exec)
+  if (injection.permission !== 'terminal') throw new Error('This session injection permits one-shot commands but not interactive terminals')
   if (exec.agent === undefined) throw new Error('SSH tools require an owning agent')
   return exec.agent
 }
 
-function requireProfile(store: SshStore, exec: ToolRunContext, profileId: string, permission: 'exec' | 'terminal') {
+function requireProfile(store: SshStore, exec: ToolRunContext, profileId: string, permission: 'exec' | 'terminal' | 'any') {
   const injection = requireInjection(store, exec)
   if (!injection.profileIds.includes(profileId)) throw new Error('The requested SSH profile is not injected into this DSH session')
+  if (permission === 'exec' && injection.permission !== 'exec') throw new Error('This session uses terminal control. Open an SSH terminal and send the command there instead of using ssh_exec')
   if (permission === 'terminal' && injection.permission !== 'terminal') throw new Error('This session injection permits one-shot commands but not interactive terminals')
   if (exec.agent === undefined) throw new Error('SSH tools require an owning agent')
   return exec.agent
+}
+
+function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
+  const attached = new Map<Agent, () => void>()
+  const attach = (agent: Agent): void => {
+    if (attached.has(agent)) return
+    const dispose = agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+      const result = await next()
+      applyModeToolVisibility(result, store.injection(agent.session.id)?.permission)
+      return result
+    })
+    attached.set(agent, dispose)
+  }
+  for (const agent of ctx.agents.list()) attach(agent)
+  const disposeCreated = ctx.on('agent/created', ({ agent }) => attach(agent))
+  const disposeDisposed = ctx.on('agent/disposed', ({ agent }) => {
+    attached.get(agent)?.()
+    attached.delete(agent)
+  })
+  return () => {
+    disposeDisposed()
+    disposeCreated()
+    for (const dispose of attached.values()) dispose()
+    attached.clear()
+  }
+}
+
+function applyModeToolVisibility(assembly: PromptAssembly, permission: 'exec' | 'terminal' | undefined): void {
+  if (permission === undefined) return
+  assembly.tools = assembly.tools.filter(schema => permission === 'terminal' ? schema.name !== 'ssh_exec' : !TERMINAL_ONLY_TOOLS.has(schema.name))
+  assembly.contexts.push({
+    name: 'dsh-ssh:permission-mode',
+    text: permission === 'terminal'
+      ? 'SSH permission mode: terminal control. Use ssh_terminal_open and ssh_terminal_send for remote commands; ssh_exec is intentionally unavailable so commands and output remain visible in SSH Activity.'
+      : 'SSH permission mode: one-shot commands. Use ssh_exec; interactive terminal tools are intentionally unavailable.',
+  })
 }
 
 function requireForward(store: SshStore, exec: ToolRunContext, ruleId: string): void {

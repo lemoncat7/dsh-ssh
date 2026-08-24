@@ -3,70 +3,99 @@ import { compactSecrets, type SshCredentialPayload } from './domain.js'
 
 const SCOPE = 'dsh-ssh'
 const VAULT_SCOPE = 'dsh-ssh-vault'
+const PROXY_SCOPE = 'dsh-ssh-proxy'
 
 export class SshCredentialVault {
   constructor(private readonly provider: CredentialProvider) {}
 
   async describe(profileId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
-    const info = await this.provider.describeRecord(credentialKey(SCOPE, profileId))
-    const payload = await this.read(profileId)
-    return { configured: info.configured, writable: info.writable, fields: Object.keys(payload) }
+    return this.describeScoped(SCOPE, profileId, 'credential')
   }
 
   async read(profileId: string): Promise<SshCredentialPayload> {
-    const record = await this.provider.readRecord(credentialKey(SCOPE, profileId))
-    if (record === undefined) return {}
-    if (record.kind !== 'grant') throw new Error(`SSH credential ${profileId} has an incompatible record type`)
-    return parsePayload(record.payload)
+    return this.readScoped(SCOPE, profileId, 'credential')
   }
 
   async write(profileId: string, patch: SshCredentialPayload): Promise<void> {
-    const key = credentialKey(SCOPE, profileId)
-    await this.provider.modifyRecord(key, async current => {
-      if (current !== undefined && current.kind !== 'grant') throw new Error(`SSH credential ${profileId} has an incompatible record type`)
-      const previous = current === undefined ? {} : parsePayload(current.payload)
-      const payload = compactSecrets({ ...previous, ...patch })
-      return { kind: 'grant', payload } satisfies GrantRecord
-    })
+    await this.writeScoped(SCOPE, profileId, 'credential', patch)
   }
 
   async replace(profileId: string, value: SshCredentialPayload): Promise<void> {
-    const payload = compactSecrets(value)
-    await this.provider.modifyRecord(credentialKey(SCOPE, profileId), async () => ({ kind: 'grant', payload }))
+    await this.replaceScoped(SCOPE, profileId, value)
   }
 
   async delete(profileId: string): Promise<void> {
-    await this.provider.deleteRecord(credentialKey(SCOPE, profileId))
+    await this.deleteScoped(SCOPE, profileId)
   }
 
   async describeEntry(entryId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
-    const info = await this.provider.describeRecord(credentialKey(VAULT_SCOPE, entryId))
-    const payload = await this.readEntry(entryId)
-    return { configured: info.configured, writable: info.writable, fields: Object.keys(payload) }
+    return this.describeScoped(VAULT_SCOPE, entryId, 'vault entry')
   }
 
   async readEntry(entryId: string): Promise<SshCredentialPayload> {
-    const record = await this.provider.readRecord(credentialKey(VAULT_SCOPE, entryId))
-    if (record === undefined) return {}
-    if (record.kind !== 'grant') throw new Error(`SSH vault entry ${entryId} has an incompatible record type`)
-    return parsePayload(record.payload)
+    return this.readScoped(VAULT_SCOPE, entryId, 'vault entry')
   }
 
   async writeEntry(entryId: string, patch: SshCredentialPayload): Promise<void> {
-    const key = credentialKey(VAULT_SCOPE, entryId)
+    await this.writeScoped(VAULT_SCOPE, entryId, 'vault entry', patch)
+  }
+
+  async replaceEntry(entryId: string, value: SshCredentialPayload): Promise<void> {
+    await this.replaceScoped(VAULT_SCOPE, entryId, value)
+  }
+
+  async deleteEntry(entryId: string): Promise<void> {
+    await this.deleteScoped(VAULT_SCOPE, entryId)
+  }
+
+  async describeProxyEntry(entryId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
+    return this.describeScoped(PROXY_SCOPE, entryId, 'proxy entry')
+  }
+
+  async readProxyEntry(entryId: string): Promise<SshCredentialPayload> {
+    return this.readScoped(PROXY_SCOPE, entryId, 'proxy entry')
+  }
+
+  async writeProxyEntry(entryId: string, patch: SshCredentialPayload): Promise<void> {
+    await this.writeScoped(PROXY_SCOPE, entryId, 'proxy entry', patch)
+  }
+
+  async replaceProxyEntry(entryId: string, value: SshCredentialPayload): Promise<void> {
+    await this.replaceScoped(PROXY_SCOPE, entryId, value)
+  }
+
+  async deleteProxyEntry(entryId: string): Promise<void> {
+    await this.deleteScoped(PROXY_SCOPE, entryId)
+  }
+
+  private async describeScoped(scope: string, id: string, label: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
+    const info = await this.provider.describeRecord(credentialKey(scope, id))
+    const payload = await this.readScoped(scope, id, label)
+    return { configured: info.configured, writable: info.writable, fields: Object.keys(payload) }
+  }
+
+  private async readScoped(scope: string, id: string, label: string): Promise<SshCredentialPayload> {
+    const record = await this.provider.readRecord(credentialKey(scope, id))
+    if (record === undefined) return {}
+    if (record.kind !== 'grant') throw new Error(`SSH ${label} ${id} has an incompatible record type`)
+    return parsePayload(record.payload)
+  }
+
+  private async writeScoped(scope: string, id: string, label: string, patch: SshCredentialPayload): Promise<void> {
+    const key = credentialKey(scope, id)
     await this.provider.modifyRecord(key, async current => {
-      if (current !== undefined && current.kind !== 'grant') throw new Error(`SSH vault entry ${entryId} has an incompatible record type`)
+      if (current !== undefined && current.kind !== 'grant') throw new Error(`SSH ${label} ${id} has an incompatible record type`)
       const previous = current === undefined ? {} : parsePayload(current.payload)
       return { kind: 'grant', payload: compactSecrets({ ...previous, ...patch }) } satisfies GrantRecord
     })
   }
 
-  async replaceEntry(entryId: string, value: SshCredentialPayload): Promise<void> {
-    await this.provider.modifyRecord(credentialKey(VAULT_SCOPE, entryId), async () => ({ kind: 'grant', payload: compactSecrets(value) }))
+  private async replaceScoped(scope: string, id: string, value: SshCredentialPayload): Promise<void> {
+    await this.provider.modifyRecord(credentialKey(scope, id), async () => ({ kind: 'grant', payload: compactSecrets(value) }))
   }
 
-  async deleteEntry(entryId: string): Promise<void> {
-    await this.provider.deleteRecord(credentialKey(VAULT_SCOPE, entryId))
+  private async deleteScoped(scope: string, id: string): Promise<void> {
+    await this.provider.deleteRecord(credentialKey(scope, id))
   }
 }
 

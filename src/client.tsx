@@ -19,10 +19,10 @@ import { FitAddon } from '@xterm/addon-fit'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
 import {
-  ApiError, api, loadActivity, loadForwards, loadInjection, loadProfiles, loadVaultEntries,
-  profileAddress, resizeActivityTerminal, sendActivityTerminalInput,
+  ApiError, api, loadActivity, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
+  profileAddress, readActivityTerminalOutput, resizeActivityTerminal, sendActivityTerminalInput,
   type ActivityProfileView, type ActivityTerminalView, type ActivityView, type ForwardStatus, type ForwardView,
-  type InjectionView, type ProfileView, type SettingsView, type VaultEntryView,
+  type InjectionView, type ProfileView, type ProxyEntryView, type SettingsView, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ActivitySftpBrowser, ProfileSftpPane } from './sftp-client.js'
@@ -154,7 +154,7 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
   }, [props.controller, sessionId])
   useEffect(() => {
     void refresh()
-    const timer = window.setInterval(() => { void refresh() }, view === 'terminals' ? 800 : 2500)
+    const timer = window.setInterval(() => { void refresh() }, view === 'terminals' ? 1800 : 2500)
     return () => clearInterval(timer)
   }, [refresh, view])
   return <section className="dsh-ssh-activity-panel" aria-label="SSH 活动">
@@ -204,7 +204,6 @@ function TerminalActivity({ sessionId, terminals }: { sessionId: string; termina
 function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessionId: string; terminal: ActivityTerminalView; onError(value: string | undefined): void }): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal>()
-  const previousRef = useRef('')
   const inputQueueRef = useRef<Promise<void>>(Promise.resolve())
   useEffect(() => {
     const host = hostRef.current
@@ -246,18 +245,39 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
     return () => {
       if (inputTimer !== undefined) { clearTimeout(inputTimer); flushInput() }
       if (resizeTimer !== undefined) clearTimeout(resizeTimer)
-      input.dispose(); resize.disconnect(); terminal.dispose(); terminalRef.current = undefined; previousRef.current = ''
+      input.dispose(); resize.disconnect(); terminal.dispose(); terminalRef.current = undefined
     }
-  }, [activity.status.kind, activity.terminalId, onError, sessionId])
+  }, [activity.terminalId, onError, sessionId])
   useEffect(() => {
     const terminal = terminalRef.current
-    if (terminal === undefined) return
-    const previous = previousRef.current
-    if (activity.scrollback.startsWith(previous)) terminal.write(activity.scrollback.slice(previous.length))
-    else { terminal.reset(); terminal.write(activity.scrollback) }
-    previousRef.current = activity.scrollback
-    terminal.scrollToBottom()
-  }, [activity.scrollback])
+    if (terminal !== undefined) terminal.options.disableStdin = activity.status.kind !== 'running'
+  }, [activity.status.kind])
+  useEffect(() => {
+    let disposed = false
+    let timer: number | undefined
+    let cursor = 0
+    const poll = async (): Promise<void> => {
+      try {
+        const output = await readActivityTerminalOutput(sessionId, activity.terminalId, cursor)
+        if (disposed) return
+        const terminal = terminalRef.current
+        if (terminal !== undefined) {
+          if (output.truncated) terminal.reset()
+          if (output.data) terminal.write(output.data)
+          terminal.scrollToBottom()
+        }
+        cursor = output.cursor
+        onError(undefined)
+        if (!output.closed) timer = window.setTimeout(() => { void poll() }, document.hidden ? 600 : 80)
+      } catch (reason) {
+        if (disposed) return
+        onError(message(reason))
+        timer = window.setTimeout(() => { void poll() }, 600)
+      }
+    }
+    void poll()
+    return () => { disposed = true; if (timer !== undefined) clearTimeout(timer) }
+  }, [activity.terminalId, onError, sessionId])
   return <div ref={hostRef} className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端" />
 }
 
@@ -324,17 +344,19 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const sessionId = props.useSessions(state => state.current)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
+  const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
   const [selectedId, setSelectedId] = useState(props.controller.selected())
-  const [view, setView] = useState<'terminal' | 'sftp' | 'forwards' | 'vault' | 'settings'>('terminal')
+  const [view, setView] = useState<'terminal' | 'sftp' | 'forwards' | 'vault' | 'proxies' | 'settings'>('terminal')
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string>()
   const openedSessionRef = useRef(sessionId)
   const refresh = useCallback(async () => {
     try {
-      const [next, credentials] = await Promise.all([loadProfiles(), loadVaultEntries()])
+      const [next, credentials, proxies] = await Promise.all([loadProfiles(), loadVaultEntries(), loadProxyEntries()])
       setProfiles(next)
       setVaultEntries(credentials)
+      setProxyEntries(proxies)
       setSelectedId(current => current !== undefined && next.some(item => item.id === current) ? current : next[0]?.id)
       setError(undefined)
     } catch (reason) { setError(message(reason)) }
@@ -359,6 +381,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         <Segment active={view === 'sftp'} onClick={() => setView('sftp')}>SFTP</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>端口转发</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
+        <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>代理库</Segment>
         <Segment active={view === 'settings'} onClick={() => setView('settings')}>设置</Segment>
       </nav>
       <button type="button" className="dsh-ssh-primary-button" aria-label="新建连接" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} /><span>新建连接</span></button>
@@ -378,6 +401,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     >
       <section className="dsh-ssh-main-panel">
         {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
+          : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState onNew={() => setEditing('new')} />
           : view === 'terminal' ? <TerminalPane profile={selected} onEdit={() => setEditing(selected)} />
             : view === 'sftp' ? <ProfileSftpPane key={selected.id} profile={selected} />
@@ -385,7 +409,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
                 : <SettingsPane />}
       </section>
     </AdaptiveWorkspace>
-    {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
+    {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
   </>
 }
 
@@ -680,6 +704,55 @@ function VaultEditor({ value, onClose, onSaved }: { value?: VaultEntryView | und
   </form></Dialog>
 }
 
+function ProxyPane({ entries, onChanged }: { entries: ProxyEntryView[]; onChanged(): void }): JSX.Element {
+  const [editing, setEditing] = useState<ProxyEntryView | 'new'>()
+  const [error, setError] = useState<string>()
+  const remove = async (entry: ProxyEntryView): Promise<void> => {
+    if (!window.confirm(`删除代理“${entry.name}”？此操作无法撤销。`)) return
+    try { await api(`/proxies/${entry.id}`, { method: 'DELETE' }); onChanged() }
+    catch (reason) { setError(message(reason)) }
+  }
+  return <div className="dsh-ssh-proxy-pane">
+    <div className="dsh-ssh-content-heading"><div><h1>代理库</h1><p>集中保存常用 HTTP 与 SOCKS5 代理，主机配置只保留引用。</p></div><button type="button" className="dsh-ssh-primary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />新建代理</button></div>
+    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    {entries.length === 0 ? <div className="dsh-ssh-vault-empty"><span><IconDataOutline16 size={20} /></span><strong>还没有常用代理</strong><p>保存一次后，多台 SSH 主机可以共用同一条连接路径。</p><button type="button" className="dsh-ssh-secondary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={15} />添加代理</button></div>
+      : <div className="dsh-ssh-proxy-list">{entries.map(entry => <article className="dsh-ssh-proxy-row" key={entry.id}>
+        <span className="dsh-ssh-vault-glyph"><IconDataOutline16 size={16} /></span>
+        <span><strong>{entry.name}</strong><small>{entry.host}:{entry.port}{entry.username ? ` · ${entry.username}` : ''}</small></span>
+        <span className="dsh-ssh-proxy-kind">{entry.proxyType === 'http' ? 'HTTP' : 'SOCKS5'}</span>
+        <small>{entry.references} 个连接</small>
+        <button type="button" className="dsh-ssh-icon-button" aria-label={`编辑 ${entry.name}`} onClick={() => setEditing(entry)}><IconEditOutline16 size={16} /></button>
+        <button type="button" className="dsh-ssh-icon-button is-danger" disabled={entry.references > 0} aria-label={`删除 ${entry.name}`} title={entry.references > 0 ? '仍有连接正在使用' : '删除代理'} onClick={() => { void remove(entry) }}><IconTrashOutline16 size={16} /></button>
+      </article>)}</div>}
+    {editing !== undefined && <ProxyEditor value={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged() }} />}
+  </div>
+}
+
+function ProxyEditor({ value, onClose, onSaved }: { value?: ProxyEntryView | undefined; onClose(): void; onSaved(): void }): JSX.Element {
+  const [form, setForm] = useState({
+    name: value?.name ?? '', proxyType: value?.proxyType ?? 'socks5' as 'http' | 'socks5', host: value?.host ?? '', port: String(value?.port ?? 1080), username: value?.username ?? '', password: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string>()
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault(); setSaving(true); setError(undefined)
+    try {
+      await api(value === undefined ? '/proxies' : `/proxies/${value.id}`, {
+        method: value === undefined ? 'POST' : 'PUT',
+        body: JSON.stringify({ entry: { name: form.name, proxyType: form.proxyType, host: form.host, port: Number(form.port), ...(form.username.trim() ? { username: form.username.trim() } : {}) }, secrets: { proxyPassword: form.password } }),
+      })
+      onSaved()
+    } catch (reason) { setError(message(reason)) } finally { setSaving(false) }
+  }
+  return <Dialog title={value === undefined ? '新建常用代理' : `编辑 ${value.name}`} subtitle="代理密码保存后不会回显" onClose={onClose}><form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
+    <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} placeholder="办公室 SOCKS5" /></Field><Field label="代理类型"><select value={form.proxyType} onChange={event => setForm({ ...form, proxyType: event.target.value as 'http' | 'socks5' })}><option value="socks5">SOCKS5</option><option value="http">HTTP CONNECT</option></select></Field></div>
+    <div className="dsh-ssh-form-grid is-host"><Field label="代理主机"><input required maxLength={253} value={form.host} onChange={event => setForm({ ...form, host: event.target.value })} placeholder="127.0.0.1" /></Field><Field label="代理端口"><input required type="number" min="1" max="65535" value={form.port} onChange={event => setForm({ ...form, port: event.target.value })} /></Field></div>
+    <div className="dsh-ssh-form-grid"><Field label="代理用户名"><input maxLength={128} value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} autoComplete="username" /></Field><Field label="代理密码" hint={value?.credential.fields.includes('proxyPassword') ? '已保存；留空保持不变' : '可选，保存后不可读回'}><input type="password" autoComplete="new-password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} /></Field></div>
+    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '正在保存…' : '保存代理'}</button></div>
+  </form></Dialog>
+}
+
 function SettingsPane(): JSX.Element {
   const [settings, setSettings] = useState<SettingsView>()
   const [error, setError] = useState<string>()
@@ -694,11 +767,11 @@ function SettingsPane(): JSX.Element {
   </div>
 }
 
-function ProfileEditor({ profile, profiles, vaultEntries, onClose, onSaved }: { profile?: ProfileView | undefined; profiles: ProfileView[]; vaultEntries: VaultEntryView[]; onClose(): void; onSaved(): void }): JSX.Element {
+function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, onClose, onSaved }: { profile?: ProfileView | undefined; profiles: ProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onClose(): void; onSaved(): void }): JSX.Element {
   const [form, setForm] = useState(() => ({
     name: profile?.name ?? '', group: profile?.group ?? '', host: profile?.host ?? '', port: String(profile?.port ?? 22), username: profile?.username ?? '', authType: profile?.authType ?? 'password',
     credentialId: profile?.credentialId ?? '',
-    proxyType: profile?.proxy.type ?? 'none', proxyHost: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.host : '', proxyPort: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? String(profile.proxy.port) : '1080', proxyUsername: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.username ?? '' : '', jumpProfileIds: profile?.proxy.type === 'jump' ? profile.proxy.profileIds : [], tags: profile?.tags.join(', ') ?? '',
+    proxyType: profile?.proxy.type ?? 'none', proxyEntryId: profile?.proxy.type === 'saved' ? profile.proxy.proxyId : '', proxyHost: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.host : '', proxyPort: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? String(profile.proxy.port) : '1080', proxyUsername: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.username ?? '' : '', jumpProfileIds: profile?.proxy.type === 'jump' ? profile.proxy.profileIds : [], tags: profile?.tags.join(', ') ?? '',
     password: '', privateKey: '', passphrase: '', proxyPassword: '', hostFingerprint: profile?.hostFingerprint ?? '',
   }))
   const [saving, setSaving] = useState(false)
@@ -713,6 +786,7 @@ function ProfileEditor({ profile, profiles, vaultEntries, onClose, onSaved }: { 
   const selectedCredential = vaultEntries.find(entry => entry.id === form.credentialId)
   const buildPayload = (hostFingerprint = form.hostFingerprint) => {
     const proxy = form.proxyType === 'none' ? { type: 'none' }
+      : form.proxyType === 'saved' ? { type: 'saved', proxyId: form.proxyEntryId }
       : form.proxyType === 'jump' ? { type: 'jump', profileIds: form.jumpProfileIds }
         : { type: form.proxyType, host: form.proxyHost, port: Number(form.proxyPort), ...(form.proxyUsername.trim() ? { username: form.proxyUsername.trim() } : {}) }
     return {
@@ -749,7 +823,8 @@ function ProfileEditor({ profile, profiles, vaultEntries, onClose, onSaved }: { 
         {form.authType === 'private-key' && <><Field label="私钥" hint={profile?.credential.source === 'profile' && profile.credential.fields.includes('privateKey') ? '已保存；留空保持不变' : '粘贴 OpenSSH/PEM 私钥'}><textarea required={profile === undefined} rows={5} spellCheck={false} {...field('privateKey')} /></Field><Field label="私钥口令"><input type="password" autoComplete="new-password" {...field('passphrase')} /></Field></>}
       </>}
       <div className="dsh-ssh-form-divider"><span>代理</span></div>
-      <Field label="连接路径"><select {...field('proxyType')}><option value="none">直连</option><option value="http">HTTP CONNECT</option><option value="socks5">SOCKS5</option><option value="jump">SSH 跳板</option></select></Field>
+      <Field label="连接路径"><select {...field('proxyType')}><option value="none">直连</option><option value="saved">常用代理</option><option value="http">自定义 HTTP CONNECT</option><option value="socks5">自定义 SOCKS5</option><option value="jump">SSH 跳板</option></select></Field>
+      {form.proxyType === 'saved' && <Field label="常用代理" hint={proxyEntries.length === 0 ? '请先在代理库中添加 HTTP 或 SOCKS5 代理。' : '多台主机可引用同一条代理配置。'}><select required {...field('proxyEntryId')}><option value="">选择代理</option>{proxyEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.proxyType === 'http' ? 'HTTP' : 'SOCKS5'} · {entry.host}:{entry.port}</option>)}</select></Field>}
       {(form.proxyType === 'http' || form.proxyType === 'socks5') && <><div className="dsh-ssh-form-grid is-host"><Field label="代理主机"><input required {...field('proxyHost')} /></Field><Field label="代理端口"><input required type="number" min="1" max="65535" {...field('proxyPort')} /></Field></div><div className="dsh-ssh-form-grid"><Field label="代理用户名"><input {...field('proxyUsername')} /></Field><Field label="代理密码"><input type="password" autoComplete="new-password" {...field('proxyPassword')} /></Field></div></>}
       {form.proxyType === 'jump' && <JumpChainEditor profiles={profiles.filter(item => item.id !== profile?.id)} value={form.jumpProfileIds} onChange={jumpProfileIds => setForm(current => ({ ...current, jumpProfileIds }))} />}
       {pendingFingerprint && <div className="dsh-ssh-test-result is-warning" role="alert"><span><strong>首次连接，请核对主机指纹</strong><code>{pendingFingerprint}</code></span><button type="button" className="dsh-ssh-small-primary" disabled={testing} onClick={() => { void testConnection(pendingFingerprint) }}>确认并重试</button></div>}
@@ -809,7 +884,7 @@ function Segment({ active, onClick, children }: { active: boolean; onClick(): vo
 function EmptyState({ onNew }: { onNew(): void }): JSX.Element { return <div className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>连接你的第一台远端主机</h1><p>保存 SSH 配置后，可以在这里打开终端、建立端口转发，并按会话授权给 AI。</p><button className="dsh-ssh-primary-button" onClick={onNew}><IconPlusOutline16 size={16} />新建连接</button></div> }
 function ServerGlyph(): JSX.Element { return <span className="dsh-ssh-server-glyph"><IconDataOutline16 size={17} /></span> }
 
-function proxyLabel(profile: ProfileView): string { return profile.proxy.type === 'none' ? '直连' : profile.proxy.type === 'jump' ? 'SSH 跳板' : profile.proxy.type === 'http' ? 'HTTP 代理' : 'SOCKS5 代理' }
+function proxyLabel(profile: ProfileView): string { return profile.proxy.type === 'none' ? '直连' : profile.proxy.type === 'saved' ? '常用代理' : profile.proxy.type === 'jump' ? 'SSH 跳板' : profile.proxy.type === 'http' ? 'HTTP 代理' : 'SOCKS5 代理' }
 function shortId(id: string): string { return id.length <= 16 ? id : `${id.slice(0, 8)}…${id.slice(-5)}` }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error) }
 function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {

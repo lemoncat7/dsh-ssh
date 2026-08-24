@@ -3,6 +3,7 @@ export type ProxyConfig =
   | { type: 'none' }
   | { type: 'http'; host: string; port: number; username?: string }
   | { type: 'socks5'; host: string; port: number; username?: string }
+  | { type: 'saved'; proxyId: string }
   | { type: 'jump'; profileIds: string[] }
 
 export interface SshProfile {
@@ -29,6 +30,17 @@ export interface CredentialEntry {
   name: string
   username: string
   authType: Exclude<SshAuthType, 'agent'>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProxyEntry {
+  id: string
+  name: string
+  proxyType: 'http' | 'socks5'
+  host: string
+  port: number
+  username?: string
   createdAt: number
   updatedAt: number
 }
@@ -72,9 +84,10 @@ export interface SshSettings {
 }
 
 export interface SshState {
-  schemaVersion: 1
+  schemaVersion: 2
   profiles: SshProfile[]
   credentialEntries: CredentialEntry[]
+  proxyEntries: ProxyEntry[]
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
   settings: SshSettings
@@ -100,6 +113,14 @@ export interface CredentialEntryDraft {
   name: string
   username: string
   authType: Exclude<SshAuthType, 'agent'>
+}
+
+export interface ProxyEntryDraft {
+  name: string
+  proxyType: 'http' | 'socks5'
+  host: string
+  port: number
+  username?: string
 }
 
 export interface ForwardDraft {
@@ -142,6 +163,18 @@ export function normalizeCredentialEntryDraft(value: unknown): CredentialEntryDr
     name: text(input.name, 'name', 1, 80),
     username: text(input.username, 'username', 1, 128),
     authType: input.authType,
+  }
+}
+
+export function normalizeProxyEntryDraft(value: unknown): ProxyEntryDraft {
+  const input = record(value, 'proxy entry')
+  if (input.proxyType !== 'http' && input.proxyType !== 'socks5') throw bad('proxyType must be http or socks5')
+  return {
+    name: text(input.name, 'name', 1, 80),
+    proxyType: input.proxyType,
+    host: text(input.host, 'host', 1, 253),
+    port: integer(input.port, 'port', 1, 65_535),
+    ...optionalText(input.username, 'username', 1, 128),
   }
 }
 
@@ -191,6 +224,7 @@ function normalizeProxy(value: unknown): ProxyConfig {
   if (value === undefined || value === null) return { type: 'none' }
   const input = record(value, 'proxy')
   if (input.type === 'none') return { type: 'none' }
+  if (input.type === 'saved') return { type: 'saved', proxyId: text(input.proxyId, 'proxy.proxyId', 1, 100) }
   if (input.type === 'jump') {
     const profileIds = input.profileIds === undefined
       ? [text(input.profileId, 'proxy.profileId', 1, 100)]
@@ -206,7 +240,7 @@ function normalizeProxy(value: unknown): ProxyConfig {
       ...optionalText(input.username, 'proxy.username', 1, 128),
     }
   }
-  throw bad('proxy.type must be none, http, socks5, or jump')
+  throw bad('proxy.type must be none, saved, http, socks5, or jump')
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

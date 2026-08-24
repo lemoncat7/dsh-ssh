@@ -4,8 +4,8 @@ import { pipeline } from 'node:stream/promises'
 import { HostKeyRequiredError, SshConnector } from './connector.js'
 import { SshCredentialVault } from './credentials.js'
 import {
-  normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeProfileDraft, normalizeSecrets,
-  type CredentialEntry, type ForwardRule, type SessionInjection, type SshProfile,
+  normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeProfileDraft, normalizeProxyEntryDraft, normalizeSecrets,
+  type CredentialEntry, type ForwardRule, type ProxyEntry, type SessionInjection, type SshProfile,
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
@@ -54,7 +54,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
 
-  if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 1 })
+  if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 2 })
 
   if (segments[0] === 'vault') {
     if (method === 'GET' && segments.length === 1) return sendJson(res, 200, await credentialEntryViews(runtime))
@@ -93,6 +93,45 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (references.length > 0) throw httpError(409, `credential entry is used by ${references.length} SSH profile(s)`)
       await runtime.store.update(state => { state.credentialEntries = state.credentialEntries.filter(entry => entry.id !== id) })
       await runtime.credentials.deleteEntry(id)
+      return sendJson(res, 204, undefined)
+    }
+  }
+
+  if (segments[0] === 'proxies') {
+    if (method === 'GET' && segments.length === 1) return sendJson(res, 200, await proxyEntryViews(runtime))
+    if (method === 'POST' && segments.length === 1) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const draft = normalizeProxyEntryDraft(body.entry)
+      const secrets = normalizeProxySecrets(body.secrets)
+      const now = Date.now()
+      const entry: ProxyEntry = { ...draft, id: createId('proxy'), createdAt: now, updatedAt: now }
+      await runtime.credentials.replaceProxyEntry(entry.id, secrets)
+      try { await runtime.store.update(state => { state.proxyEntries.push(entry) }) }
+      catch (error) { await runtime.credentials.deleteProxyEntry(entry.id).catch(() => {}); throw error }
+      return sendJson(res, 201, await proxyEntryView(runtime, entry))
+    }
+    const id = segments[1]
+    if (id !== undefined && method === 'PUT' && segments.length === 2) {
+      requireMutationHeader(req)
+      const previous = requiredProxyEntry(runtime.store, id)
+      const body = await readObject(req)
+      const draft = normalizeProxyEntryDraft(body.entry)
+      const secrets = normalizeProxySecrets(body.secrets)
+      const previousSecrets = await runtime.credentials.readProxyEntry(id)
+      if (Object.keys(secrets).length > 0) await runtime.credentials.writeProxyEntry(id, secrets)
+      const next: ProxyEntry = { ...previous, ...draft, id, createdAt: previous.createdAt, updatedAt: Date.now() }
+      try { await runtime.store.update(state => { state.proxyEntries = state.proxyEntries.map(entry => entry.id === id ? next : entry) }) }
+      catch (error) { await runtime.credentials.replaceProxyEntry(id, previousSecrets).catch(() => {}); throw error }
+      return sendJson(res, 200, await proxyEntryView(runtime, next))
+    }
+    if (id !== undefined && method === 'DELETE' && segments.length === 2) {
+      requireMutationHeader(req)
+      requiredProxyEntry(runtime.store, id)
+      const references = runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === id)
+      if (references.length > 0) throw httpError(409, `proxy entry is used by ${references.length} SSH profile(s)`)
+      await runtime.store.update(state => { state.proxyEntries = state.proxyEntries.filter(entry => entry.id !== id) })
+      await runtime.credentials.deleteProxyEntry(id)
       return sendJson(res, 204, undefined)
     }
   }
@@ -341,6 +380,11 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         return sendJson(res, 204, undefined)
       }
     }
+    if (method === 'GET' && segments[1] === 'terminals' && segments[2] !== undefined && segments[3] === 'output' && segments.length === 4) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      requireActivityTerminal(runtime.store, sessionId)
+      return sendJson(res, 200, runtime.aiTerminals.readOutput(sessionId, segments[2], optionalInteger(Number(url.searchParams.get('cursor') ?? 0), 0, Number.MAX_SAFE_INTEGER) ?? 0))
+    }
   }
 
   if (segments[0] === 'settings' && segments.length === 1) {
@@ -417,6 +461,15 @@ async function credentialEntryView(runtime: SshApiRuntime, entry: CredentialEntr
   return { ...entry, credential: { ...credential, configured: credential.fields.includes(requiredField) }, references: runtime.store.profiles().filter(profile => profile.credentialId === entry.id).length }
 }
 
+async function proxyEntryViews(runtime: SshApiRuntime): Promise<unknown[]> {
+  return Promise.all(runtime.store.proxyEntries().map(entry => proxyEntryView(runtime, entry)))
+}
+
+async function proxyEntryView(runtime: SshApiRuntime, entry: ProxyEntry): Promise<unknown> {
+  const credential = await runtime.credentials.describeProxyEntry(entry.id)
+  return { ...entry, credential, references: runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length }
+}
+
 function requiredProfile(store: SshStore, id: string): SshProfile {
   const profile = store.profile(id)
   if (profile === undefined) throw httpError(404, 'SSH profile was not found')
@@ -435,9 +488,20 @@ function requiredCredentialEntry(store: SshStore, id: string): CredentialEntry {
   return entry
 }
 
+function requiredProxyEntry(store: SshStore, id: string): ProxyEntry {
+  const entry = store.proxyEntry(id)
+  if (entry === undefined) throw httpError(404, 'SSH proxy entry was not found')
+  return entry
+}
+
 function requireCredentialSecret(authType: CredentialEntry['authType'], secrets: ReturnType<typeof normalizeSecrets>): void {
   if (authType === 'password' && !secrets.password) throw httpError(400, 'password is required for this credential entry')
   if (authType === 'private-key' && !secrets.privateKey) throw httpError(400, 'private key is required for this credential entry')
+}
+
+function normalizeProxySecrets(value: unknown): ReturnType<typeof normalizeSecrets> {
+  const { proxyPassword } = normalizeSecrets(value)
+  return proxyPassword === undefined ? {} : { proxyPassword }
 }
 
 function requireActivityProfile(store: SshStore, sessionId: string, profileId: string): SessionInjection {

@@ -40,15 +40,16 @@ export class SshConnector {
     let socket: Duplex | undefined
     let parent: ManagedSshConnection | undefined
     try {
-      if (profile.proxy.type === 'http') {
-        socket = await connectHttpProxy(profile.proxy.host, profile.proxy.port, profile.host, profile.port, {
-          ...profile.proxy.username === undefined ? {} : { username: profile.proxy.username },
-          ...secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword },
+      const resolvedProxy = await this.resolveProxy(profile, secrets)
+      if (resolvedProxy.config.type === 'http') {
+        socket = await connectHttpProxy(resolvedProxy.config.host, resolvedProxy.config.port, profile.host, profile.port, {
+          ...resolvedProxy.config.username === undefined ? {} : { username: resolvedProxy.config.username },
+          ...resolvedProxy.password === undefined ? {} : { password: resolvedProxy.password },
         }, profile.connectTimeoutMs)
-      } else if (profile.proxy.type === 'socks5') {
-        socket = await connectSocks5Proxy(profile.proxy.host, profile.proxy.port, profile.host, profile.port, {
-          ...profile.proxy.username === undefined ? {} : { username: profile.proxy.username },
-          ...secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword },
+      } else if (resolvedProxy.config.type === 'socks5') {
+        socket = await connectSocks5Proxy(resolvedProxy.config.host, resolvedProxy.config.port, profile.host, profile.port, {
+          ...resolvedProxy.config.username === undefined ? {} : { username: resolvedProxy.config.username },
+          ...resolvedProxy.password === undefined ? {} : { password: resolvedProxy.password },
         }, profile.connectTimeoutMs)
       } else if (profile.proxy.type === 'jump') {
         parent = await this.connectJumpChain(profile.proxy.profileIds, chain, signal)
@@ -60,6 +61,20 @@ export class SshConnector {
       socket?.destroy()
       parent?.close()
       throw error
+    }
+  }
+
+  private async resolveProxy(profile: SshProfile, secrets: SshCredentialPayload): Promise<{
+    config: Exclude<SshProfile['proxy'], { type: 'saved' }>
+    password?: string
+  }> {
+    if (profile.proxy.type !== 'saved') return { config: profile.proxy, ...(secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword }) }
+    const entry = this.store.proxyEntry(profile.proxy.proxyId)
+    if (entry === undefined) throw Object.assign(new Error(`SSH proxy entry ${profile.proxy.proxyId} was not found`), { status: 404 })
+    const proxySecrets = await this.credentials.readProxyEntry(entry.id)
+    return {
+      config: { type: entry.proxyType, host: entry.host, port: entry.port, ...(entry.username === undefined ? {} : { username: entry.username }) },
+      ...(proxySecrets.proxyPassword === undefined ? {} : { password: proxySecrets.proxyPassword }),
     }
   }
 
