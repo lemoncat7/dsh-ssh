@@ -5,7 +5,7 @@
 ## 安装
 
 ```bash
-dsh plugin --profile web add @lemoncat7/dsh-ssh@next
+dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 ```
 
 安装或升级后重启对应的 DSH Profile。桌面端与 Docker 部署使用相同的插件包。
