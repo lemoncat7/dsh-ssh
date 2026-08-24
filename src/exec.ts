@@ -26,15 +26,42 @@ export async function executeSshCommand(
   const startedAt = Date.now()
   const connection = await connector.connect(profileId, signal)
   try {
-    const channel = await execChannel(connection.client, `${directoryPrelude(cwd)} && ${command}`)
-    return await collect(channel, profileId, command, cwd, startedAt, timeoutMs, maxOutputChars, signal)
+    return await execAndCollect(
+      connection.client,
+      `${directoryPrelude(cwd)} && ${command}`,
+      profileId,
+      command,
+      cwd,
+      startedAt,
+      timeoutMs,
+      maxOutputChars,
+      signal,
+    )
   } finally {
     connection.close()
   }
 }
 
-function execChannel(client: import('ssh2').Client, command: string): Promise<ClientChannel> {
-  return new Promise((resolve, reject) => client.exec(command, (error, channel) => error ? reject(error) : resolve(channel)))
+function execAndCollect(
+  client: import('ssh2').Client,
+  remoteCommand: string,
+  profileId: string,
+  command: string,
+  cwd: string,
+  startedAt: number,
+  timeoutMs: number,
+  maxOutputChars: number,
+  signal?: AbortSignal,
+): Promise<ExecResult> {
+  return new Promise((resolve, reject) => {
+    client.exec(remoteCommand, (error, channel) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      collect(channel, profileId, command, cwd, startedAt, timeoutMs, maxOutputChars, signal).then(resolve, reject)
+    })
+  })
 }
 
 function collect(
