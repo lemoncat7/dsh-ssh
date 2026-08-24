@@ -11,7 +11,9 @@ import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
 import { setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
+import { streamTerminalOutput } from './terminal-stream.js'
 import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
+import { ActivityEventBus, streamActivityEvents } from './activity-events.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -31,6 +33,7 @@ export interface SshApiRuntime {
   forwards: ForwardManager
   terminals: BrowserTerminalManager
   aiTerminals: AiTerminalManager
+  activityEvents: ActivityEventBus
 }
 
 export function registerSshApi(webServer: WebServerLike, prefix: string, runtime: SshApiRuntime): () => void {
@@ -317,6 +320,11 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
 
   if (segments[0] === 'activity') {
     const sessionId = url.searchParams.get('sessionId')
+    if (method === 'GET' && segments[1] === 'events' && segments.length === 2) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      if (runtime.store.injection(sessionId) === undefined) throw httpError(403, 'SSH access is not injected into this DSH session')
+      return streamActivityEvents(req, res, sessionId, runtime.activityEvents)
+    }
     if (method === 'GET' && segments.length === 1) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const injection = runtime.store.injection(sessionId)
@@ -372,7 +380,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const targetSessionId = requireText(body.sessionId, 'sessionId', 200)
       requireActivityTerminal(runtime.store, targetSessionId)
       if (operation === 'input') {
-        runtime.aiTerminals.write(targetSessionId, terminalId, requireRawText(body.text, 'text', 100_000))
+        runtime.aiTerminals.writeOrdered(targetSessionId, terminalId, optionalInteger(body.sequence, 0, Number.MAX_SAFE_INTEGER), requireRawText(body.text, 'text', 100_000))
         return sendJson(res, 204, undefined)
       }
       if (operation === 'resize') {
@@ -384,6 +392,15 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (!sessionId) throw httpError(400, 'sessionId is required')
       requireActivityTerminal(runtime.store, sessionId)
       return sendJson(res, 200, runtime.aiTerminals.readOutput(sessionId, segments[2], optionalInteger(Number(url.searchParams.get('cursor') ?? 0), 0, Number.MAX_SAFE_INTEGER) ?? 0))
+    }
+    if (method === 'GET' && segments[1] === 'terminals' && segments[2] !== undefined && segments[3] === 'stream' && segments.length === 4) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      requireActivityTerminal(runtime.store, sessionId)
+      const terminal = runtime.aiTerminals.get(sessionId, segments[2])
+      return streamTerminalOutput(req, res, url, {
+        read: cursor => terminal.readOutput(cursor),
+        subscribe: listener => terminal.subscribeOutput(listener),
+      })
     }
   }
 
@@ -414,9 +431,17 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && method === 'GET' && segments[2] === 'output') {
       return sendJson(res, 200, runtime.terminals.get(id).read(optionalInteger(Number(url.searchParams.get('cursor') ?? 0), 0, Number.MAX_SAFE_INTEGER) ?? 0))
     }
+    if (id !== undefined && method === 'GET' && segments[2] === 'stream') {
+      const terminal = runtime.terminals.get(id)
+      return streamTerminalOutput(req, res, url, {
+        read: cursor => terminal.read(cursor),
+        subscribe: listener => terminal.subscribeOutput(listener),
+      })
+    }
     if (id !== undefined && method === 'POST' && segments[2] === 'input') {
       requireMutationHeader(req)
-      runtime.terminals.get(id).write(requireRawText((await readObject(req)).text, 'text', 100_000))
+      const body = await readObject(req)
+      runtime.terminals.get(id).writeOrdered(optionalInteger(body.sequence, 0, Number.MAX_SAFE_INTEGER), requireRawText(body.text, 'text', 100_000))
       return sendJson(res, 204, undefined)
     }
     if (id !== undefined && method === 'POST' && segments[2] === 'resize') {

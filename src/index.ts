@@ -8,6 +8,7 @@ import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { registerSshTools } from './tools.js'
+import { ActivityEventBus } from './activity-events.js'
 
 export const Config = ConfigSchema
 export type Config = SshConfig
@@ -34,14 +35,15 @@ export function apply(context: Context, config: SshConfig): void {
     const connector = new SshConnector(store, credentials)
     const forwards = new ForwardManager(connector, store)
     const terminals = new BrowserTerminalManager(connector)
-    const aiTerminals = new AiTerminalManager(connector)
+    const activityEvents = new ActivityEventBus()
+    const aiTerminals = new AiTerminalManager(connector, event => { activityEvents.publish(event) })
     const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals)
     let disposeApi: (() => void) | undefined
     const mountApi = (runtime: RuntimeContext): void => {
       if (!resolved.exposeWeb) return
       const webServer = runtime.webServer ?? runtime.get('webServer') as WebServerLike | undefined
       if (webServer === undefined) throw new Error('dsh-ssh exposeWeb requires webServer')
-      disposeApi = registerSshApi(webServer, resolved.apiPrefix, { store, credentials, connector, forwards, terminals, aiTerminals })
+      disposeApi = registerSshApi(webServer, resolved.apiPrefix, { store, credentials, connector, forwards, terminals, aiTerminals, activityEvents })
     }
     if (ctx.inject !== undefined) ctx.inject(['webServer'], mountApi)
     else if (ctx.webServer !== undefined) mountApi(ctx)

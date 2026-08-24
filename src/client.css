@@ -201,6 +201,8 @@
     var(--dsw-alias-bg-base, #fff) 98%,
     var(--dsw-alias-label-primary) 2%
   );
+  --ssh-activity-surface: var(--ssh-surface);
+  --ssh-activity-surface-raised: var(--ssh-surface-raised);
   --ssh-border: color-mix(
     in srgb,
     var(--dsw-alias-label-primary) 10%,
@@ -1279,6 +1281,16 @@
     var(--dsw-alias-label-primary) 10%,
     transparent
   );
+  --ssh-activity-surface: color-mix(
+    in srgb,
+    var(--dsw-alias-bg-overlay, #f1f5f5) 97%,
+    var(--dsw-alias-label-primary) 3%
+  );
+  --ssh-activity-surface-raised: color-mix(
+    in srgb,
+    var(--dsw-alias-bg-overlay, #f1f5f5) 99%,
+    var(--dsw-alias-label-primary) 1%
+  );
   box-sizing: border-box;
   display: flex;
   width: 100%;
@@ -1287,11 +1299,7 @@
   min-height: 0;
   flex-direction: column;
   color: var(--dsw-alias-label-primary);
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-bg-base, #f7f8f7) 96%,
-    transparent
-  );
+  background: var(--ssh-activity-surface);
   font-family:
     var(--ds-font-family),
     -apple-system,
@@ -1306,12 +1314,7 @@
   min-height: 58px;
   padding: 0 12px 0 14px;
   border-bottom: 1px solid var(--ssh-activity-border);
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-bg-base, #f7f8f7) 88%,
-    transparent
-  );
-  backdrop-filter: blur(10px);
+  background: var(--ssh-activity-surface-raised);
 }
 .dsh-ssh-activity-header > span {
   display: grid;
@@ -1438,11 +1441,7 @@
   border: 1px solid var(--ssh-activity-border);
   border-radius: 8px;
   color: var(--dsw-alias-label-primary);
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-bg-base, #fff) 86%,
-    transparent
-  );
+  background: var(--ssh-activity-surface-raised);
 }
 .dsh-ssh-sftp-pathbar button {
   display: grid;
@@ -1486,11 +1485,7 @@
   overflow: auto;
   border: 1px solid var(--ssh-activity-border);
   border-radius: 10px;
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-bg-base, #fff) 70%,
-    transparent
-  );
+  background: var(--ssh-activity-surface-raised);
 }
 .dsh-ssh-sftp-columns,
 .dsh-ssh-sftp-row {
@@ -1507,11 +1502,7 @@
   padding: 0 9px;
   border-bottom: 1px solid var(--ssh-activity-border);
   color: var(--dsw-alias-label-tertiary);
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-bg-base, #f7f8f7) 94%,
-    transparent
-  );
+  background: var(--ssh-activity-surface);
   font-size: 8px;
 }
 .dsh-ssh-sftp-row {
@@ -1553,8 +1544,9 @@
 }
 .dsh-ssh-sftp-row strong {
   overflow: hidden;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1654,12 +1646,6 @@
 .dsh-ssh-terminal-screen .xterm {
   height: 100%;
 }
-@media (prefers-reduced-transparency: reduce) {
-  .dsh-ssh-activity-header {
-    backdrop-filter: none;
-  }
-}
-
 .dsh-ssh-sftp-row:not(.is-directory) {
   cursor: pointer;
 }
@@ -1671,11 +1657,7 @@
   overflow: hidden;
   border: 1px solid var(--ssh-activity-border);
   border-radius: 10px;
-  background: color-mix(
-    in srgb,
-    var(--dsw-alias-bg-base, #fff) 70%,
-    transparent
-  );
+  background: var(--ssh-activity-surface-raised);
 }
 .dsh-ssh-file-preview > header {
   display: grid;

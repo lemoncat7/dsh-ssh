@@ -34,6 +34,7 @@ export interface ActivityTerminalView {
   scrollback: string; commands: ActivityCommandView[]
 }
 export interface ActivityView { injection: InjectionView | null; profiles: ActivityProfileView[]; terminals: ActivityTerminalView[] }
+export interface TerminalOpenedEvent { type: 'terminal-opened'; sessionId: string; terminalId: string; profileId: string; createdAt: number }
 export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; size: number; modifiedAt: number }
 export interface SftpDirectoryView { path: string; parent: string | null; entries: SftpEntryView[] }
 export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean }
@@ -64,6 +65,9 @@ export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/pro
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }
 export function loadInjection(sessionId: string): Promise<InjectionView | null> { return api(`/injections?sessionId=${encodeURIComponent(sessionId)}`) }
 export function loadActivity(sessionId: string): Promise<ActivityView> { return api(`/activity?sessionId=${encodeURIComponent(sessionId)}`) }
+export function activityEventStreamUrl(sessionId: string): string {
+  return `${SSH_API}/activity/events?sessionId=${encodeURIComponent(sessionId)}`
+}
 export function loadSftpDirectory(sessionId: string, profileId: string, path?: string): Promise<SftpDirectoryView> {
   const query = new URLSearchParams({ sessionId, profileId })
   if (path !== undefined) query.set('path', path)
@@ -103,12 +107,22 @@ export async function uploadProfileSftpFile(profileId: string, directory: string
   if (!response.ok) throw new ApiError(response.status, typeof body.error === 'string' ? body.error : `HTTP ${response.status}`, body)
   return body as { path: string; name: string; size: number }
 }
-export function sendActivityTerminalInput(sessionId: string, terminalId: string, text: string): Promise<void> {
-  return api(`/activity/terminals/${encodeURIComponent(terminalId)}/input`, { method: 'POST', body: JSON.stringify({ sessionId, text }) })
+export interface TerminalOutputDelta { data: string; cursor: number; truncated: boolean; closed: boolean }
+
+export function sendActivityTerminalInput(sessionId: string, terminalId: string, text: string, sequence?: number): Promise<void> {
+  return api(`/activity/terminals/${encodeURIComponent(terminalId)}/input`, { method: 'POST', body: JSON.stringify({ sessionId, text, sequence }) })
 }
-export function readActivityTerminalOutput(sessionId: string, terminalId: string, cursor: number): Promise<{ data: string; cursor: number; truncated: boolean; closed: boolean }> {
+export function readActivityTerminalOutput(sessionId: string, terminalId: string, cursor: number): Promise<TerminalOutputDelta> {
   const query = new URLSearchParams({ sessionId, cursor: String(cursor) })
   return api(`/activity/terminals/${encodeURIComponent(terminalId)}/output?${query.toString()}`)
+}
+export function activityTerminalStreamUrl(sessionId: string, terminalId: string, cursor = 0): string {
+  const query = new URLSearchParams({ sessionId, cursor: String(cursor) })
+  return `${SSH_API}/activity/terminals/${encodeURIComponent(terminalId)}/stream?${query.toString()}`
+}
+export function browserTerminalStreamUrl(terminalId: string, cursor = 0): string {
+  const query = new URLSearchParams({ cursor: String(cursor) })
+  return `${SSH_API}/terminals/${encodeURIComponent(terminalId)}/stream?${query.toString()}`
 }
 export function resizeActivityTerminal(sessionId: string, terminalId: string, cols: number, rows: number): Promise<void> {
   return api(`/activity/terminals/${encodeURIComponent(terminalId)}/resize`, { method: 'POST', body: JSON.stringify({ sessionId, cols, rows }) })

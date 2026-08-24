@@ -19,13 +19,14 @@ import { FitAddon } from '@xterm/addon-fit'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
 import {
-  ApiError, api, loadActivity, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
+  ApiError, activityEventStreamUrl, activityTerminalStreamUrl, api, browserTerminalStreamUrl, loadActivity, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
   profileAddress, readActivityTerminalOutput, resizeActivityTerminal, sendActivityTerminalInput,
   type ActivityProfileView, type ActivityTerminalView, type ActivityView, type ForwardStatus, type ForwardView,
-  type InjectionView, type ProfileView, type ProxyEntryView, type SettingsView, type VaultEntryView,
+  type InjectionView, type ProfileView, type ProxyEntryView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ActivitySftpBrowser, ProfileSftpPane } from './sftp-client.js'
+import { TerminalTransport } from './terminal-transport.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -43,13 +44,16 @@ interface RemoteController {
 }
 
 interface ActivityController {
-  open(sessionId: string, profileId?: string): void
+  open(sessionId: string, profileId?: string, view?: ActivityViewMode): void
   toggle(sessionId: string): void
   close(sessionId?: string): void
   isOpen(sessionId: string): boolean
   selected(sessionId: string): string | undefined
+  requestedView(sessionId: string): ActivityViewMode | undefined
   subscribe(listener: () => void): () => void
 }
+
+type ActivityViewMode = 'directory' | 'terminals'
 
 export const inject = ['slots', 'layout']
 
@@ -97,12 +101,14 @@ function createActivityController(ctx: ClientContext): ActivityController {
   const listeners = new Set<() => void>()
   let openSessionId: string | undefined
   let selectedProfileId: string | undefined
+  let requestedView: ActivityViewMode | undefined
   let dispose: (() => void) | undefined
   const notify = (): void => { for (const listener of listeners) listener() }
   const controller: ActivityController = {
-    open(sessionId, profileId) {
+    open(sessionId, profileId, view) {
       if (dispose !== undefined && openSessionId === sessionId) {
         if (profileId !== undefined) selectedProfileId = profileId
+        if (view !== undefined) requestedView = view
         ctx.layout.openDetails()
         notify()
         return
@@ -110,6 +116,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
       controller.close()
       openSessionId = sessionId
       selectedProfileId = profileId
+      requestedView = view
       dispose = ctx.slots.register({ name: 'details', priority: -2 }, props => (
         <SshActivityPanel {...props} controller={controller} />
       ))
@@ -126,12 +133,14 @@ function createActivityController(ctx: ClientContext): ActivityController {
       dispose = undefined
       openSessionId = undefined
       selectedProfileId = undefined
+      requestedView = undefined
       current?.()
       if (current !== undefined) ctx.layout.closeDetails()
       notify()
     },
     isOpen: sessionId => dispose !== undefined && openSessionId === sessionId,
     selected: sessionId => openSessionId === sessionId ? selectedProfileId : undefined,
+    requestedView: sessionId => openSessionId === sessionId ? requestedView : undefined,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
   }
   return controller
@@ -140,10 +149,14 @@ function createActivityController(ctx: ClientContext): ActivityController {
 function SshActivityPanel(props: DetailsProps & { controller: ActivityController }): JSX.Element {
   const sessionId = String(props.sessionId)
   const [activity, setActivity] = useState<ActivityView>()
-  const [view, setView] = useState<'directory' | 'terminals'>('directory')
+  const [view, setView] = useState<ActivityViewMode>(() => props.controller.requestedView(sessionId) ?? 'directory')
   const [error, setError] = useState<string>()
   const [, setRevision] = useState(0)
-  useEffect(() => props.controller.subscribe(() => setRevision(value => value + 1)), [props.controller])
+  useEffect(() => props.controller.subscribe(() => {
+    const requested = props.controller.requestedView(sessionId)
+    if (requested !== undefined) setView(requested)
+    setRevision(value => value + 1)
+  }), [props.controller, sessionId])
   const refresh = useCallback(async () => {
     try {
       const next = await loadActivity(sessionId)
@@ -204,7 +217,6 @@ function TerminalActivity({ sessionId, terminals }: { sessionId: string; termina
 function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessionId: string; terminal: ActivityTerminalView; onError(value: string | undefined): void }): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal>()
-  const inputQueueRef = useRef<Promise<void>>(Promise.resolve())
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return
@@ -215,20 +227,22 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
     })
     const fit = new FitAddon()
     terminal.loadAddon(fit); terminal.open(host); fit.fit(); terminalRef.current = terminal; terminal.focus()
-    let inputBuffer = ''
-    let inputTimer: number | undefined
+    const transport = new TerminalTransport({
+      streamUrl: activityTerminalStreamUrl(sessionId, activity.terminalId),
+      read: cursor => readActivityTerminalOutput(sessionId, activity.terminalId, cursor),
+      send: (text, sequence) => sendActivityTerminalInput(sessionId, activity.terminalId, text, sequence),
+    })
     let resizeTimer: number | undefined
     let lastSize = ''
-    const flushInput = (): void => {
-      inputTimer = undefined
-      const text = inputBuffer
-      inputBuffer = ''
-      if (!text) return
-      inputQueueRef.current = inputQueueRef.current.catch(() => undefined).then(() => sendActivityTerminalInput(sessionId, activity.terminalId, text)).then(() => onError(undefined), reason => onError(message(reason)))
-    }
-    const input = terminal.onData(data => {
-      inputBuffer += data
-      if (inputTimer === undefined) inputTimer = window.setTimeout(flushInput, 12)
+    const input = terminal.onData(data => transport.sendInput(data, reason => onError(message(reason))))
+    const stopOutput = transport.observe({
+      output: value => {
+        if (value.truncated) terminal.reset()
+        if (value.data) terminal.write(value.data)
+        terminal.scrollToBottom()
+        onError(undefined)
+      },
+      error: reason => onError(message(reason)),
     })
     const syncSize = (): void => {
       fit.fit()
@@ -243,41 +257,14 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
     })
     resize.observe(host)
     return () => {
-      if (inputTimer !== undefined) { clearTimeout(inputTimer); flushInput() }
       if (resizeTimer !== undefined) clearTimeout(resizeTimer)
-      input.dispose(); resize.disconnect(); terminal.dispose(); terminalRef.current = undefined
+      stopOutput(); transport.dispose(); input.dispose(); resize.disconnect(); terminal.dispose(); terminalRef.current = undefined
     }
   }, [activity.terminalId, onError, sessionId])
   useEffect(() => {
     const terminal = terminalRef.current
     if (terminal !== undefined) terminal.options.disableStdin = activity.status.kind !== 'running'
   }, [activity.status.kind])
-  useEffect(() => {
-    let disposed = false
-    let timer: number | undefined
-    let cursor = 0
-    const poll = async (): Promise<void> => {
-      try {
-        const output = await readActivityTerminalOutput(sessionId, activity.terminalId, cursor)
-        if (disposed) return
-        const terminal = terminalRef.current
-        if (terminal !== undefined) {
-          if (output.truncated) terminal.reset()
-          if (output.data) terminal.write(output.data)
-          terminal.scrollToBottom()
-        }
-        cursor = output.cursor
-        onError(undefined)
-        if (!output.closed) timer = window.setTimeout(() => { void poll() }, document.hidden ? 600 : 80)
-      } catch (reason) {
-        if (disposed) return
-        onError(message(reason))
-        timer = window.setTimeout(() => { void poll() }, 600)
-      }
-    }
-    void poll()
-    return () => { disposed = true; if (timer !== undefined) clearTimeout(timer) }
-  }, [activity.terminalId, onError, sessionId])
   return <div ref={hostRef} className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端" />
 }
 
@@ -299,10 +286,25 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const activityOpen = currentSessionId !== undefined && props.activityController.isOpen(currentSessionId)
   const availableProfiles = injection === null ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
+  useEffect(() => {
+    if (currentSessionId === undefined || injection?.permission !== 'terminal') return
+    const source = new EventSource(activityEventStreamUrl(currentSessionId))
+    const opened = (raw: Event): void => {
+      const event = parseTerminalOpenedEvent(raw)
+      if (event === undefined || event.sessionId !== currentSessionId) return
+      props.controller.close()
+      props.activityController.open(currentSessionId, event.profileId, 'terminals')
+    }
+    source.addEventListener('terminal-opened', opened)
+    return () => {
+      source.removeEventListener('terminal-opened', opened)
+      source.close()
+    }
+  }, [currentSessionId, injection?.permission, props.activityController, props.controller])
   const openActivity = (profileId?: string): void => {
     if (currentSessionId === undefined) return
     props.controller.close()
-    props.activityController.open(currentSessionId, profileId)
+    props.activityController.open(currentSessionId, profileId, 'directory')
   }
   const toggleActivity = (): void => {
     if (currentSessionId === undefined) return
@@ -513,22 +515,21 @@ function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): voi
     if (terminalId === undefined) return
     const terminal = terminalRef.current
     if (terminal === undefined) return
-    const input = terminal.onData(data => { void api(`/terminals/${terminalId}/input`, { method: 'POST', body: JSON.stringify({ text: data }) }).catch(reason => setError(message(reason))) })
-    let cursor = 0
-    let stopped = false
-    const poll = async (): Promise<void> => {
-      if (stopped) return
-      try {
-        const output = await api<{ data: string; cursor: number; truncated: boolean; closed: boolean }>(`/terminals/${terminalId}/output?cursor=${cursor}`)
-        if (output.truncated) terminal.write('\r\n\x1b[33m[较早输出已截断]\x1b[0m\r\n')
-        if (output.data) terminal.write(output.data)
-        cursor = output.cursor
-        if (output.closed) { setPhase('idle'); setTerminalId(undefined); return }
-      } catch (reason) { if (!stopped) { setError(message(reason)); setPhase('error') } }
-      if (!stopped) window.setTimeout(() => { void poll() }, document.hidden ? 800 : 180)
-    }
-    void poll()
-    return () => { stopped = true; input.dispose() }
+    const transport = new TerminalTransport({
+      streamUrl: browserTerminalStreamUrl(terminalId),
+      read: cursor => api(`/terminals/${terminalId}/output?cursor=${cursor}`),
+      send: (text, sequence) => api(`/terminals/${terminalId}/input`, { method: 'POST', body: JSON.stringify({ text, sequence }) }),
+    })
+    const input = terminal.onData(data => transport.sendInput(data, reason => setError(message(reason))))
+    const stopOutput = transport.observe({
+      output: value => {
+        if (value.truncated) terminal.write('\r\n\x1b[33m[较早输出已截断]\x1b[0m\r\n')
+        if (value.data) terminal.write(value.data)
+        if (value.closed) { setPhase('idle'); setTerminalId(undefined) }
+      },
+      error: reason => { setError(message(reason)); setPhase('error') },
+    })
+    return () => { stopOutput(); transport.dispose(); input.dispose() }
   }, [terminalId])
 
   useEffect(() => () => { if (terminalId !== undefined) void api(`/terminals/${terminalId}`, { method: 'DELETE' }).catch(() => {}) }, [terminalId])
@@ -887,6 +888,20 @@ function ServerGlyph(): JSX.Element { return <span className="dsh-ssh-server-gly
 function proxyLabel(profile: ProfileView): string { return profile.proxy.type === 'none' ? '直连' : profile.proxy.type === 'saved' ? '常用代理' : profile.proxy.type === 'jump' ? 'SSH 跳板' : profile.proxy.type === 'http' ? 'HTTP 代理' : 'SOCKS5 代理' }
 function shortId(id: string): string { return id.length <= 16 ? id : `${id.slice(0, 8)}…${id.slice(-5)}` }
 function message(error: unknown): string { return error instanceof Error ? error.message : String(error) }
+function parseTerminalOpenedEvent(raw: Event): TerminalOpenedEvent | undefined {
+  if (!(raw instanceof MessageEvent) || typeof raw.data !== 'string') return undefined
+  try {
+    const value = JSON.parse(raw.data) as Partial<TerminalOpenedEvent>
+    if (
+      value.type !== 'terminal-opened' ||
+      typeof value.sessionId !== 'string' ||
+      typeof value.terminalId !== 'string' ||
+      typeof value.profileId !== 'string' ||
+      typeof value.createdAt !== 'number'
+    ) return undefined
+    return value as TerminalOpenedEvent
+  } catch { return undefined }
+}
 function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
   const bind = `${rule.bindHost}:${status?.bindPort ?? rule.bindPort}`
   return rule.kind === 'dynamic' ? `${bind} → SOCKS5` : `${bind} → ${rule.targetHost}:${rule.targetPort}`

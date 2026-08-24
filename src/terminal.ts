@@ -8,6 +8,8 @@ import type {
 import { SshConnector, type ManagedSshConnection } from './connector.js'
 import { SshStore } from './store.js'
 import { directoryPrelude } from './exec.js'
+import { OrderedTerminalInput, TerminalOutputBuffer, type TerminalOutputListener } from './terminal-io.js'
+import type { TerminalOpenedEvent } from './activity-events.js'
 
 const MAX_SCROLLBACK_CHARS = 256_000
 
@@ -34,11 +36,11 @@ export class SshTerminalBackend implements TerminalBackend {
 
 export class SshTerminalSession implements TerminalBackendSession {
   readonly motd: string
-  private scrollback = ''
-  private scrollbackCursor = 0
+  private readonly output = new TerminalOutputBuffer(MAX_SCROLLBACK_CHARS, MAX_SCROLLBACK_CHARS)
   private terminalStatus: TerminalSessionStatus = { kind: 'running' }
   private active: SendOperation | undefined
   private closing?: Promise<void>
+  private readonly orderedInput = new OrderedTerminalInput(text => this.write(text))
 
   constructor(private readonly connection: ManagedSshConnection, readonly channel: ClientChannel, motd: string) {
     this.motd = motd
@@ -49,10 +51,12 @@ export class SshTerminalSession implements TerminalBackendSession {
     channel.on('exit', (code: number | undefined, signal: string | undefined) => {
       this.terminalStatus = { kind: 'exited', exitCode: code ?? null, signal: normalizeSignal(signal) }
       this.active?.settle('session_exit')
+      this.output.close()
     })
     channel.on('close', () => {
       if (this.terminalStatus.kind === 'running') this.terminalStatus = { kind: 'exited', exitCode: null, signal: null }
       this.active?.settle('session_exit')
+      this.output.close()
       connection.close()
     })
   }
@@ -68,7 +72,8 @@ export class SshTerminalSession implements TerminalBackendSession {
   }
 
   read(request: TerminalReadRequest): TerminalReadResult {
-    const lines = this.scrollback.split(/\r?\n/)
+    const scrollback = this.output.text()
+    const lines = scrollback.split(/\r?\n/)
     const totalLines = lines.length
     const offset = clamp(request.offset ?? 0, 0, totalLines)
     const count = clamp(request.count ?? 200, 1, 2000)
@@ -79,24 +84,23 @@ export class SshTerminalSession implements TerminalBackendSession {
       totalLines,
       lineBegin,
       lineEnd,
-      truncated: this.scrollback.length >= MAX_SCROLLBACK_CHARS || lineBegin > 0,
+      truncated: this.output.isTruncated() || lineBegin > 0,
     }
   }
 
-  readOutput(cursor: number): { data: string; cursor: number; truncated: boolean; closed: boolean } {
-    const safeCursor = Math.max(cursor, this.scrollbackCursor)
-    const index = safeCursor - this.scrollbackCursor
-    return {
-      data: this.scrollback.slice(index),
-      cursor: this.scrollbackCursor + this.scrollback.length,
-      truncated: cursor < this.scrollbackCursor,
-      closed: this.terminalStatus.kind === 'exited',
-    }
-  }
+  readOutput(cursor: number): ReturnType<TerminalOutputBuffer['read']> { return this.output.read(cursor) }
 
   write(text: string): void {
     if (this.terminalStatus.kind === 'exited') throw new Error('SSH terminal has exited')
     this.channel.write(text)
+  }
+
+  writeOrdered(sequence: number | undefined, text: string): void {
+    this.orderedInput.push(sequence, text)
+  }
+
+  subscribeOutput(listener: TerminalOutputListener): () => void {
+    return this.output.subscribe(listener)
   }
 
   resize(cols: number, rows: number): void {
@@ -123,12 +127,7 @@ export class SshTerminalSession implements TerminalBackendSession {
   }
 
   receive(text: string): void {
-    this.scrollback += text
-    if (this.scrollback.length > MAX_SCROLLBACK_CHARS) {
-      const removed = this.scrollback.length - MAX_SCROLLBACK_CHARS
-      this.scrollback = this.scrollback.slice(removed)
-      this.scrollbackCursor += removed
-    }
+    this.output.append(text)
     this.active?.push(text)
   }
 
@@ -225,7 +224,10 @@ export class BrowserTerminalManager {
 /** Owner-scoped AI terminals for Web profiles, whose official Terminal service lives inside each Agent preset realm. */
 export class AiTerminalManager {
   private readonly sessions = new Map<string, Map<string, AiTerminalRecord>>()
-  constructor(private readonly connector: SshConnector) {}
+  constructor(
+    private readonly connector: SshConnector,
+    private readonly onTerminalOpened?: (event: TerminalOpenedEvent) => void,
+  ) {}
 
   async create(ownerId: string, profileId: string, cwd: string, name?: string, signal?: AbortSignal): Promise<{ terminalId: string; profileId: string; cwd: string; motd: string }> {
     const connection = await this.connector.connect(profileId, signal)
@@ -246,6 +248,7 @@ export class AiTerminalManager {
       owned.set(terminalId, record)
       this.sessions.set(ownerId, owned)
       channel.write(`${directoryPrelude(cwd)}\n`)
+      try { this.onTerminalOpened?.({ type: 'terminal-opened', sessionId: ownerId, terminalId, profileId, createdAt: record.createdAt }) } catch { /* UI notification is best-effort. */ }
       return { terminalId, profileId, cwd, motd: session.motd }
     } catch (error) {
       connection.close()
@@ -284,6 +287,10 @@ export class AiTerminalManager {
 
   write(ownerId: string, terminalId: string, text: string): void {
     this.get(ownerId, terminalId).write(text)
+  }
+
+  writeOrdered(ownerId: string, terminalId: string, sequence: number | undefined, text: string): void {
+    this.get(ownerId, terminalId).writeOrdered(sequence, text)
   }
 
   resize(ownerId: string, terminalId: string, cols: number, rows: number): void {
@@ -360,10 +367,10 @@ export interface AiTerminalActivity {
 }
 
 export class BrowserTerminal {
-  private output = ''
-  private baseCursor = 0
+  private readonly output = new TerminalOutputBuffer(1_000_000, 750_000)
   private closed = false
   private idleTimer: ReturnType<typeof setTimeout>
+  private readonly orderedInput = new OrderedTerminalInput(text => this.write(text))
 
   constructor(
     readonly id: string,
@@ -377,35 +384,40 @@ export class BrowserTerminal {
     channel.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
     channel.stderr?.setEncoding('utf8')
     channel.stderr?.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
-    channel.once('close', () => { this.closed = true; connection.close(); onClose() })
+    channel.once('close', () => {
+      this.closed = true
+      this.output.close()
+      connection.close()
+      onClose()
+    })
   }
 
   write(text: string): void { this.touch(); if (this.closed) throw new Error('terminal is closed'); this.channel.write(text) }
+  writeOrdered(sequence: number | undefined, text: string): void { this.orderedInput.push(sequence, text) }
   resize(cols: number, rows: number): void { this.touch(); this.channel.setWindow(clamp(rows, 5, 200), clamp(cols, 20, 400), 0, 0) }
 
   read(cursor: number): { data: string; cursor: number; truncated: boolean; closed: boolean } {
     this.touch()
-    const safeCursor = Math.max(cursor, this.baseCursor)
-    const index = safeCursor - this.baseCursor
-    return { data: this.output.slice(index), cursor: this.baseCursor + this.output.length, truncated: cursor < this.baseCursor, closed: this.closed }
+    return this.output.read(cursor)
+  }
+
+  subscribeOutput(listener: TerminalOutputListener): () => void {
+    this.touch()
+    return this.output.subscribe(listener)
   }
 
   async close(): Promise<void> {
     if (this.closed) return
     this.closed = true
     clearTimeout(this.idleTimer)
+    this.output.close()
     this.channel.end()
     this.connection.close()
     this.onClose()
   }
 
   private append(text: string): void {
-    this.output += text
-    if (this.output.length > 1_000_000) {
-      const removed = this.output.length - 750_000
-      this.output = this.output.slice(removed)
-      this.baseCursor += removed
-    }
+    this.output.append(text)
   }
 
   private touch(): void {
