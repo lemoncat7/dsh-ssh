@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { CredentialProvider } from '@deepseek-ai/dsh-credentials'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { Config as ConfigSchema, resolveConfig, type Config as SshConfig } from './config.js'
 import { registerSshApi, type WebServerLike } from './api.js'
 import { SshConnector } from './connector.js'
@@ -43,7 +44,10 @@ export function apply(context: Context, config: SshConfig): void {
       if (!resolved.exposeWeb) return
       const webServer = runtime.webServer ?? runtime.get('webServer') as WebServerLike | undefined
       if (webServer === undefined) throw new Error('dsh-ssh exposeWeb requires webServer')
-      disposeApi = registerSshApi(webServer, resolved.apiPrefix, { store, credentials, connector, forwards, terminals, aiTerminals, activityEvents })
+      disposeApi = registerSshApi(webServer, resolved.apiPrefix, {
+        store, credentials, connector, forwards, terminals, aiTerminals, activityEvents,
+        sessionCwd: sessionId => runtime.agents.get(sessionId as SessionId)?.session.header.cwd,
+      })
     }
     if (ctx.inject !== undefined) ctx.inject(['webServer'], mountApi)
     else if (ctx.webServer !== undefined) mountApi(ctx)

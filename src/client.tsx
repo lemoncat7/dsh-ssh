@@ -25,7 +25,7 @@ import {
   type InjectionView, type ProfileView, type ProxyEntryView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
-import { ActivitySftpBrowser, ProfileSftpPane } from './sftp-client.js'
+import { ActivitySftpBrowser, LocalWorkspaceBrowser, ProfileSftpPane } from './sftp-client.js'
 import { TerminalTransport } from './terminal-transport.js'
 import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
 
@@ -54,7 +54,7 @@ interface ActivityController {
   subscribe(listener: () => void): () => void
 }
 
-type ActivityViewMode = 'directory' | 'terminals'
+type ActivityViewMode = 'local-directory' | 'remote-directory' | 'terminals'
 
 export const inject = ['slots', 'layout']
 
@@ -109,9 +109,10 @@ function createActivityController(ctx: ClientContext): ActivityController {
   const notify = (): void => { for (const listener of listeners) listener() }
   const controller: ActivityController = {
     open(sessionId, profileId, view) {
+      const nextView = view ?? (profileId === undefined ? 'local-directory' : 'remote-directory')
       if (dispose !== undefined && openSessionId === sessionId) {
         if (profileId !== undefined) selectedProfileId = profileId
-        if (view !== undefined) requestedView = view
+        requestedView = nextView
         ctx.layout.openDetails()
         notify()
         return
@@ -120,7 +121,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
       activatePluginWorkspace(PLUGIN_ID)
       openSessionId = sessionId
       selectedProfileId = profileId
-      requestedView = view
+      requestedView = nextView
       dispose = ctx.slots.register({ name: 'details', priority: -2 }, props => (
         <SshActivityPanel {...props} controller={controller} />
       ))
@@ -153,7 +154,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
 function SshActivityPanel(props: DetailsProps & { controller: ActivityController }): JSX.Element {
   const sessionId = String(props.sessionId)
   const [activity, setActivity] = useState<ActivityView>()
-  const [view, setView] = useState<ActivityViewMode>(() => props.controller.requestedView(sessionId) ?? 'directory')
+  const [view, setView] = useState<ActivityViewMode>(() => props.controller.requestedView(sessionId) ?? 'local-directory')
   const [error, setError] = useState<string>()
   const [, setRevision] = useState(0)
   useEffect(() => props.controller.subscribe(() => {
@@ -165,7 +166,7 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
     try {
       const next = await loadActivity(sessionId)
       setActivity(next)
-      if (next.injection?.permission !== 'terminal') setView('directory')
+      if (next.injection?.permission !== 'terminal') setView(current => current === 'terminals' ? 'local-directory' : current)
       setError(undefined)
     } catch (reason) { setError(message(reason)) }
   }, [props.controller, sessionId])
@@ -174,26 +175,27 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
     const timer = window.setInterval(() => { void refresh() }, view === 'terminals' ? 1800 : 2500)
     return () => clearInterval(timer)
   }, [refresh, view])
-  return <section className="dsh-ssh-activity-panel" data-xiaohei-surface="plugin-workspace" aria-label="SSH 活动">
+  return <section className="dsh-ssh-activity-panel" aria-label="SSH 活动">
     <header className="dsh-ssh-activity-header">
       <div className="dsh-ssh-activity-title"><span className="dsh-ssh-activity-mark"><ServerGlyph /></span><span><strong>SSH 活动</strong><small>当前会话 · {shortId(sessionId)}</small></span></div>
       <button type="button" className="dsh-ssh-icon-button" aria-label="关闭 SSH 活动" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
     </header>
-    {activity?.injection && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
-      <button type="button" className={view === 'directory' ? 'is-active' : ''} aria-pressed={view === 'directory'} onClick={() => setView('directory')}><IconFolderOpenOutline16 size={16} />目录</button>
-      {activity.injection.permission === 'terminal' && <button type="button" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => setView('terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
+    {activity && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
+      <button type="button" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => setView('local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
+      {activity.profiles.length > 0 && <button type="button" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => setView('remote-directory')}><ServerGlyph />远端目录</button>}
+      {activity.injection?.permission === 'terminal' && <button type="button" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => setView('terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
     </nav>}
     <div className="dsh-ssh-activity-body">
       {activity === undefined ? <p className="dsh-ssh-activity-state">正在读取 SSH 会话…</p>
-        : activity.injection === null ? <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>当前会话尚未连接远端</strong><p>从左侧「远端」列表打开一台主机，并授权给当前会话后即可浏览目录和终端。</p></div>
-          : view === 'directory' ? <DirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId)} onSaved={refresh} />
+        : view === 'local-directory' ? <LocalWorkspaceBrowser sessionId={sessionId} />
+          : view === 'remote-directory' ? <RemoteDirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId, 'remote-directory')} onSaved={refresh} />
             : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} />}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     </div>
   </section>
 }
 
-function DirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
+function RemoteDirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
   const profile = profiles.find(item => item.id === selectedProfileId) ?? profiles[0]
   if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先向当前会话注入一个 SSH 连接。</p></div>
   return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
@@ -295,7 +297,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   const openActivity = (profileId?: string): void => {
     if (currentSessionId === undefined) return
     props.controller.close()
-    props.activityController.open(currentSessionId, profileId, 'directory')
+    props.activityController.open(currentSessionId, profileId, profileId === undefined ? 'local-directory' : 'remote-directory')
   }
   const toggleActivity = (): void => {
     if (currentSessionId === undefined) return
@@ -368,7 +370,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === selectedId)
   const toolbar = <header className="dsh-ssh-toolbar">
-      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" data-xiaohei-workspace-close aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
+      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
       <nav className="dsh-ssh-segments" aria-label="远端视图">
         <Segment active={view === 'terminal'} onClick={() => setView('terminal')}>终端</Segment>
         <Segment active={view === 'sftp'} onClick={() => setView('sftp')}>SFTP</Segment>
@@ -383,7 +385,6 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   return <>
     <AdaptiveWorkspace
       className="dsh-ssh-workspace"
-      data-xiaohei-surface="plugin-workspace"
       toolbar={toolbar}
       notice={notice}
       navigationLabel="主机"

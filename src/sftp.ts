@@ -270,14 +270,14 @@ function formatByteLimit(value: number): string {
   return value % (1024 * 1024) === 0 ? `${value / (1024 * 1024)} MB` : `${value} bytes`
 }
 
-function previewKind(mimeType: string): SftpFilePreview['kind'] {
+export function previewKind(mimeType: string): SftpFilePreview['kind'] {
   if (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'application/xml' || mimeType === 'application/javascript') return 'text'
   if (mimeType.startsWith('image/')) return 'image'
   if (mimeType === 'application/pdf') return 'pdf'
   return 'binary'
 }
 
-function mimeTypeFor(value: string): string {
+export function mimeTypeFor(value: string): string {
   const name = remoteName(value).toLowerCase()
   if (TEXT_FILENAMES.has(name)) return 'text/plain'
   const extension = path.posix.extname(value).toLowerCase()

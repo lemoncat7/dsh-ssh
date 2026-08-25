@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   IconChevronLeftOutline14, IconDataOutline16, IconDownloadOutline16, IconFolderClose16,
   IconRefreshOutline16, IconSendOutline14,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  ApiError, loadProfileSftpDirectory, loadProfileSftpFilePreview, loadSftpDirectory, loadSftpFilePreview,
-  profileAddress, profileSftpFileUrl, sftpFileUrl, updateActivityDirectory, uploadProfileSftpFile,
+  ApiError, loadLocalWorkspaceDirectory, loadLocalWorkspaceFilePreview, loadProfileSftpDirectory, loadProfileSftpFilePreview,
+  loadSftpDirectory, loadSftpFilePreview, localWorkspaceFileUrl, profileAddress, profileSftpFileUrl, sftpFileUrl,
+  updateActivityDirectory, uploadProfileSftpFile,
   type ActivityProfileView, type ProfileView, type SftpDirectoryView, type SftpEntryView, type SftpFilePreviewView,
 } from './client-api.js'
 
@@ -19,6 +22,13 @@ interface SftpExplorerProps {
   loadPreview(path: string): Promise<SftpFilePreviewView>
   fileUrl(path: string, inline?: boolean): string
   uploadFile?(directory: string, file: File, overwrite: boolean): Promise<unknown>
+}
+
+export function LocalWorkspaceBrowser({ sessionId }: { sessionId: string }): JSX.Element {
+  const loadDirectory = useCallback((path: string) => loadLocalWorkspaceDirectory(sessionId, path || undefined), [sessionId])
+  const loadPreview = useCallback((path: string) => loadLocalWorkspaceFilePreview(sessionId, path), [sessionId])
+  const fileUrl = useCallback((path: string, inline = false) => localWorkspaceFileUrl(sessionId, path, inline), [sessionId])
+  return <SftpExplorer initialPath="" loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} />
 }
 
 export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, onSaved }: { sessionId: string; profile: ActivityProfileView; profiles: ActivityProfileView[]; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
@@ -119,7 +129,8 @@ function SftpFilePreview({ entry, loadPreview, fileUrl, onBack }: { entry: SftpE
     <div className="dsh-ssh-file-preview-body dsh-ssh-scroll-surface">
       {error ? <p className="dsh-ssh-directory-error" role="alert">{error}</p>
         : preview === undefined ? <p className="dsh-ssh-sftp-state">正在打开文件…</p>
-          : preview.kind === 'text' ? <><pre>{preview.text || ''}</pre>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
+          : preview.kind === 'text' && preview.mimeType === 'text/markdown' ? <><article className="dsh-ssh-markdown-preview"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: props => <a {...props} target="_blank" rel="noreferrer" /> }}>{preview.text || ''}</ReactMarkdown></article>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
+            : preview.kind === 'text' ? <><pre>{preview.text || ''}</pre>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
             : preview.kind === 'image' ? <img src={fileUrl(entry.path, true)} alt={entry.name} />
               : preview.kind === 'pdf' ? <iframe src={fileUrl(entry.path, true)} title={entry.name} />
                 : <div className="dsh-ssh-file-binary"><IconDataOutline16 size={24} /><strong>此文件无法直接预览</strong><p>{preview.mimeType}</p><a href={downloadUrl}><IconDownloadOutline16 size={16} />下载文件</a></div>}

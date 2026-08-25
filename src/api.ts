@@ -14,6 +14,7 @@ import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
 import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
 import { ActivityEventBus, streamActivityEvents } from './activity-events.js'
+import { listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview } from './local-workspace.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -34,6 +35,7 @@ export interface SshApiRuntime {
   terminals: BrowserTerminalManager
   aiTerminals: AiTerminalManager
   activityEvents: ActivityEventBus
+  sessionCwd(sessionId: string): string | undefined
 }
 
 export function registerSshApi(webServer: WebServerLike, prefix: string, runtime: SshApiRuntime): () => void {
@@ -320,6 +322,24 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
 
   if (segments[0] === 'activity') {
     const sessionId = url.searchParams.get('sessionId')
+    if (method === 'GET' && segments[1] === 'local-directory' && segments.length === 2) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      const cwd = runtime.sessionCwd(sessionId)
+      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      return sendJson(res, 200, await listLocalWorkspace(cwd, url.searchParams.get('path') ?? undefined))
+    }
+    if (method === 'GET' && segments[1] === 'local-file' && segments.length === 2) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      const cwd = runtime.sessionCwd(sessionId)
+      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      return sendJson(res, 200, await readLocalWorkspacePreview(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+    }
+    if (method === 'GET' && segments[1] === 'local-download' && segments.length === 2) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      const cwd = runtime.sessionCwd(sessionId)
+      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      return streamLocalFile(res, url, await openLocalWorkspaceFile(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+    }
     if (method === 'GET' && segments[1] === 'events' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       if (runtime.store.injection(sessionId) === undefined) throw httpError(403, 'SSH access is not injected into this DSH session')
@@ -614,6 +634,17 @@ async function streamSftpFile(res: ServerResponse, url: URL, runtime: SshApiRunt
   res.setHeader('Content-Disposition', `${url.searchParams.get('inline') === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`)
   res.setHeader('X-Content-Type-Options', 'nosniff')
   try { await pipeline(file.stream, res) } finally { file.close() }
+}
+
+async function streamLocalFile(res: ServerResponse, url: URL, file: Awaited<ReturnType<typeof openLocalWorkspaceFile>>): Promise<void> {
+  const filename = file.path.replaceAll('\\', '/').split('/').at(-1) || 'download'
+  res.statusCode = 200
+  res.setHeader('Cache-Control', 'private, no-store')
+  res.setHeader('Content-Type', file.mimeType)
+  res.setHeader('Content-Length', String(file.size))
+  res.setHeader('Content-Disposition', `${url.searchParams.get('inline') === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  await pipeline(file.stream, res)
 }
 
 function sendJson(res: ServerResponse, status: number, value: unknown): void {

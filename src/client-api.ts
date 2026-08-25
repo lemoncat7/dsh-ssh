@@ -73,6 +73,20 @@ export function loadSftpDirectory(sessionId: string, profileId: string, path?: s
   if (path !== undefined) query.set('path', path)
   return api(`/activity/files?${query.toString()}`)
 }
+export function loadLocalWorkspaceDirectory(sessionId: string, path?: string): Promise<SftpDirectoryView> {
+  const query = new URLSearchParams({ sessionId })
+  if (path !== undefined) query.set('path', path)
+  return api(`/activity/local-directory?${query.toString()}`)
+}
+export function loadLocalWorkspaceFilePreview(sessionId: string, path: string): Promise<SftpFilePreviewView> {
+  const query = new URLSearchParams({ sessionId, path })
+  return api(`/activity/local-file?${query.toString()}`)
+}
+export function localWorkspaceFileUrl(sessionId: string, path: string, inline = false): string {
+  const query = new URLSearchParams({ sessionId, path })
+  if (inline) query.set('inline', '1')
+  return `${SSH_API}/activity/local-download?${query.toString()}`
+}
 export function loadSftpFilePreview(sessionId: string, profileId: string, path: string): Promise<SftpFilePreviewView> {
   const query = new URLSearchParams({ sessionId, profileId, path })
   return api(`/activity/file?${query.toString()}`)
