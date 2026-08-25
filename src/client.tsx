@@ -5,7 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
-import { AdaptiveWorkspace } from '@lemoncat7/dsh-plugin-ui'
+import { activatePluginWorkspace, AdaptiveWorkspace, observePluginWorkspace } from '@lemoncat7/dsh-plugin-ui'
 import adaptiveUiCss from '@lemoncat7/dsh-plugin-ui/styles.css'
 import {
   IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconCodeOutline16, IconDataOutline16,
@@ -27,6 +27,7 @@ import {
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ActivitySftpBrowser, ProfileSftpPane } from './sftp-client.js'
 import { TerminalTransport } from './terminal-transport.js'
+import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -61,6 +62,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(installStyles, 'dsh-ssh: styles')
   const activityController = createActivityController(ctx)
   const controller = createController(ctx, () => activityController.close())
+  ctx.effect(() => observePluginWorkspace(PLUGIN_ID, () => { controller.close(); activityController.close() }), 'dsh-ssh: exclusive workspace')
   ctx.effect(() => () => { controller.close(); activityController.close() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'ssh-remote', order: -100,
@@ -82,6 +84,7 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
       beforeOpen()
       if (profileId !== undefined) selected = profileId
       if (dispose === undefined) {
+        activatePluginWorkspace(PLUGIN_ID)
         dispose = ctx.slots.register({ name: 'conversation', priority: -2 }, props => (
           <RemoteWorkspace {...props} controller={controller} />
         ))
@@ -114,6 +117,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
         return
       }
       controller.close()
+      activatePluginWorkspace(PLUGIN_ID)
       openSessionId = sessionId
       selectedProfileId = profileId
       requestedView = view
@@ -170,9 +174,9 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
     const timer = window.setInterval(() => { void refresh() }, view === 'terminals' ? 1800 : 2500)
     return () => clearInterval(timer)
   }, [refresh, view])
-  return <section className="dsh-ssh-activity-panel" aria-label="SSH 活动">
+  return <section className="dsh-ssh-activity-panel" data-xiaohei-surface="plugin-workspace" aria-label="SSH 活动">
     <header className="dsh-ssh-activity-header">
-      <span><strong>SSH 活动</strong><small>当前会话 · {shortId(sessionId)}</small></span>
+      <div className="dsh-ssh-activity-title"><span className="dsh-ssh-activity-mark"><ServerGlyph /></span><span><strong>SSH 活动</strong><small>当前会话 · {shortId(sessionId)}</small></span></div>
       <button type="button" className="dsh-ssh-icon-button" aria-label="关闭 SSH 活动" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
     </header>
     {activity?.injection && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
@@ -205,7 +209,10 @@ function TerminalActivity({ sessionId, terminals }: { sessionId: string; termina
   }, [preferred?.terminalId, selectedId, terminals])
   if (terminal === undefined) return <div className="dsh-ssh-activity-empty"><IconCodeOutline16 size={22} /><strong>还没有打开的终端</strong><p>AI 打开交互终端后，会直接显示在这里。</p></div>
   return <div className="dsh-ssh-terminal-workbench">
-    {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher" aria-label="SSH 终端">{terminals.map((item, index) => <button type="button" className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} />{item.name || `终端 ${index + 1}`}</button>)}</nav>}
+    {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher dsh-ssh-scroll-surface" aria-label="SSH 终端">{terminals.map((item, index) => {
+      const label = item.name || `终端 ${index + 1}`
+      return <button type="button" title={label} className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} /><span className="dsh-ssh-terminal-switcher-label">{label}</span></button>
+    })}</nav>}
     <div className="dsh-ssh-terminal-observer">
       <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? '运行中' : '已退出'}</span></div>
       <InteractiveTerminal key={terminal.terminalId} sessionId={sessionId} terminal={terminal} onError={setError} />
@@ -220,20 +227,14 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return
-    const terminal = new Terminal({
-      convertEol: true, disableStdin: activity.status.kind !== 'running', cursorBlink: activity.status.kind === 'running', cursorInactiveStyle: 'outline', fontSize: 11, lineHeight: 1.35, scrollback: 4000,
-      fontFamily: '"SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace',
-      theme: { background: '#111817', foreground: '#dce5e1', cursor: '#77b6a5', selectionBackground: '#547d7855', black: '#111817', green: '#75a998', brightGreen: '#9acabb' },
-    })
+    const terminal = createSshTerminal({ compact: true, readOnly: activity.status.kind !== 'running', scrollback: 4000 })
     const fit = new FitAddon()
-    terminal.loadAddon(fit); terminal.open(host); fit.fit(); terminalRef.current = terminal; terminal.focus()
+    terminal.loadAddon(fit); terminal.open(host); terminalRef.current = terminal; terminal.focus()
     const transport = new TerminalTransport({
       streamUrl: activityTerminalStreamUrl(sessionId, activity.terminalId),
       read: cursor => readActivityTerminalOutput(sessionId, activity.terminalId, cursor),
       send: (text, sequence) => sendActivityTerminalInput(sessionId, activity.terminalId, text, sequence),
     })
-    let resizeTimer: number | undefined
-    let lastSize = ''
     const input = terminal.onData(data => transport.sendInput(data, reason => onError(message(reason))))
     const stopOutput = transport.observe({
       output: value => {
@@ -244,28 +245,18 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
       },
       error: reason => onError(message(reason)),
     })
-    const syncSize = (): void => {
-      fit.fit()
-      const size = `${terminal.cols}x${terminal.rows}`
-      if (size === lastSize) return
-      lastSize = size
-      void resizeActivityTerminal(sessionId, activity.terminalId, terminal.cols, terminal.rows).catch(reason => onError(message(reason)))
-    }
-    const resize = new ResizeObserver(() => {
-      if (resizeTimer !== undefined) clearTimeout(resizeTimer)
-      resizeTimer = window.setTimeout(syncSize, 80)
+    const viewport = attachTerminalViewport(host, terminal, fit, (cols, rows) => {
+      void resizeActivityTerminal(sessionId, activity.terminalId, cols, rows).catch(reason => onError(message(reason)))
     })
-    resize.observe(host)
     return () => {
-      if (resizeTimer !== undefined) clearTimeout(resizeTimer)
-      stopOutput(); transport.dispose(); input.dispose(); resize.disconnect(); terminal.dispose(); terminalRef.current = undefined
+      stopOutput(); transport.dispose(); input.dispose(); viewport.dispose(); terminal.dispose(); terminalRef.current = undefined
     }
   }, [activity.terminalId, onError, sessionId])
   useEffect(() => {
     const terminal = terminalRef.current
     if (terminal !== undefined) terminal.options.disableStdin = activity.status.kind !== 'running'
   }, [activity.status.kind])
-  return <div ref={hostRef} className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端" />
+  return <div className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div>
 }
 
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {
@@ -377,7 +368,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === selectedId)
   const toolbar = <header className="dsh-ssh-toolbar">
-      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
+      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" data-xiaohei-workspace-close aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
       <nav className="dsh-ssh-segments" aria-label="远端视图">
         <Segment active={view === 'terminal'} onClick={() => setView('terminal')}>终端</Segment>
         <Segment active={view === 'sftp'} onClick={() => setView('sftp')}>SFTP</Segment>
@@ -392,6 +383,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   return <>
     <AdaptiveWorkspace
       className="dsh-ssh-workspace"
+      data-xiaohei-surface="plugin-workspace"
       toolbar={toolbar}
       notice={notice}
       navigationLabel="主机"
@@ -401,7 +393,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       inspectorIcon={<IconUserOutline16 size={15} />}
       inspector={<InjectionInspector sessionId={sessionId === undefined ? undefined : String(sessionId)} profiles={profiles} selected={selected} />}
     >
-      <section className="dsh-ssh-main-panel">
+      <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
         {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState onNew={() => setEditing('new')} />
@@ -441,7 +433,7 @@ function ProfileList({ profiles, selectedId, onSelect, onNew }: { profiles: Prof
   return <aside className="dsh-ssh-profile-panel">
     <div className="dsh-ssh-panel-heading"><span><strong>主机</strong><small>{groups.length} 个分组 · {profiles.length} 台主机</small></span><button className="dsh-ssh-icon-button" onClick={onNew} aria-label="新建连接"><IconPlusOutline16 size={16} /></button></div>
     <label className="dsh-ssh-search"><span className="sr-only">搜索连接</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索主机、分组、标签…" /></label>
-    <div className="dsh-ssh-profile-list">
+    <div className="dsh-ssh-profile-list dsh-ssh-scroll-surface">
       {groups.map(group => <ProfileGroup key={group.name} group={group} open={normalizedQuery !== '' || !collapsedGroups.has(group.name)} selectedId={selectedId} onToggle={() => toggleGroup(group.name)} onSelect={onSelect} />)}
       {groups.length === 0 && <p className="dsh-ssh-profile-empty">{profiles.length === 0 ? '还没有 SSH 主机' : '没有匹配的主机'}</p>}
     </div>
@@ -494,19 +486,16 @@ function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): voi
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return
-    const terminal = new Terminal({
-      convertEol: true, cursorBlink: true, fontSize: 13, lineHeight: 1.35, scrollback: 5000,
-      fontFamily: '"SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace',
-      theme: { background: '#111817', foreground: '#dce5e1', cursor: '#77b6a5', selectionBackground: '#547d7855', black: '#111817', green: '#75a998', brightGreen: '#9acabb' },
-    })
+    const terminal = createSshTerminal({ scrollback: 5000 })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
     terminal.open(host)
-    fit.fit()
     terminalRef.current = terminal; fitRef.current = fit
-    const resize = new ResizeObserver(() => { fit.fit(); const id = terminalIdRef.current; if (id !== undefined) void api(`/terminals/${id}/resize`, { method: 'POST', body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }) }).catch(() => {}) })
-    resize.observe(host)
-    return () => { resize.disconnect(); terminal.dispose(); terminalRef.current = undefined; fitRef.current = undefined }
+    const viewport = attachTerminalViewport(host, terminal, fit, (cols, rows) => {
+      const id = terminalIdRef.current
+      if (id !== undefined) void api(`/terminals/${id}/resize`, { method: 'POST', body: JSON.stringify({ cols, rows }) }).catch(() => {})
+    })
+    return () => { viewport.dispose(); terminal.dispose(); terminalRef.current = undefined; fitRef.current = undefined }
   }, [])
 
   useEffect(() => { terminalIdRef.current = terminalId }, [terminalId])
@@ -559,7 +548,7 @@ function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): voi
       </div>
     </div>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-terminal-frame"><div ref={hostRef} className="dsh-ssh-xterm" /><div className="dsh-ssh-terminal-status"><span>{phase === 'connected' ? '已连接' : phase === 'connecting' ? '正在建立安全连接' : '终端未连接'}</span><span>UTF-8 · {profile.terminalType}</span></div></div>
+    <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span>{phase === 'connected' ? '已连接' : phase === 'connecting' ? '正在建立安全连接' : '终端未连接'}</span><span>UTF-8 · {profile.terminalType}</span></div></div>
   </div>
 }
 
@@ -619,7 +608,7 @@ function InjectionInspector({ sessionId, profiles, selected }: { sessionId?: str
     const profileIds = current.profileIds.includes(profileId) ? current.profileIds.filter(id => id !== profileId) : [...current.profileIds, profileId]
     update({ profileIds })
   }
-  return <aside className="dsh-ssh-inspector">
+  return <aside className="dsh-ssh-inspector dsh-ssh-scroll-surface">
     <div className="dsh-ssh-panel-heading"><span><strong>会话注入</strong><small>{sessionId === undefined ? '当前没有会话' : '仅对当前对话生效'}</small></span></div>
     {sessionId === undefined ? <div className="dsh-ssh-inspector-empty">先打开一个 DSH 会话，再选择允许 AI 使用的远端连接。</div> : <>
       <div className="dsh-ssh-session-chip"><span className="dsh-ssh-session-pulse" /><span><strong>当前会话</strong><small>{shortId(sessionId)}</small></span></div>
@@ -877,7 +866,7 @@ function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileV
 }
 
 function Dialog({ title, subtitle, onClose, children }: { title: string; subtitle?: string | undefined; onClose(): void; children: ReactNode }): JSX.Element {
-  return <div className="dsh-ssh-dialog-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section className="dsh-ssh-dialog" role="dialog" aria-modal="true" aria-labelledby="dsh-ssh-dialog-title"><header><span><h2 id="dsh-ssh-dialog-title">{title}</h2>{subtitle && <p>{subtitle}</p>}</span><button className="dsh-ssh-icon-button" onClick={onClose} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>{children}</section></div>
+  return <div className="dsh-ssh-dialog-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section className="dsh-ssh-dialog dsh-ssh-scroll-surface" role="dialog" aria-modal="true" aria-labelledby="dsh-ssh-dialog-title"><header><span><h2 id="dsh-ssh-dialog-title">{title}</h2>{subtitle && <p>{subtitle}</p>}</span><button className="dsh-ssh-icon-button" onClick={onClose} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>{children}</section></div>
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string | undefined; children: ReactNode }): JSX.Element { return <label className="dsh-ssh-field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label> }

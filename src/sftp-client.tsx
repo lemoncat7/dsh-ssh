@@ -90,7 +90,7 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
       </form>
       {pendingOverwrite !== undefined && <div className="dsh-ssh-upload-conflict" role="alert"><span><strong>同名文件已存在</strong><small>{pendingOverwrite.name}</small></span><span><button type="button" onClick={() => setPendingOverwrite(undefined)}>取消</button><button type="button" className="is-primary" disabled={uploading !== undefined} onClick={() => { void upload(pendingOverwrite, true) }}>覆盖上传</button></span></div>}
       {error && <p className="dsh-ssh-directory-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-sftp-table" aria-busy={loading}>
+      <div className="dsh-ssh-sftp-table dsh-ssh-scroll-surface" aria-busy={loading}>
         <div className="dsh-ssh-sftp-columns"><span>名称</span><span>大小</span><span>修改时间</span></div>
         {loading && directory === undefined ? <p className="dsh-ssh-sftp-state">正在读取远端目录…</p>
           : directory?.entries.length === 0 ? <p className="dsh-ssh-sftp-state">此目录为空</p>
@@ -116,7 +116,7 @@ function SftpFilePreview({ entry, loadPreview, fileUrl, onBack }: { entry: SftpE
   const downloadUrl = fileUrl(entry.path)
   return <section className="dsh-ssh-file-preview">
     <header><button type="button" className="dsh-ssh-icon-button" aria-label="返回目录" title="返回目录" onClick={onBack}><IconChevronLeftOutline14 size={14} /></button><span><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a></header>
-    <div className="dsh-ssh-file-preview-body">
+    <div className="dsh-ssh-file-preview-body dsh-ssh-scroll-surface">
       {error ? <p className="dsh-ssh-directory-error" role="alert">{error}</p>
         : preview === undefined ? <p className="dsh-ssh-sftp-state">正在打开文件…</p>
           : preview.kind === 'text' ? <><pre>{preview.text || ''}</pre>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
