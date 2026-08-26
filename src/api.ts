@@ -368,9 +368,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'DELETE' && segments[1] === 'terminals' && segments[2] !== undefined && segments.length === 3) {
       requireMutationHeader(req)
       if (!sessionId) throw httpError(400, 'sessionId is required')
-      requireActivityTerminal(runtime.store, sessionId)
-      const closed = await runtime.aiTerminals.close(sessionId, segments[2])
-      if (!closed) throw httpError(404, 'SSH terminal was not found in the current DSH session')
+      await closeActivityTerminal(runtime, sessionId, segments[2])
       return sendJson(res, 204, undefined)
     }
     if (method === 'PUT' && segments[1] === 'directory' && segments.length === 2) {
@@ -408,6 +406,10 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const operation = segments[3]
       const body = await readObject(req)
       const targetSessionId = requireText(body.sessionId, 'sessionId', 200)
+      if (operation === 'close') {
+        await closeActivityTerminal(runtime, targetSessionId, terminalId)
+        return sendJson(res, 204, undefined)
+      }
       requireActivityTerminal(runtime.store, targetSessionId)
       if (operation === 'input') {
         runtime.aiTerminals.writeOrdered(targetSessionId, terminalId, optionalInteger(body.sequence, 0, Number.MAX_SAFE_INTEGER), requireRawText(body.text, 'text', 100_000))
@@ -488,6 +490,13 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   }
 
   throw httpError(404, 'SSH API route was not found')
+}
+
+async function closeActivityTerminal(runtime: SshApiRuntime, sessionId: string, terminalId: string): Promise<void> {
+  requireActivityTerminal(runtime.store, sessionId)
+  if (!await runtime.aiTerminals.close(sessionId, terminalId)) {
+    throw httpError(404, 'SSH terminal was not found in the current DSH session')
+  }
 }
 
 async function profileViews(runtime: SshApiRuntime): Promise<unknown[]> {

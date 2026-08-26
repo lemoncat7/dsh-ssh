@@ -268,7 +268,7 @@ function applyModeToolVisibility(assembly: PromptAssembly, permission: 'exec' | 
   assembly.contexts.push({
     name: 'dsh-ssh:permission-mode',
     text: permission === 'terminal'
-      ? 'SSH permission mode: terminal control. Use ssh_terminal_open and ssh_terminal_send for remote commands; ssh_exec is intentionally unavailable so commands and output remain visible in SSH Activity.'
+      ? 'SSH permission mode: terminal control. Open one terminal for each required SSH host and working directory, retain the terminalId returned by ssh_terminal_open, and use that same terminalId for subsequent ssh_terminal_send/read calls. Do not call ssh_terminal_open again before each command. If the terminalId is unavailable, ssh_terminal_open is idempotent and safely returns the existing terminal. ssh_exec is intentionally unavailable so commands and output remain visible in SSH Activity.'
       : 'SSH permission mode: one-shot commands. Use ssh_exec; interactive terminal tools are intentionally unavailable.',
   })
 }
