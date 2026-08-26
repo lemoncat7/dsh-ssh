@@ -488,6 +488,11 @@
   color: var(--ssh-danger);
   background: color-mix(in srgb, var(--ssh-danger) 7%, transparent);
 }
+.dsh-ssh-danger-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ssh-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--ssh-danger) 11%, transparent);
+}
+.dsh-ssh-danger-button:disabled { opacity: .5; cursor: not-allowed; }
 .dsh-ssh-small-primary {
   min-height: 26px;
   padding: 0 10px;
@@ -1002,9 +1007,69 @@
 .dsh-ssh-radio-row:hover {
   background: var(--ssh-hover);
 }
-.dsh-ssh-check-row input,
-.dsh-ssh-radio-row input {
-  accent-color: var(--ssh-accent);
+.dsh-ssh-check-row > input,
+.dsh-ssh-radio-row > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.dsh-ssh-check-row > i,
+.dsh-ssh-radio-row > i {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--ssh-text-muted) 54%, transparent);
+  background: var(--ssh-control);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+.dsh-ssh-check-row > i {
+  border-radius: 5px;
+}
+.dsh-ssh-radio-row > i {
+  border-radius: 50%;
+}
+.dsh-ssh-check-row > i::after {
+  width: 7px;
+  height: 4px;
+  margin-top: -2px;
+  border: solid #f7fbfa;
+  border-width: 0 0 2px 2px;
+  content: "";
+  opacity: 0;
+  transform: rotate(-45deg) scale(0.7);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.dsh-ssh-radio-row > i::after {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f7fbfa;
+  content: "";
+  opacity: 0;
+  transform: scale(0.55);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.dsh-ssh-check-row > input:checked + i,
+.dsh-ssh-radio-row > input:checked + i {
+  border-color: var(--ssh-accent-strong);
+  background: var(--ssh-accent-strong);
+}
+.dsh-ssh-check-row > input:checked + i::after,
+.dsh-ssh-radio-row > input:checked + i::after {
+  opacity: 1;
+  transform: rotate(-45deg) scale(1);
+}
+.dsh-ssh-radio-row > input:checked + i::after {
+  transform: scale(1);
+}
+.dsh-ssh-check-row > input:focus-visible + i,
+.dsh-ssh-radio-row > input:focus-visible + i {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ssh-focus-ring) 34%, transparent);
 }
 .dsh-ssh-check-row > span,
 .dsh-ssh-radio-row > span {
@@ -1301,10 +1366,41 @@
   padding-top: 5px;
 }
 .dsh-ssh-dialog-actions .dsh-ssh-primary-button,
-.dsh-ssh-dialog-actions .dsh-ssh-secondary-button {
+.dsh-ssh-dialog-actions .dsh-ssh-secondary-button,
+.dsh-ssh-dialog-actions .dsh-ssh-danger-button {
   min-height: 34px;
   font-size: 13px;
 }
+.dsh-ssh-delete-profile {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px 12px;
+  padding: 20px 18px 18px;
+}
+.dsh-ssh-delete-profile-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in srgb, var(--ssh-danger) 22%, transparent);
+  border-radius: 11px;
+  color: var(--ssh-danger);
+  background: color-mix(in srgb, var(--ssh-danger) 7%, transparent);
+}
+.dsh-ssh-delete-profile > div:nth-child(2) { min-width: 0; }
+.dsh-ssh-delete-profile > div:nth-child(2) strong { font-size: 13px; }
+.dsh-ssh-delete-profile > div:nth-child(2) p,
+.dsh-ssh-delete-profile-block p { margin: 4px 0 0; color: var(--ssh-text-subtle); font-size: 11px; line-height: 1.55; }
+.dsh-ssh-delete-profile-block,
+.dsh-ssh-delete-profile > .dsh-ssh-inline-error,
+.dsh-ssh-delete-profile > .dsh-ssh-dialog-actions { grid-column: 1 / -1; }
+.dsh-ssh-delete-profile-block {
+  border: 1px solid color-mix(in srgb, var(--ssh-warning) 24%, transparent);
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--ssh-warning) 7%, transparent);
+}
+.dsh-ssh-delete-profile-block strong { color: color-mix(in srgb, var(--ssh-warning) 82%, var(--ssh-text)); font-size: 11px; }
 .dsh-ssh-form .dsh-ssh-switch-row {
   margin: 0;
 }
@@ -1522,7 +1618,8 @@
 }
 .dsh-ssh-activity-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   gap: 2px;
   margin: 12px 14px 0;
   padding: 3px;
@@ -1538,9 +1635,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 6px;
   border: 0;
   border-radius: 7px;
   color: var(--ssh-text-muted);
@@ -1556,9 +1654,6 @@
   background: var(--ssh-activity-surface-raised);
   box-shadow: 0 1px 3px
     color-mix(in srgb, var(--ssh-text) 9%, transparent);
-}
-.dsh-ssh-activity-tabs button:only-child {
-  grid-column: 1/-1;
 }
 .dsh-ssh-activity-body {
   display: flex;
@@ -1829,6 +1924,35 @@
 .dsh-ssh-terminal-state.is-running {
   color: #8fc0af;
 }
+.dsh-ssh-terminal-observer-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 9px;
+}
+.dsh-ssh-terminal-close {
+  display: inline-flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid #ffffff14;
+  border-radius: 7px;
+  color: #9caaa5;
+  background: #ffffff05;
+  font: 550 9px/1 var(--ssh-font-sans);
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+.dsh-ssh-terminal-close:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #d98e88 28%, transparent);
+  color: #e2a49f;
+  background: color-mix(in srgb, #d98e88 8%, transparent);
+}
+.dsh-ssh-terminal-close:active:not(:disabled) { transform: scale(.97); }
+.dsh-ssh-terminal-close:disabled { opacity: .48; cursor: wait; }
 .dsh-ssh-terminal-screen {
   box-sizing: border-box;
   display: flex;

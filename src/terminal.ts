@@ -224,12 +224,43 @@ export class BrowserTerminalManager {
 /** Owner-scoped AI terminals for Web profiles, whose official Terminal service lives inside each Agent preset realm. */
 export class AiTerminalManager {
   private readonly sessions = new Map<string, Map<string, AiTerminalRecord>>()
+  private readonly pendingOpens = new Map<string, Promise<AiTerminalOpenResult>>()
+  private closing = false
   constructor(
     private readonly connector: SshConnector,
     private readonly onTerminalOpened?: (event: TerminalOpenedEvent) => void,
   ) {}
 
-  async create(ownerId: string, profileId: string, cwd: string, name?: string, signal?: AbortSignal): Promise<{ terminalId: string; profileId: string; cwd: string; motd: string }> {
+  async create(ownerId: string, profileId: string, cwd: string, name?: string, signal?: AbortSignal): Promise<AiTerminalOpenResult> {
+    if (this.closing) throw new Error('SSH terminal manager is closing')
+    const key = terminalIdentity(ownerId, profileId, cwd)
+    const pending = this.pendingOpens.get(key)
+    if (pending !== undefined) {
+      const result = { ...await pending, reused: true }
+      this.notifyTerminalOpened(ownerId, result.terminalId)
+      return result
+    }
+
+    const opening = this.openOrReuse(ownerId, profileId, cwd, name, signal)
+    this.pendingOpens.set(key, opening)
+    try {
+      const result = await opening
+      this.notifyTerminalOpened(ownerId, result.terminalId)
+      return result
+    } finally {
+      if (this.pendingOpens.get(key) === opening) this.pendingOpens.delete(key)
+    }
+  }
+
+  private async openOrReuse(ownerId: string, profileId: string, cwd: string, name?: string, signal?: AbortSignal): Promise<AiTerminalOpenResult> {
+    const matching = [...(this.sessions.get(ownerId) ?? new Map()).values()]
+      .filter(record => record.profileId === profileId && record.cwd === cwd)
+      .sort((left, right) => right.createdAt - left.createdAt)
+    const reusable = matching.find(record => record.session.status().kind === 'running')
+    const obsolete = matching.filter(record => record !== reusable)
+    await this.removeRecords(ownerId, obsolete)
+    if (reusable !== undefined) return terminalOpenResult(reusable, true)
+
     const connection = await this.connector.connect(profileId, signal)
     try {
       const channel = await openShell(connection, 120, 32)
@@ -248,8 +279,7 @@ export class AiTerminalManager {
       owned.set(terminalId, record)
       this.sessions.set(ownerId, owned)
       channel.write(`${directoryPrelude(cwd)}\n`)
-      try { this.onTerminalOpened?.({ type: 'terminal-opened', sessionId: ownerId, terminalId, profileId, createdAt: record.createdAt }) } catch { /* UI notification is best-effort. */ }
-      return { terminalId, profileId, cwd, motd: session.motd }
+      return terminalOpenResult(record, false)
     } catch (error) {
       connection.close()
       throw error
@@ -328,10 +358,40 @@ export class AiTerminalManager {
   }
 
   async closeAll(): Promise<void> {
+    this.closing = true
+    await Promise.allSettled(this.pendingOpens.values())
     const sessions = [...this.sessions.values()].flatMap(owned => [...owned.values()].map(record => record.session))
     this.sessions.clear()
     await Promise.all(sessions.map(session => session.close('dsh-ssh disposed').catch(() => {})))
   }
+
+  private async removeRecords(ownerId: string, records: AiTerminalRecord[]): Promise<void> {
+    if (records.length === 0) return
+    const owned = this.sessions.get(ownerId)
+    if (owned === undefined) return
+    for (const record of records) owned.delete(record.terminalId)
+    if (owned.size === 0) this.sessions.delete(ownerId)
+    await Promise.all(records.map(record => record.session.close('replaced by reusable SSH terminal').catch(() => {})))
+  }
+
+  private notifyTerminalOpened(ownerId: string, terminalId: string): void {
+    const record = this.sessions.get(ownerId)?.get(terminalId)
+    if (record === undefined) return
+    try {
+      this.onTerminalOpened?.({
+        type: 'terminal-opened', sessionId: ownerId, terminalId,
+        profileId: record.profileId, createdAt: record.createdAt,
+      })
+    } catch { /* UI notification is best-effort. */ }
+  }
+}
+
+export interface AiTerminalOpenResult {
+  terminalId: string
+  profileId: string
+  cwd: string
+  motd: string
+  reused: boolean
 }
 
 interface AiTerminalRecord {
@@ -342,6 +402,20 @@ interface AiTerminalRecord {
   createdAt: number
   session: SshTerminalSession
   commands: AiTerminalCommand[]
+}
+
+function terminalIdentity(ownerId: string, profileId: string, cwd: string): string {
+  return JSON.stringify([ownerId, profileId, cwd])
+}
+
+function terminalOpenResult(record: AiTerminalRecord, reused: boolean): AiTerminalOpenResult {
+  return {
+    terminalId: record.terminalId,
+    profileId: record.profileId,
+    cwd: record.cwd,
+    motd: record.session.motd,
+    reused,
+  }
 }
 
 export interface AiTerminalCommand {

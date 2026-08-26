@@ -141,6 +141,10 @@ export function browserTerminalStreamUrl(terminalId: string, cursor = 0): string
 export function resizeActivityTerminal(sessionId: string, terminalId: string, cols: number, rows: number): Promise<void> {
   return api(`/activity/terminals/${encodeURIComponent(terminalId)}/resize`, { method: 'POST', body: JSON.stringify({ sessionId, cols, rows }) })
 }
+export function closeActivityTerminal(sessionId: string, terminalId: string): Promise<void> {
+  const query = new URLSearchParams({ sessionId })
+  return api(`/activity/terminals/${encodeURIComponent(terminalId)}?${query.toString()}`, { method: 'DELETE' })
+}
 export function updateActivityDirectory(sessionId: string, profileId: string, cwd: string): Promise<{ cwd: string }> {
   return api('/activity/directory', { method: 'PUT', body: JSON.stringify({ sessionId, profileId, cwd }) })
 }

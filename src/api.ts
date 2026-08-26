@@ -217,6 +217,8 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
       requiredProfile(runtime.store, id)
+      const jumpDependents = runtime.store.profiles().filter(profile => profile.id !== id && profile.proxy.type === 'jump' && profile.proxy.profileIds.includes(id))
+      if (jumpDependents.length > 0) throw httpError(409, `profile is used as a jump host by ${jumpDependents.length} SSH profile(s)`)
       const related = runtime.store.forwards().filter(rule => rule.profileId === id)
       await Promise.all(related.map(rule => runtime.forwards.stop(rule.id).catch(() => {})))
       await runtime.store.update(state => {
@@ -362,6 +364,14 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         profiles,
         terminals: injection.permission === 'terminal' ? runtime.aiTerminals.activity(sessionId) : [],
       })
+    }
+    if (method === 'DELETE' && segments[1] === 'terminals' && segments[2] !== undefined && segments.length === 3) {
+      requireMutationHeader(req)
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      requireActivityTerminal(runtime.store, sessionId)
+      const closed = await runtime.aiTerminals.close(sessionId, segments[2])
+      if (!closed) throw httpError(404, 'SSH terminal was not found in the current DSH session')
+      return sendJson(res, 204, undefined)
     }
     if (method === 'PUT' && segments[1] === 'directory' && segments.length === 2) {
       requireMutationHeader(req)

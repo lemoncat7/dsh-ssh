@@ -20,7 +20,7 @@ import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
 import {
   ApiError, activityEventStreamUrl, activityTerminalStreamUrl, api, browserTerminalStreamUrl, loadActivity, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
-  profileAddress, readActivityTerminalOutput, resizeActivityTerminal, sendActivityTerminalInput,
+  closeActivityTerminal, profileAddress, readActivityTerminalOutput, resizeActivityTerminal, sendActivityTerminalInput,
   type ActivityProfileView, type ActivityTerminalView, type ActivityView, type ForwardStatus, type ForwardView,
   type InjectionView, type ProfileView, type ProxyEntryView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
@@ -189,7 +189,7 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
       {activity === undefined ? <p className="dsh-ssh-activity-state">正在读取 SSH 会话…</p>
         : view === 'local-directory' ? <LocalWorkspaceBrowser sessionId={sessionId} />
           : view === 'remote-directory' ? <RemoteDirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId, 'remote-directory')} onSaved={refresh} />
-            : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} />}
+            : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} onClosed={refresh} />}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     </div>
   </section>
@@ -201,22 +201,37 @@ function RemoteDirectoryActivity({ sessionId, profiles, selectedProfileId, onPro
   return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
 }
 
-function TerminalActivity({ sessionId, terminals }: { sessionId: string; terminals: ActivityTerminalView[] }): JSX.Element {
+function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: string; terminals: ActivityTerminalView[]; onClosed(): Promise<void> }): JSX.Element {
   const preferred = [...terminals].reverse().find(item => item.status.kind === 'running') ?? terminals.at(-1)
   const [selectedId, setSelectedId] = useState(preferred?.terminalId)
+  const [closingId, setClosingId] = useState<string>()
   const [error, setError] = useState<string>()
   const terminal = terminals.find(item => item.terminalId === selectedId) ?? preferred
   useEffect(() => {
     if (selectedId === undefined || !terminals.some(item => item.terminalId === selectedId)) setSelectedId(preferred?.terminalId)
   }, [preferred?.terminalId, selectedId, terminals])
   if (terminal === undefined) return <div className="dsh-ssh-activity-empty"><IconCodeOutline16 size={22} /><strong>还没有打开的终端</strong><p>AI 打开交互终端后，会直接显示在这里。</p></div>
+  const closeSelectedTerminal = async (): Promise<void> => {
+    if (closingId !== undefined) return
+    setClosingId(terminal.terminalId)
+    setError(undefined)
+    try {
+      await closeActivityTerminal(sessionId, terminal.terminalId)
+      await onClosed()
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setClosingId(undefined)
+    }
+  }
+  const closeLabel = terminal.status.kind === 'running' ? '结束' : '移除'
   return <div className="dsh-ssh-terminal-workbench">
     {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher dsh-ssh-scroll-surface" aria-label="SSH 终端">{terminals.map((item, index) => {
       const label = item.name || `终端 ${index + 1}`
       return <button type="button" title={label} className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} /><span className="dsh-ssh-terminal-switcher-label">{label}</span></button>
     })}</nav>}
     <div className="dsh-ssh-terminal-observer">
-      <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? '运行中' : '已退出'}</span></div>
+      <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><div className="dsh-ssh-terminal-observer-actions"><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? '运行中' : '已退出'}</span><button type="button" className="dsh-ssh-terminal-close" disabled={closingId !== undefined} aria-label={`${closeLabel}终端 ${terminal.name}`} title={terminal.status.kind === 'running' ? '结束并关闭这个终端' : '从活动面板移除这个终端'} onClick={() => { void closeSelectedTerminal() }}><IconCloseOutline16 size={14} /><span>{closingId === terminal.terminalId ? '处理中' : closeLabel}</span></button></div></div>
       <InteractiveTerminal key={terminal.terminalId} sessionId={sessionId} terminal={terminal} onError={setError} />
     </div>
     {error && <p className="dsh-ssh-terminal-input-error" role="alert">{error}</p>}
@@ -343,6 +358,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [selectedId, setSelectedId] = useState(props.controller.selected())
   const [view, setView] = useState<'terminal' | 'sftp' | 'forwards' | 'vault' | 'proxies' | 'settings'>('terminal')
   const [editing, setEditing] = useState<ProfileView | 'new'>()
+  const [deleting, setDeleting] = useState<ProfileView>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string>()
   const openedSessionRef = useRef(sessionId)
@@ -398,13 +414,14 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState onNew={() => setEditing('new')} />
-          : view === 'terminal' ? <TerminalPane profile={selected} onEdit={() => setEditing(selected)} />
+          : view === 'terminal' ? <TerminalPane profile={selected} onEdit={() => setEditing(selected)} onDelete={() => setDeleting(selected)} />
             : view === 'sftp' ? <ProfileSftpPane key={selected.id} profile={selected} />
               : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
                 : <SettingsPane />}
       </section>
     </AdaptiveWorkspace>
     {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
+    {deleting !== undefined && <ProfileDeleteDialog profile={deleting} dependents={profiles.filter(profile => profile.id !== deleting.id && profile.proxy.type === 'jump' && profile.proxy.profileIds.includes(deleting.id))} onClose={() => setDeleting(undefined)} onDeleted={() => { setDeleting(undefined); setEditing(undefined); setRefreshKey(value => value + 1) }} />}
   </>
 }
 
@@ -475,7 +492,7 @@ function ProfileGroup({ group, open, selectedId, onToggle, onSelect }: { group: 
   </section>
 }
 
-function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): void }): JSX.Element {
+function TerminalPane({ profile, onEdit, onDelete }: { profile: ProfileView; onEdit(): void; onDelete(): void }): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal>()
   const fitRef = useRef<FitAddon>()
@@ -543,6 +560,7 @@ function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): voi
     <div className="dsh-ssh-content-heading">
       <div><div className="dsh-ssh-title-line"><span className={`dsh-ssh-live-dot is-${phase}`} /> <h1>{profile.name}</h1></div><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></div>
       <div className="dsh-ssh-heading-actions">
+        <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button>
         <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑</button>
         {phase === 'connected' ? <button type="button" className="dsh-ssh-danger-button" onClick={() => { void disconnect() }}><IconStopFill16 size={16} />断开</button>
           : <button type="button" className="dsh-ssh-primary-button" disabled={phase === 'connecting'} onClick={() => { void connect() }}>{phase === 'connecting' ? '连接中…' : '打开终端'}</button>}
@@ -551,6 +569,33 @@ function TerminalPane({ profile, onEdit }: { profile: ProfileView; onEdit(): voi
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span>{phase === 'connected' ? '已连接' : phase === 'connecting' ? '正在建立安全连接' : '终端未连接'}</span><span>UTF-8 · {profile.terminalType}</span></div></div>
   </div>
+}
+
+function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }: { profile: ProfileView; dependents: ProfileView[]; onClose(): void; onDeleted(): void }): JSX.Element {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string>()
+  const remove = async (): Promise<void> => {
+    if (deleting || dependents.length > 0) return
+    setDeleting(true)
+    setError(undefined)
+    try {
+      await api(`/profiles/${encodeURIComponent(profile.id)}`, { method: 'DELETE' })
+      onDeleted()
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setDeleting(false)
+    }
+  }
+  return <Dialog title={`删除 ${profile.name}`} subtitle={profileAddress(profile)} onClose={onClose}>
+    <div className="dsh-ssh-delete-profile">
+      <span className="dsh-ssh-delete-profile-mark"><IconTrashOutline16 size={19} /></span>
+      <div><strong>这个操作无法撤销</strong><p>连接配置、该主机的独立凭据和关联端口转发会一并删除；它也会从所有会话授权中移除。密钥库中的共享凭据不会删除。</p></div>
+      {dependents.length > 0 && <div className="dsh-ssh-delete-profile-block" role="alert"><strong>暂时不能删除</strong><p>以下连接仍将它作为 SSH 跳板：{dependents.map(item => item.name).join('、')}。请先修改这些连接的跳板链。</p></div>}
+      {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting || dependents.length > 0} onClick={() => { void remove() }}>{deleting ? '正在删除…' : '删除主机'}</button></div>
+    </div>
+  </Dialog>
 }
 
 function InjectionInspector({ sessionId, profiles, selected }: { sessionId?: string | undefined; profiles: ProfileView[]; selected?: ProfileView | undefined }): JSX.Element {
@@ -614,11 +659,11 @@ function InjectionInspector({ sessionId, profiles, selected }: { sessionId?: str
     {sessionId === undefined ? <div className="dsh-ssh-inspector-empty">先打开一个 DSH 会话，再选择允许 AI 使用的远端连接。</div> : <>
       <div className="dsh-ssh-session-chip"><span className="dsh-ssh-session-pulse" /><span><strong>当前会话</strong><small>{shortId(sessionId)}</small></span></div>
       <fieldset className="dsh-ssh-fieldset"><legend>可用连接</legend>
-        {profiles.map(profile => <label className="dsh-ssh-check-row" key={profile.id}><input type="checkbox" checked={model?.profileIds.includes(profile.id) === true} onChange={() => toggle(profile.id)} /><span><strong>{profile.name}</strong><small>{profile.host}</small></span></label>)}
+        {profiles.map(profile => <label className="dsh-ssh-check-row" key={profile.id}><input type="checkbox" checked={model?.profileIds.includes(profile.id) === true} onChange={() => toggle(profile.id)} /><i aria-hidden="true" /><span><strong>{profile.name}</strong><small>{profile.host}</small></span></label>)}
       </fieldset>
       <fieldset className="dsh-ssh-fieldset"><legend>权限</legend>
-        <label className="dsh-ssh-radio-row"><input type="radio" name="dsh-ssh-injection-permission" checked={model?.permission === 'exec'} onChange={() => update({ permission: 'exec' })} /><span><strong>仅执行命令</strong><small>允许 ssh_exec，不开放交互终端</small></span></label>
-        <label className="dsh-ssh-radio-row"><input type="radio" name="dsh-ssh-injection-permission" checked={model?.permission === 'terminal'} onChange={() => update({ permission: 'terminal' })} /><span><strong>终端控制</strong><small>可打开、读取和操作交互终端</small></span></label>
+        <label className="dsh-ssh-radio-row"><input type="radio" name="dsh-ssh-injection-permission" checked={model?.permission === 'exec'} onChange={() => update({ permission: 'exec' })} /><i aria-hidden="true" /><span><strong>仅执行命令</strong><small>允许 ssh_exec，不开放交互终端</small></span></label>
+        <label className="dsh-ssh-radio-row"><input type="radio" name="dsh-ssh-injection-permission" checked={model?.permission === 'terminal'} onChange={() => update({ permission: 'terminal' })} /><i aria-hidden="true" /><span><strong>终端控制</strong><small>可打开、读取和操作交互终端</small></span></label>
       </fieldset>
       <label className="dsh-ssh-switch-row"><span><strong>自动允许 SSH 操作</strong><small>开启后，AI 可在上述权限范围内直接执行；关闭后每次操作都需要手动批准。</small></span><input type="checkbox" checked={model?.requireCommandApproval === false} onChange={event => update({ requireCommandApproval: !event.target.checked })} /></label>
       {selected && <p className="dsh-ssh-inspector-hint">选中的连接：<strong>{selected.name}</strong></p>}

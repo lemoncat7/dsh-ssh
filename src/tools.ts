@@ -93,7 +93,7 @@ function execTool(store: SshStore, connector: SshConnector): ToolDefinition {
 }
 
 function terminalOpenTool(store: SshStore, terminals: AiTerminalManager): ToolDefinition {
-  return tool('ssh_terminal_open', 'Open an interactive terminal on an SSH connection injected with terminal permission. Returns an owner-scoped terminal id.', {
+  return tool('ssh_terminal_open', 'Open or reuse an interactive terminal on an SSH connection injected with terminal permission. Repeated calls for the same conversation, connection, and working directory are idempotent; exited duplicates are removed automatically. Returns an owner-scoped terminal id and whether it was reused.', {
     profileId: { type: 'string', required: true, description: 'Exact injected profile id returned by ssh_list.' },
     name: { type: 'string', description: 'Optional terminal display name.' },
   }, async (raw, exec) => {
