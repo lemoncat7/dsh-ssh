@@ -282,7 +282,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>代理库</Segment>
         <Segment active={view === 'settings'} onClick={() => setView('settings')}>设置</Segment>
       </nav>
-      <button type="button" className="dsh-ssh-primary-button" aria-label="新建连接" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} /><span>新建连接</span></button>
+      {profiles.length > 0 && <button type="button" className="dsh-ssh-primary-button" aria-label="新建连接" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} /><span>新建连接</span></button>}
     </header>
   const notice = error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button onClick={() => setError(undefined)} aria-label="关闭"><IconCloseOutline16 size={16} /></button></div>
   return <>
@@ -314,7 +314,6 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
           await props.controller.createProjectSession(workspaceId, project, access.value?.permission ?? 'exec', access.value?.requireCommandApproval ?? true)
           props.controller.close()
         }}
-        onNewProfile={() => { setEditing('new'); controls.closePanel() }}
       />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
