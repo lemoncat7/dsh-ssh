@@ -406,7 +406,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === target?.profileId)
-  const workspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId ?? workspaceList.recentWorkspaceId
+  const currentWorkspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
   const toolbar = <header className="dsh-ssh-toolbar">
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端工作区</strong><small>{selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" aria-label="远端视图">
@@ -432,6 +432,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         accessLoading={access.loading}
         accessSaving={access.saving}
         accessError={access.error}
+        workspaces={workspaceList.items}
+        currentWorkspaceId={currentWorkspaceId === undefined ? undefined : String(currentWorkspaceId)}
+        recentWorkspaceId={workspaceList.recentWorkspaceId === undefined ? undefined : String(workspaceList.recentWorkspaceId)}
         selected={target}
         onSelect={next => { setTarget(next); setView('workspace'); props.controller.open(next.profileId); controls.closePanel() }}
         onProfiles={access.setProfiles}
@@ -441,9 +444,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         }}
         onPermission={access.setPermission}
         onApproval={access.setRequireCommandApproval}
-        onCreateSession={async project => {
-          if (workspaceId === undefined) throw new Error('请先在 DSH 中打开或创建一个本地工作区')
-          await props.controller.createProjectSession(String(workspaceId), project, access.value?.permission ?? 'exec', access.value?.requireCommandApproval ?? true)
+        onCreateSession={async (project, workspaceId) => {
+          await props.controller.createProjectSession(workspaceId, project, access.value?.permission ?? 'exec', access.value?.requireCommandApproval ?? true)
           props.controller.close()
         }}
         onNewProfile={() => { setEditing('new'); controls.closePanel() }}

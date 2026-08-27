@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import type { WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
 import {
   IconChevronDownOutline14, IconCloseOutline16, IconEditOutline16, IconFolderClose16,
   IconFolderOpenOutline16, IconPlusOutline16, IconTrashOutline16,
@@ -7,6 +8,7 @@ import {
   createRemoteProject, deleteRemoteProject, loadRemoteProjects, updateRemoteProject,
   type InjectionView, type ProfileView, type RemoteProjectView,
 } from './client-api.js'
+import { ProjectSessionDialog } from './project-session-dialog.js'
 
 export interface RemoteTarget {
   profileId: string
@@ -20,13 +22,16 @@ interface RemoteWorkspaceTreeProps {
   accessLoading: boolean
   accessSaving: boolean
   accessError?: string | undefined
+  workspaces: readonly WorkspaceView[]
+  currentWorkspaceId?: string | undefined
+  recentWorkspaceId?: string | undefined
   selected: RemoteTarget | null
   onSelect(target: RemoteTarget): void
   onProfiles(profileIds: string[]): void
   onDirectory(profileId: string, path?: string, projectId?: string): void
   onPermission(permission: InjectionView['permission']): void
   onApproval(value: boolean): void
-  onCreateSession(project: RemoteProjectView): Promise<void>
+  onCreateSession(project: RemoteProjectView, workspaceId: string): Promise<void>
   onNewProfile(): void
 }
 
@@ -36,6 +41,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   const [projects, setProjects] = useState<Record<string, RemoteProjectView[]>>({})
   const [loadingProfile, setLoadingProfile] = useState<string>()
   const [editing, setEditing] = useState<{ profile: ProfileView; project?: RemoteProjectView }>()
+  const [creatingSession, setCreatingSession] = useState<{ profile: ProfileView; project: RemoteProjectView; returnFocus: HTMLButtonElement }>()
   const [error, setError] = useState<string>()
   const normalized = query.trim().toLocaleLowerCase()
   const groups = useMemo(() => groupProfiles(props.profiles.filter(profile => searchText(profile).includes(normalized))), [normalized, props.profiles])
@@ -107,7 +113,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                             props.onSelect(bound ? { profileId: profile.id, path: '~' } : { profileId: profile.id, path: project.path, projectId: project.id })
                           }
                         }}><span>{bound ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span><span><strong>{project.name}</strong><small>{project.path}</small>{bound && <em>当前会话已固定该路径</em>}</span></button>
-                        <button type="button" className="dsh-ssh-tree-project-new" aria-label={`在 ${project.name} 新建会话`} title="新建会话" onClick={() => { setError(undefined); void props.onCreateSession(project).catch(reason => setError(message(reason))) }}><IconPlusOutline16 size={13} /></button>
+                        <button type="button" className="dsh-ssh-tree-project-new" aria-label={`在 ${project.name} 新建会话`} title="新建会话" onClick={event => { setError(undefined); setCreatingSession({ profile, project, returnFocus: event.currentTarget }) }}><IconPlusOutline16 size={13} /></button>
                         <button type="button" className="dsh-ssh-tree-project-edit" aria-label={`编辑 ${project.name}`} title="编辑固定目录" onClick={() => setEditing({ profile, project })}><IconEditOutline16 size={13} /></button>
                       </div>
                     </div>
@@ -120,6 +126,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     </div>
     <SessionAccessFooter access={props.access} loading={props.accessLoading} saving={props.accessSaving} error={props.accessError ?? error} onPermission={props.onPermission} onApproval={props.onApproval} />
     {editing !== undefined && <RemoteProjectDialog profile={editing.profile} project={editing.project} onClose={() => setEditing(undefined)} onSaved={async () => { const profileId = editing.profile.id; setEditing(undefined); await refreshProjects(profileId) }} />}
+    {creatingSession !== undefined && <ProjectSessionDialog {...creatingSession} workspaces={props.workspaces} currentWorkspaceId={props.currentWorkspaceId} recentWorkspaceId={props.recentWorkspaceId} onClose={() => setCreatingSession(undefined)} onCreate={props.onCreateSession} />}
   </aside>
 }
 

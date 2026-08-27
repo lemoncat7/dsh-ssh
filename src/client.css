@@ -13,7 +13,8 @@
 .dsh-ssh-workspace,
 .dsh-ssh-activity-panel,
 .dsh-ssh-dialog-layer,
-.dsh-ssh-preview-modal {
+.dsh-ssh-preview-modal,
+.dsh-ssh-session-create-modal {
   --ssh-font-sans: "SF Pro Text", "SF Pro Display", -apple-system,
     BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   --ssh-font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono",
@@ -258,14 +259,18 @@
 .dsh-ssh-sidebar *::after,
 .dsh-ssh-preview-modal *,
 .dsh-ssh-preview-modal *::before,
-.dsh-ssh-preview-modal *::after {
+.dsh-ssh-preview-modal *::after,
+.dsh-ssh-session-create-modal *,
+.dsh-ssh-session-create-modal *::before,
+.dsh-ssh-session-create-modal *::after {
   box-sizing: border-box;
 }
 .dsh-ssh-workspace :where(button, input, select, textarea),
 .dsh-ssh-activity-panel :where(button, input, select, textarea),
 .dsh-ssh-dialog :where(button, input, select, textarea),
 .dsh-ssh-sidebar :where(button, input, select, textarea),
-.dsh-ssh-preview-modal :where(button, input, select, textarea) {
+.dsh-ssh-preview-modal :where(button, input, select, textarea),
+.dsh-ssh-session-create-modal :where(button, input, select, textarea) {
   margin: 0;
   font-family: var(--ssh-font-sans);
   font-size: inherit;
@@ -277,6 +282,7 @@
 .dsh-ssh-dialog :where(button, input, select, textarea),
 .dsh-ssh-sidebar :where(button, input, select, textarea),
 .dsh-ssh-preview-modal :where(button, input, select, textarea),
+.dsh-ssh-session-create-modal :where(button, input, select, textarea),
 .dsh-ssh-activity-trigger {
   -webkit-appearance: none;
   appearance: none;
@@ -285,7 +291,8 @@
 .dsh-ssh-activity-panel :where(button, input, select, textarea):disabled,
 .dsh-ssh-dialog :where(button, input, select, textarea):disabled,
 .dsh-ssh-sidebar :where(button, input, select, textarea):disabled,
-.dsh-ssh-preview-modal :where(button, input, select, textarea):disabled {
+.dsh-ssh-preview-modal :where(button, input, select, textarea):disabled,
+.dsh-ssh-session-create-modal :where(button, input, select, textarea):disabled {
   cursor: not-allowed;
 }
 .dsh-ssh-workspace :where(input, select, textarea)::placeholder,
@@ -351,6 +358,7 @@
 .dsh-ssh-activity-panel :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-dialog :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-sidebar :where(button, input, select, textarea, a):focus-visible,
+.dsh-ssh-session-create-modal :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-activity-trigger:focus-visible {
   outline: 2px solid var(--ssh-focus-ring, rgba(84, 125, 120, 0.62));
   outline-offset: 2px;
