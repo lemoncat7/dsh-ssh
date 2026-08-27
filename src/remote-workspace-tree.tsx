@@ -72,7 +72,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
 
   return <aside className="dsh-ssh-remote-tree">
     <header className="dsh-ssh-tree-header">
-      <span><strong>远端工作区</strong><small>{props.profiles.length} 台主机</small></span>
+      <span><strong>主机与项目</strong><small>{props.profiles.length} 台主机</small></span>
       <button type="button" className="dsh-ssh-icon-button" onClick={props.onNewProfile} aria-label="新建连接"><IconPlusOutline16 size={16} /></button>
     </header>
     <label className="dsh-ssh-search"><span className="sr-only">搜索主机</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索主机、分组、标签…" /></label>

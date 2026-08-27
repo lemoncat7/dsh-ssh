@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ISessions, IWorkspaces } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -6,14 +6,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import { SshActivityPanel, type ActivityController, type ActivityViewMode } from './activity-panel.js'
 import { AdaptiveWorkspace } from './adaptive-workspace.js'
 import adaptiveUiCss from './adaptive-workspace.css'
 import { activatePluginWorkspace, observePluginWorkspace } from './workspace-ownership.js'
 import {
-  IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconCodeOutline16, IconDataOutline16,
-  IconEditOutline16, IconFolderClose16, IconFolderOpenOutline16, IconPanelLeftOutline16, IconPlusOutline16,
-  IconSettingsOutline16, IconStopFill16, IconTrashOutline16, IconChevronLeftOutline14,
-  IconChevronUpOutline14,
+  IconChevronDownOutline14, IconCloseOutline16, IconDataOutline16,
+  IconEditOutline16, IconPanelLeftOutline16, IconPlusOutline16,
+  IconStopFill16, IconTrashOutline16, IconChevronLeftOutline14,
   IconUserOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Terminal } from '@xterm/xterm'
@@ -23,25 +23,26 @@ import cssText from './client.css'
 import remoteWorkspaceCss from './remote-workspace-tree.css'
 import hostWorkbenchCss from './host-workbench.css'
 import {
-  ApiError, activityEventStreamUrl, activityTerminalStreamUrl, api, browserTerminalStreamUrl, loadActivity, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
-  closeActivityTerminal, profileAddress, readActivityTerminalOutput, resizeActivityTerminal, sendActivityTerminalInput,
-  type ActivityProfileView, type ActivityTerminalView, type ActivityView, type ForwardStatus, type ForwardView,
+  activityEventStreamUrl, api, browserTerminalStreamUrl, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
+  profileAddress,
+  type ForwardStatus, type ForwardView,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
-import { ActivitySftpBrowser, LocalWorkspaceBrowser, ProfileSftpPane } from './sftp-client.js'
+import { ProfileSftpPane } from './sftp-client.js'
 import { TerminalTransport } from './terminal-transport.js'
 import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
 import { RemoteWorkspaceTree, type RemoteTarget } from './remote-workspace-tree.js'
 import { emptyAccess, useSessionAccess } from './session-access.js'
 import { subscribeSessionAccess } from './session-access-channel.js'
 import { ResizableSplit } from './resizable-split.js'
+import { Dialog, EmptyState, Field, Segment, ServerGlyph, errorMessage } from './ui-components.js'
+import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
 type SidebarActionProps = PropsRuntime<'sidebar.footer.action'>
 type ConversationProps = PropsRuntime<'conversation'>
-type DetailsProps = PropsRuntime<'details'>
 
 interface RemoteController {
   open(profileId?: string): void
@@ -52,18 +53,6 @@ interface RemoteController {
   subscribe(listener: () => void): () => void
   createProjectSession(workspaceId: string, project: RemoteProjectView, permission: InjectionView['permission'], requireCommandApproval: boolean): Promise<string>
 }
-
-interface ActivityController {
-  open(sessionId: string, profileId?: string, view?: ActivityViewMode): void
-  toggle(sessionId: string): void
-  close(sessionId?: string): void
-  isOpen(sessionId: string): boolean
-  selected(sessionId: string): string | undefined
-  requestedView(sessionId: string): ActivityViewMode | undefined
-  subscribe(listener: () => void): () => void
-}
-
-type ActivityViewMode = 'local-directory' | 'remote-directory' | 'terminals'
 
 export const inject = ['slots', 'layout', 'sessions', 'workspaces']
 
@@ -165,131 +154,6 @@ function createActivityController(ctx: ClientContext): ActivityController {
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
   }
   return controller
-}
-
-function SshActivityPanel(props: DetailsProps & { controller: ActivityController }): JSX.Element {
-  const sessionId = String(props.sessionId)
-  const [activity, setActivity] = useState<ActivityView>()
-  const [view, setView] = useState<ActivityViewMode>(() => props.controller.requestedView(sessionId) ?? 'local-directory')
-  const [error, setError] = useState<string>()
-  const [, setRevision] = useState(0)
-  useEffect(() => props.controller.subscribe(() => {
-    const requested = props.controller.requestedView(sessionId)
-    if (requested !== undefined) setView(requested)
-    setRevision(value => value + 1)
-  }), [props.controller, sessionId])
-  const refresh = useCallback(async () => {
-    try {
-      const next = await loadActivity(sessionId)
-      setActivity(next)
-      if (next.injection?.permission !== 'terminal') setView(current => current === 'terminals' ? 'local-directory' : current)
-      setError(undefined)
-    } catch (reason) { setError(message(reason)) }
-  }, [props.controller, sessionId])
-  useEffect(() => {
-    void refresh()
-    const timer = window.setInterval(() => { void refresh() }, view === 'terminals' ? 1800 : 2500)
-    return () => clearInterval(timer)
-  }, [refresh, view])
-  return <section className="dsh-ssh-activity-panel" aria-label="SSH 活动">
-    <header className="dsh-ssh-activity-header">
-      <div className="dsh-ssh-activity-title"><span className="dsh-ssh-activity-mark"><ServerGlyph /></span><span><strong>SSH 活动</strong><small>当前会话 · {shortId(sessionId)}</small></span></div>
-      <button type="button" className="dsh-ssh-icon-button" aria-label="关闭 SSH 活动" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
-    </header>
-    {activity && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
-      <button type="button" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => setView('local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
-      {activity.profiles.length > 0 && <button type="button" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => setView('remote-directory')}><ServerGlyph />远端目录</button>}
-      {activity.injection?.permission === 'terminal' && <button type="button" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => setView('terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
-    </nav>}
-    <div className="dsh-ssh-activity-body">
-      {activity === undefined ? <p className="dsh-ssh-activity-state">正在读取 SSH 会话…</p>
-        : view === 'local-directory' ? <LocalWorkspaceBrowser sessionId={sessionId} />
-          : view === 'remote-directory' ? <RemoteDirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId, 'remote-directory')} onSaved={refresh} />
-            : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} onClosed={refresh} />}
-      {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    </div>
-  </section>
-}
-
-function RemoteDirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
-  const profile = profiles.find(item => item.id === selectedProfileId) ?? profiles[0]
-  if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先在 SSH 面板中允许当前会话访问一台主机。</p></div>
-  return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
-}
-
-function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: string; terminals: ActivityTerminalView[]; onClosed(): Promise<void> }): JSX.Element {
-  const preferred = [...terminals].reverse().find(item => item.status.kind === 'running') ?? terminals.at(-1)
-  const [selectedId, setSelectedId] = useState(preferred?.terminalId)
-  const [closingId, setClosingId] = useState<string>()
-  const [error, setError] = useState<string>()
-  const terminal = terminals.find(item => item.terminalId === selectedId) ?? preferred
-  useEffect(() => {
-    if (selectedId === undefined || !terminals.some(item => item.terminalId === selectedId)) setSelectedId(preferred?.terminalId)
-  }, [preferred?.terminalId, selectedId, terminals])
-  if (terminal === undefined) return <div className="dsh-ssh-activity-empty"><IconCodeOutline16 size={22} /><strong>还没有打开的终端</strong><p>AI 打开交互终端后，会直接显示在这里。</p></div>
-  const closeSelectedTerminal = async (): Promise<void> => {
-    if (closingId !== undefined) return
-    setClosingId(terminal.terminalId)
-    setError(undefined)
-    try {
-      await closeActivityTerminal(sessionId, terminal.terminalId)
-      await onClosed()
-    } catch (reason) {
-      setError(message(reason))
-    } finally {
-      setClosingId(undefined)
-    }
-  }
-  const closeLabel = terminal.status.kind === 'running' ? '结束' : '移除'
-  return <div className="dsh-ssh-terminal-workbench">
-    {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher dsh-ssh-scroll-surface" aria-label="SSH 终端">{terminals.map((item, index) => {
-      const label = item.name || `终端 ${index + 1}`
-      return <button type="button" title={label} className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} /><span className="dsh-ssh-terminal-switcher-label">{label}</span></button>
-    })}</nav>}
-    <div className="dsh-ssh-terminal-observer">
-      <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><div className="dsh-ssh-terminal-observer-actions"><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? '运行中' : '已退出'}</span><button type="button" className="dsh-ssh-terminal-close" disabled={closingId !== undefined} aria-label={`${closeLabel}终端 ${terminal.name}`} title={terminal.status.kind === 'running' ? '结束并关闭这个终端' : '从活动面板移除这个终端'} onClick={() => { void closeSelectedTerminal() }}><IconCloseOutline16 size={14} /><span>{closingId === terminal.terminalId ? '处理中' : closeLabel}</span></button></div></div>
-      <InteractiveTerminal key={terminal.terminalId} sessionId={sessionId} terminal={terminal} onError={setError} />
-    </div>
-    {error && <p className="dsh-ssh-terminal-input-error" role="alert">{error}</p>}
-  </div>
-}
-
-function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessionId: string; terminal: ActivityTerminalView; onError(value: string | undefined): void }): JSX.Element {
-  const hostRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal>()
-  useEffect(() => {
-    const host = hostRef.current
-    if (host === null) return
-    const terminal = createSshTerminal({ compact: true, readOnly: activity.status.kind !== 'running', scrollback: 4000 })
-    const fit = new FitAddon()
-    terminal.loadAddon(fit); terminal.open(host); terminalRef.current = terminal; terminal.focus()
-    const transport = new TerminalTransport({
-      streamUrl: activityTerminalStreamUrl(sessionId, activity.terminalId),
-      read: cursor => readActivityTerminalOutput(sessionId, activity.terminalId, cursor),
-      send: (text, sequence) => sendActivityTerminalInput(sessionId, activity.terminalId, text, sequence),
-    })
-    const input = terminal.onData(data => transport.sendInput(data, reason => onError(message(reason))))
-    const stopOutput = transport.observe({
-      output: value => {
-        if (value.truncated) terminal.reset()
-        if (value.data) terminal.write(value.data)
-        terminal.scrollToBottom()
-        onError(undefined)
-      },
-      error: reason => onError(message(reason)),
-    })
-    const viewport = attachTerminalViewport(host, terminal, fit, (cols, rows) => {
-      void resizeActivityTerminal(sessionId, activity.terminalId, cols, rows).catch(reason => onError(message(reason)))
-    })
-    return () => {
-      stopOutput(); transport.dispose(); input.dispose(); viewport.dispose(); terminal.dispose(); terminalRef.current = undefined
-    }
-  }, [activity.terminalId, onError, sessionId])
-  useEffect(() => {
-    const terminal = terminalRef.current
-    if (terminal !== undefined) terminal.options.disableStdin = activity.status.kind !== 'running'
-  }, [activity.status.kind])
-  return <div className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div>
 }
 
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {
@@ -408,9 +272,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const selected = profiles.find(item => item.id === target?.profileId)
   const currentWorkspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
   const toolbar = <header className="dsh-ssh-toolbar">
-      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端工作区</strong><small>{selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
-      <nav className="dsh-ssh-segments" aria-label="远端视图">
-        <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>工作区</Segment>
+      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>SSH 工作台</strong><small>{selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
+      <nav className="dsh-ssh-segments" role="tablist" aria-label="SSH 工作台视图">
+        <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>终端与文件</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>端口转发</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
         <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>代理库</Segment>
@@ -562,40 +426,25 @@ function TerminalPane({ profile, onEdit, onDelete, onConnected, embedded = false
   </div>
 }
 
-function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }: { profile: ProfileView; dependents: ProfileView[]; onClose(): void; onDeleted(): void }): JSX.Element {
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string>()
-  const remove = async (): Promise<void> => {
-    if (deleting || dependents.length > 0) return
-    setDeleting(true)
-    setError(undefined)
-    try {
-      await api(`/profiles/${encodeURIComponent(profile.id)}`, { method: 'DELETE' })
-      onDeleted()
-    } catch (reason) {
-      setError(message(reason))
-    } finally {
-      setDeleting(false)
-    }
-  }
-  return <Dialog title={`删除 ${profile.name}`} subtitle={profileAddress(profile)} onClose={onClose}>
-    <div className="dsh-ssh-delete-profile">
-      <span className="dsh-ssh-delete-profile-mark"><IconTrashOutline16 size={19} /></span>
-      <div><strong>这个操作无法撤销</strong><p>连接配置、该主机的独立凭据和关联端口转发会一并删除；它也会从所有会话授权中移除。密钥库中的共享凭据不会删除。</p></div>
-      {dependents.length > 0 && <div className="dsh-ssh-delete-profile-block" role="alert"><strong>暂时不能删除</strong><p>以下连接仍将它作为 SSH 跳板：{dependents.map(item => item.name).join('、')}。请先修改这些连接的跳板链。</p></div>}
-      {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting || dependents.length > 0} onClick={() => { void remove() }}>{deleting ? '正在删除…' : '删除主机'}</button></div>
-    </div>
-  </Dialog>
-}
-
 function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected: ProfileView }): JSX.Element {
   const [rules, setRules] = useState<ForwardView[]>([])
   const [statuses, setStatuses] = useState<ForwardStatus[]>([])
   const [editing, setEditing] = useState<ForwardView | 'new'>()
   const [error, setError] = useState<string>()
   const refresh = useCallback(async () => { try { const result = await loadForwards(); setRules(result.rules); setStatuses(result.statuses) } catch (reason) { setError(message(reason)) } }, [])
-  useEffect(() => { void refresh(); const timer = window.setInterval(() => { void refresh() }, 3000); return () => clearInterval(timer) }, [refresh])
+  useEffect(() => {
+    let disposed = false
+    let timer: number | undefined
+    const poll = async (): Promise<void> => {
+      await refresh()
+      if (!disposed) timer = window.setTimeout(() => { void poll() }, document.visibilityState === 'hidden' ? 15000 : 4000)
+    }
+    void poll()
+    return () => {
+      disposed = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [refresh])
   const visible = rules.filter(rule => rule.profileId === selected.id)
   const action = async (id: string, name: 'start' | 'stop'): Promise<void> => { try { await api(`/forwards/${id}/${name}`, { method: 'POST', body: '{}' }); await refresh() } catch (reason) { setError(message(reason)) } }
   const remove = async (id: string): Promise<void> => { try { await api(`/forwards/${id}`, { method: 'DELETE' }); await refresh() } catch (reason) { setError(message(reason)) } }
@@ -720,94 +569,6 @@ function SettingsPane(): JSX.Element {
   </div>
 }
 
-function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, onClose, onSaved }: { profile?: ProfileView | undefined; profiles: ProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onClose(): void; onSaved(): void }): JSX.Element {
-  const [form, setForm] = useState(() => ({
-    name: profile?.name ?? '', group: profile?.group ?? '', host: profile?.host ?? '', port: String(profile?.port ?? 22), username: profile?.username ?? '', authType: profile?.authType ?? 'password',
-    credentialId: profile?.credentialId ?? '',
-    proxyType: profile?.proxy.type ?? 'none', proxyEntryId: profile?.proxy.type === 'saved' ? profile.proxy.proxyId : '', proxyHost: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.host : '', proxyPort: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? String(profile.proxy.port) : '1080', proxyUsername: profile?.proxy.type === 'http' || profile?.proxy.type === 'socks5' ? profile.proxy.username ?? '' : '', jumpProfileIds: profile?.proxy.type === 'jump' ? profile.proxy.profileIds : [], tags: profile?.tags.join(', ') ?? '',
-    password: '', privateKey: '', passphrase: '', proxyPassword: '', hostFingerprint: profile?.hostFingerprint ?? '',
-  }))
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testState, setTestState] = useState<'success'>()
-  const [pendingFingerprint, setPendingFingerprint] = useState<string>()
-  const [error, setError] = useState<string>()
-  const field = (name: Exclude<keyof typeof form, 'jumpProfileIds'>) => ({ value: form[name], onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    setForm(value => ({ ...value, [name]: event.target.value }))
-    setTestState(undefined); setPendingFingerprint(undefined)
-  } })
-  const selectedCredential = vaultEntries.find(entry => entry.id === form.credentialId)
-  const buildPayload = (hostFingerprint = form.hostFingerprint) => {
-    const proxy = form.proxyType === 'none' ? { type: 'none' }
-      : form.proxyType === 'saved' ? { type: 'saved', proxyId: form.proxyEntryId }
-      : form.proxyType === 'jump' ? { type: 'jump', profileIds: form.jumpProfileIds }
-        : { type: form.proxyType, host: form.proxyHost, port: Number(form.proxyPort), ...(form.proxyUsername.trim() ? { username: form.proxyUsername.trim() } : {}) }
-    return {
-      profile: { name: form.name, ...(form.group.trim() ? { group: form.group.trim() } : {}), host: form.host, port: Number(form.port), username: selectedCredential?.username ?? form.username, authType: selectedCredential?.authType ?? form.authType, ...(form.credentialId ? { credentialId: form.credentialId } : {}), ...(hostFingerprint ? { hostFingerprint } : {}), proxy, keepAliveIntervalMs: profile?.keepAliveIntervalMs ?? 15000, connectTimeoutMs: profile?.connectTimeoutMs ?? 15000, terminalType: profile?.terminalType ?? 'xterm-256color', tags: form.tags.split(',').map(item => item.trim()).filter(Boolean) },
-      secrets: { password: form.password, privateKey: form.privateKey, passphrase: form.passphrase, proxyPassword: form.proxyPassword },
-    }
-  }
-  const testConnection = async (confirmedFingerprint?: string): Promise<void> => {
-    setTesting(true); setError(undefined); setTestState(undefined); setPendingFingerprint(undefined)
-    try {
-      await api('/profiles/test-draft', { method: 'POST', body: JSON.stringify({ ...buildPayload(confirmedFingerprint), ...(profile === undefined ? {} : { profileId: profile.id }) }) })
-      if (confirmedFingerprint !== undefined) setForm(current => ({ ...current, hostFingerprint: confirmedFingerprint }))
-      setTestState('success')
-    } catch (reason) {
-      if (reason instanceof ApiError && reason.body?.code === 'HOST_KEY_REQUIRED' && typeof reason.body.fingerprint === 'string') setPendingFingerprint(reason.body.fingerprint)
-      else setError(message(reason))
-    } finally { setTesting(false) }
-  }
-  const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault(); setSaving(true); setError(undefined)
-    const payload = buildPayload()
-    try { await api(profile === undefined ? '/profiles' : `/profiles/${profile.id}`, { method: profile === undefined ? 'POST' : 'PUT', body: JSON.stringify(payload) }); onSaved() }
-    catch (reason) { setError(message(reason)) } finally { setSaving(false) }
-  }
-  return <Dialog title={profile === undefined ? '新建 SSH 连接' : `编辑 ${profile.name}`} subtitle="凭据保存后不会回显" onClose={onClose}>
-    <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
-      <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} placeholder="开发服务器" {...field('name')} /></Field><Field label="分组"><input maxLength={64} placeholder="例如：生产环境" {...field('group')} /></Field></div>
-      <div className="dsh-ssh-form-grid is-host"><Field label="主机"><input required placeholder="server.example.com" {...field('host')} /></Field><Field label="端口"><input required type="number" min="1" max="65535" {...field('port')} /></Field></div>
-      <Field label="标签" hint="多个标签使用英文逗号分隔。"><input placeholder="production, linux" {...field('tags')} /></Field>
-      <Field label="凭据来源" hint="可使用此连接自己的凭据，或引用密钥库中的常用账号。"><select {...field('credentialId')}><option value="">此连接独立保存</option>{vaultEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.username}</option>)}</select></Field>
-      {selectedCredential ? <div className="dsh-ssh-credential-reference"><span><IconUserOutline16 size={16} /></span><span><strong>{selectedCredential.name}</strong><small>{selectedCredential.username} · {selectedCredential.authType === 'password' ? '密码' : '私钥'}</small></span><em>{selectedCredential.credential.configured ? '已就绪' : '缺少凭据'}</em></div> : <>
-        <div className="dsh-ssh-form-grid"><Field label="用户名"><input required autoComplete="username" {...field('username')} /></Field><Field label="认证方式"><select {...field('authType')}><option value="password">密码</option><option value="private-key">私钥</option><option value="agent">SSH Agent</option></select></Field></div>
-        {form.authType === 'password' && <Field label="密码" hint={profile?.credential.source === 'profile' && profile.credential.fields.includes('password') ? '已保存；留空保持不变' : '保存后不可读回'}><input required={profile === undefined} type="password" autoComplete="new-password" placeholder={profile?.credential.source === 'profile' && profile.credential.fields.includes('password') ? '••••••••' : ''} {...field('password')} /></Field>}
-        {form.authType === 'private-key' && <><Field label="私钥" hint={profile?.credential.source === 'profile' && profile.credential.fields.includes('privateKey') ? '已保存；留空保持不变' : '粘贴 OpenSSH/PEM 私钥'}><textarea required={profile === undefined} rows={5} spellCheck={false} {...field('privateKey')} /></Field><Field label="私钥口令"><input type="password" autoComplete="new-password" {...field('passphrase')} /></Field></>}
-      </>}
-      <div className="dsh-ssh-form-divider"><span>代理</span></div>
-      <Field label="连接路径"><select {...field('proxyType')}><option value="none">直连</option><option value="saved">常用代理</option><option value="http">自定义 HTTP CONNECT</option><option value="socks5">自定义 SOCKS5</option><option value="jump">SSH 跳板</option></select></Field>
-      {form.proxyType === 'saved' && <Field label="常用代理" hint={proxyEntries.length === 0 ? '请先在代理库中添加 HTTP 或 SOCKS5 代理。' : '多台主机可引用同一条代理配置。'}><select required {...field('proxyEntryId')}><option value="">选择代理</option>{proxyEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.proxyType === 'http' ? 'HTTP' : 'SOCKS5'} · {entry.host}:{entry.port}</option>)}</select></Field>}
-      {(form.proxyType === 'http' || form.proxyType === 'socks5') && <><div className="dsh-ssh-form-grid is-host"><Field label="代理主机"><input required {...field('proxyHost')} /></Field><Field label="代理端口"><input required type="number" min="1" max="65535" {...field('proxyPort')} /></Field></div><div className="dsh-ssh-form-grid"><Field label="代理用户名"><input {...field('proxyUsername')} /></Field><Field label="代理密码"><input type="password" autoComplete="new-password" {...field('proxyPassword')} /></Field></div></>}
-      {form.proxyType === 'jump' && <JumpChainEditor profiles={profiles.filter(item => item.id !== profile?.id)} value={form.jumpProfileIds} onChange={jumpProfileIds => setForm(current => ({ ...current, jumpProfileIds }))} />}
-      {pendingFingerprint && <div className="dsh-ssh-test-result is-warning" role="alert"><span><strong>首次连接，请核对主机指纹</strong><code>{pendingFingerprint}</code></span><button type="button" className="dsh-ssh-small-primary" disabled={testing} onClick={() => { void testConnection(pendingFingerprint) }}>确认并重试</button></div>}
-      {testState === 'success' && <p className="dsh-ssh-test-result is-success" role="status"><IconCheckOutline14 size={14} />连接测试成功</p>}
-      {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button dsh-ssh-test-button" disabled={saving || testing} onClick={event => { if (event.currentTarget.form?.reportValidity()) void testConnection() }}>{testing ? '正在测试…' : '测试连接'}</button><button type="button" className="dsh-ssh-secondary-button" onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving || testing}>{saving ? '正在保存…' : '保存连接'}</button></div>
-    </form>
-  </Dialog>
-}
-
-function JumpChainEditor({ profiles, value, onChange }: { profiles: ProfileView[]; value: string[]; onChange(value: string[]): void }): JSX.Element {
-  const add = (): void => {
-    const next = profiles.find(profile => !value.includes(profile.id))
-    if (next !== undefined && value.length < 8) onChange([...value, next.id])
-  }
-  const update = (index: number, profileId: string): void => onChange(value.map((id, current) => current === index ? profileId : id))
-  const move = (index: number, offset: -1 | 1): void => {
-    const target = index + offset
-    if (target < 0 || target >= value.length) return
-    const next = [...value]
-    ;[next[index], next[target]] = [next[target]!, next[index]!]
-    onChange(next)
-  }
-  return <fieldset className="dsh-ssh-jump-chain"><legend>跳板链</legend><p>连接会按从上到下的顺序逐级建立。</p>
-    <div>{value.map((profileId, index) => <div className="dsh-ssh-jump-row" key={`${profileId}-${index}`}><em>{index + 1}</em><select required value={profileId} onChange={event => update(index, event.target.value)}><option value="">选择已有连接</option>{profiles.filter(profile => profile.id === profileId || !value.includes(profile.id)).map(profile => <option value={profile.id} key={profile.id}>{profile.name} · {profile.host}</option>)}</select><button type="button" className="dsh-ssh-icon-button" disabled={index === 0} aria-label="上移跳板" onClick={() => move(index, -1)}><IconChevronUpOutline14 size={14} /></button><button type="button" className="dsh-ssh-icon-button" disabled={index === value.length - 1} aria-label="下移跳板" onClick={() => move(index, 1)}><IconChevronDownOutline14 size={14} /></button><button type="button" className="dsh-ssh-icon-button is-danger" aria-label="移除跳板" onClick={() => onChange(value.filter((_, current) => current !== index))}><IconTrashOutline16 size={15} /></button></div>)}</div>
-    {value.length === 0 && <p className="dsh-ssh-jump-empty">至少添加一台跳板主机。</p>}
-    <button type="button" className="dsh-ssh-secondary-button" disabled={value.length >= 8 || profiles.every(profile => value.includes(profile.id))} onClick={add}><IconPlusOutline16 size={15} />添加跳板</button>
-  </fieldset>
-}
-
 function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileView; profiles: ProfileView[]; value?: ForwardView | undefined; onClose(): void; onSaved(): void }): JSX.Element {
   const [form, setForm] = useState({ name: value?.name ?? '', kind: value?.kind ?? 'local', bindHost: value?.bindHost ?? '127.0.0.1', bindPort: String(value?.bindPort ?? 0), targetHost: value?.targetHost ?? '127.0.0.1', targetPort: String(value?.targetPort ?? 80), autoStart: value?.autoStart ?? false })
   const [error, setError] = useState<string>()
@@ -828,18 +589,8 @@ function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileV
   </form></Dialog>
 }
 
-function Dialog({ title, subtitle, onClose, children }: { title: string; subtitle?: string | undefined; onClose(): void; children: ReactNode }): JSX.Element {
-  return <div className="dsh-ssh-dialog-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section className="dsh-ssh-dialog dsh-ssh-scroll-surface" role="dialog" aria-modal="true" aria-labelledby="dsh-ssh-dialog-title"><header><span><h2 id="dsh-ssh-dialog-title">{title}</h2>{subtitle && <p>{subtitle}</p>}</span><button className="dsh-ssh-icon-button" onClick={onClose} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>{children}</section></div>
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string | undefined; children: ReactNode }): JSX.Element { return <label className="dsh-ssh-field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label> }
-function Segment({ active, onClick, children }: { active: boolean; onClick(): void; children: ReactNode }): JSX.Element { return <button type="button" className={active ? 'is-active' : ''} onClick={onClick}>{children}</button> }
-function EmptyState({ onNew }: { onNew(): void }): JSX.Element { return <div className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>连接你的第一台远端主机</h1><p>保存 SSH 配置后，可以在这里打开终端、建立端口转发，并按会话授权给 AI。</p><button className="dsh-ssh-primary-button" onClick={onNew}><IconPlusOutline16 size={16} />新建连接</button></div> }
-function ServerGlyph(): JSX.Element { return <span className="dsh-ssh-server-glyph"><IconDataOutline16 size={17} /></span> }
-
 function proxyLabel(profile: ProfileView): string { return profile.proxy.type === 'none' ? '直连' : profile.proxy.type === 'saved' ? '常用代理' : profile.proxy.type === 'jump' ? 'SSH 跳板' : profile.proxy.type === 'http' ? 'HTTP 代理' : 'SOCKS5 代理' }
-function shortId(id: string): string { return id.length <= 16 ? id : `${id.slice(0, 8)}…${id.slice(-5)}` }
-function message(error: unknown): string { return error instanceof Error ? error.message : String(error) }
+const message = errorMessage
 function parseTerminalOpenedEvent(raw: Event): TerminalOpenedEvent | undefined {
   if (!(raw instanceof MessageEvent) || typeof raw.data !== 'string') return undefined
   try {

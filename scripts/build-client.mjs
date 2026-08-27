@@ -10,6 +10,9 @@ await build({
   platform: 'browser',
   target: 'es2022',
   jsx: 'automatic',
+  minify: true,
+  treeShaking: true,
+  legalComments: 'none',
   sourcemap: true,
   external: [
     'react',

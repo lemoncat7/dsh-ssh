@@ -39,6 +39,11 @@
   --ssh-focus-ring: color-mix(in srgb, var(--ssh-accent) 64%, transparent);
   --ssh-scrollbar-thumb: color-mix(in srgb, var(--ssh-text-muted) 44%, transparent);
   --ssh-scrollbar-hover: color-mix(in srgb, var(--ssh-text-muted) 68%, transparent);
+  --ssh-radius-control: 8px;
+  --ssh-radius-surface: 12px;
+  --ssh-motion-fast: 120ms;
+  --ssh-motion-standard: 180ms;
+  --ssh-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   color: var(--ssh-text);
   font-family: var(--ssh-font-sans);
   font-size: 13px;
@@ -109,6 +114,13 @@
   color: var(--ssh-text-muted);
   background: transparent;
   cursor: pointer;
+  transition:
+    color var(--ssh-motion-fast) ease,
+    background-color var(--ssh-motion-fast) ease,
+    transform var(--ssh-motion-fast) var(--ssh-ease-out);
+}
+.dsh-ssh-icon-button:active:not(:disabled) {
+  transform: scale(.94);
 }
 .dsh-ssh-icon-button.is-danger {
   color: #a65d58;
@@ -137,6 +149,10 @@
   padding: 4px 7px;
   border-radius: 10px;
   text-align: left;
+  transition:
+    background-color var(--ssh-motion-fast) ease,
+    border-color var(--ssh-motion-fast) ease,
+    transform var(--ssh-motion-standard) var(--ssh-ease-out);
 }
 .dsh-ssh-sidebar-row:hover {
   background: color-mix(
@@ -152,6 +168,7 @@
     transparent
   );
   border-color: color-mix(in srgb, var(--ssh-host-border) 50%, transparent);
+  transform: translateX(1px);
 }
 .dsh-ssh-status-dot {
   display: block;
@@ -358,6 +375,7 @@
 .dsh-ssh-activity-panel :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-dialog :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-sidebar :where(button, input, select, textarea, a):focus-visible,
+.dsh-ssh-preview-modal :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-session-create-modal :where(button, input, select, textarea, a):focus-visible,
 .dsh-ssh-activity-trigger:focus-visible {
   outline: 2px solid var(--ssh-focus-ring, rgba(84, 125, 120, 0.62));
@@ -457,6 +475,11 @@
   background: transparent;
   font-size: 12px;
   cursor: pointer;
+  transition:
+    color var(--ssh-motion-fast) ease,
+    background-color var(--ssh-motion-fast) ease,
+    box-shadow var(--ssh-motion-standard) ease,
+    transform var(--ssh-motion-fast) var(--ssh-ease-out);
 }
 .dsh-ssh-segments button:hover {
   color: var(--ssh-text);
@@ -467,6 +490,9 @@
   box-shadow:
     0 1px 2px color-mix(in srgb, var(--ssh-text) 8%, transparent),
     inset 0 0 0 1px color-mix(in srgb, #fff 32%, transparent);
+}
+.dsh-ssh-segments button:active {
+  transform: scale(.97);
 }
 .dsh-ssh-toolbar > .dsh-ssh-primary-button {
   justify-self: end;
@@ -484,6 +510,18 @@
   border-radius: 8px;
   font: 500 12px/1 var(--ssh-font-sans);
   cursor: pointer;
+  transition:
+    color var(--ssh-motion-fast) ease,
+    border-color var(--ssh-motion-fast) ease,
+    background-color var(--ssh-motion-fast) ease,
+    transform var(--ssh-motion-fast) var(--ssh-ease-out),
+    box-shadow var(--ssh-motion-standard) ease;
+}
+.dsh-ssh-primary-button:active:not(:disabled),
+.dsh-ssh-secondary-button:active:not(:disabled),
+.dsh-ssh-danger-button:active:not(:disabled),
+.dsh-ssh-small-primary:active:not(:disabled) {
+  transform: scale(.975);
 }
 .dsh-ssh-primary-button,
 .dsh-ssh-small-primary {
@@ -917,6 +955,7 @@
   padding: 28px;
   background: color-mix(in srgb, #111817 28%, transparent);
   backdrop-filter: blur(3px);
+  animation: dsh-ssh-scrim-enter var(--ssh-motion-fast) ease-out both;
 }
 .dsh-ssh-dialog {
   box-sizing: border-box;
@@ -929,6 +968,7 @@
   color: var(--ssh-text);
   background: var(--ssh-surface);
   box-shadow: 0 24px 70px #07100d2e;
+  animation: dsh-ssh-dialog-enter var(--ssh-motion-standard) var(--ssh-ease-out) both;
 }
 .dsh-ssh-dialog > header {
   position: sticky;
@@ -974,6 +1014,29 @@
   display: grid;
   gap: 15px;
   padding: 20px 18px 18px;
+}
+.dsh-ssh-form-section {
+  display: grid;
+  gap: 13px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--ssh-border) 78%, transparent);
+  border-radius: var(--ssh-radius-surface);
+  background: color-mix(in srgb, var(--ssh-surface-raised) 72%, transparent);
+}
+.dsh-ssh-form-section-heading {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 2px;
+}
+.dsh-ssh-form-section-heading strong {
+  color: var(--ssh-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.dsh-ssh-form-section-heading small {
+  color: var(--ssh-text-subtle);
+  font-size: 10px;
+  line-height: 1.4;
 }
 .dsh-ssh-form-grid {
   display: grid;
@@ -1172,6 +1235,12 @@
   .dsh-ssh-form-grid,
   .dsh-ssh-form-grid.is-host {
     grid-template-columns: 1fr;
+  }
+  .dsh-ssh-form {
+    padding: 14px;
+  }
+  .dsh-ssh-form-section {
+    padding: 12px;
   }
   .dsh-ssh-dialog-actions {
     position: sticky;
@@ -2318,6 +2387,20 @@
     transform: translateX(0);
   }
 }
+@keyframes dsh-ssh-scrim-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dsh-ssh-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 @keyframes dsh-ssh-content-enter {
   from {
     opacity: 0;
@@ -2346,6 +2429,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .dsh-ssh-dialog-layer,
+  .dsh-ssh-dialog,
   .dsh-ssh-activity-panel,
   .dsh-ssh-file-preview-body,
   .dsh-ssh-sftp-dropzone {
@@ -2354,7 +2439,14 @@
   .dsh-ssh-vault-row,
   .dsh-ssh-proxy-row,
   .dsh-ssh-sftp-row,
-  .dsh-ssh-terminal-switcher button {
+  .dsh-ssh-terminal-switcher button,
+  .dsh-ssh-sidebar-row,
+  .dsh-ssh-icon-button,
+  .dsh-ssh-segments button,
+  .dsh-ssh-primary-button,
+  .dsh-ssh-secondary-button,
+  .dsh-ssh-danger-button,
+  .dsh-ssh-small-primary {
     transition: none;
   }
 }
