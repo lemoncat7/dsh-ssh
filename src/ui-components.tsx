@@ -1,56 +1,24 @@
-import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
-import { IconCloseOutline16, IconDataOutline16, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useId, type ReactNode } from 'react'
+import { IconCloseOutline16, IconDataOutline16, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 
 interface DialogProps {
   title: string
   subtitle?: string | undefined
+  className?: string | undefined
   onClose(): void
   children: ReactNode
 }
 
-export function Dialog({ title, subtitle, onClose, children }: DialogProps): JSX.Element {
+export function Dialog({ title, subtitle, className, onClose, children }: DialogProps): JSX.Element {
   const titleId = useId()
   const descriptionId = useId()
-  const panelRef = useRef<HTMLElement>(null)
-  const returnFocusRef = useRef<HTMLElement | null>(null)
 
-  useEffect(() => {
-    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const panel = panelRef.current
-    const initial = panel?.querySelector<HTMLElement>('[autofocus], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')
-    initial?.focus()
-    return () => {
-      const target = returnFocusRef.current
-      if (target?.isConnected) target.focus()
-    }
-  }, [])
-
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      onClose()
-      return
-    }
-    if (event.key !== 'Tab') return
-    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])')).filter(control => control.getClientRects().length > 0)
-    const first = controls[0]
-    const last = controls.at(-1)
-    if (first === undefined || last === undefined) return
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first.focus()
-    }
-  }
-
-  return <div className="dsh-ssh-dialog-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section ref={panelRef} className="dsh-ssh-dialog dsh-ssh-scroll-surface" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onKeyDown={onKeyDown}>
+  return <Modal open onClose={onClose} title={title} closeLabel="关闭" headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
+    <section className={`dsh-ssh-dialog dsh-ssh-scroll-surface${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId}>
       <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={onClose} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
       {children}
     </section>
-  </div>
+  </Modal>
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string | undefined; children: ReactNode }): JSX.Element {

@@ -12,7 +12,7 @@
 .dsh-ssh-sidebar,
 .dsh-ssh-workspace,
 .dsh-ssh-activity-panel,
-.dsh-ssh-dialog-layer,
+.dsh-ssh-dialog-modal,
 .dsh-ssh-preview-modal,
 .dsh-ssh-session-create-modal {
   --ssh-font-sans: "SF Pro Text", "SF Pro Display", -apple-system,
@@ -268,9 +268,9 @@
 .dsh-ssh-activity-panel *,
 .dsh-ssh-activity-panel *::before,
 .dsh-ssh-activity-panel *::after,
-.dsh-ssh-dialog-layer *,
-.dsh-ssh-dialog-layer *::before,
-.dsh-ssh-dialog-layer *::after,
+.dsh-ssh-dialog-modal *,
+.dsh-ssh-dialog-modal *::before,
+.dsh-ssh-dialog-modal *::after,
 .dsh-ssh-sidebar *,
 .dsh-ssh-sidebar *::before,
 .dsh-ssh-sidebar *::after,
@@ -946,21 +946,23 @@
   font-size: 10px;
   font-style: normal;
 }
-.dsh-ssh-dialog-layer {
-  position: fixed;
-  z-index: 1000;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  background: color-mix(in srgb, #111817 28%, transparent);
-  backdrop-filter: blur(3px);
-  animation: dsh-ssh-scrim-enter var(--ssh-motion-fast) ease-out both;
+.dsh-ssh-dialog-modal {
+  width: min(680px, calc(100vw - 40px));
+  max-width: none;
+  max-height: min(780px, calc(100dvh - 40px));
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 15px;
+  color: var(--ssh-text);
+  background: transparent;
+  box-shadow: 0 24px 70px color-mix(in srgb, #07100d 24%, transparent);
 }
 .dsh-ssh-dialog {
   box-sizing: border-box;
-  width: min(620px, calc(100vw - 40px));
-  max-height: min(760px, calc(100vh - 40px));
+  width: 100%;
+  max-height: min(780px, calc(100dvh - 40px));
   overflow: auto;
   border: 1px solid
     color-mix(in srgb, var(--ssh-text) 15%, transparent);
@@ -1222,9 +1224,10 @@
   }
 }
 @media (max-width: 600px) {
-  .dsh-ssh-dialog-layer {
-    align-items: stretch;
-    padding: 0;
+  .dsh-ssh-dialog-modal {
+    width: 100vw;
+    max-height: 100dvh;
+    border-radius: 0;
   }
   .dsh-ssh-dialog {
     width: 100%;
@@ -1256,9 +1259,6 @@
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .dsh-ssh-dialog-layer {
-    backdrop-filter: none;
-  }
   .dsh-ssh-dialog > header {
     backdrop-filter: none;
   }
@@ -2387,10 +2387,6 @@
     transform: translateX(0);
   }
 }
-@keyframes dsh-ssh-scrim-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 @keyframes dsh-ssh-dialog-enter {
   from {
     opacity: 0;
@@ -2429,7 +2425,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dsh-ssh-dialog-layer,
+  .dsh-ssh-dialog-modal,
   .dsh-ssh-dialog,
   .dsh-ssh-activity-panel,
   .dsh-ssh-file-preview-body,

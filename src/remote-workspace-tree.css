@@ -497,6 +497,10 @@
 }
 
 .dsh-ssh-project-dialog {
+  width: 100%;
+}
+
+.dsh-ssh-project-dialog-modal {
   width: min(480px, calc(100vw - 32px));
 }
 

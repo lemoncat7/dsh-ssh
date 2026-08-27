@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ISessions, IWorkspaces } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -164,8 +164,11 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [injection, setInjection] = useState<InjectionView | null>(null)
   const [open, setOpen] = useState(true)
-  const [, setRevision] = useState(0)
-  useEffect(() => props.controller.subscribe(() => setRevision(value => value + 1)), [props.controller])
+  const remoteOpen = useSyncExternalStore(props.controller.subscribe, props.controller.isOpen)
+  const activityOpen = useSyncExternalStore(
+    props.activityController.subscribe,
+    () => currentSessionId !== undefined && props.activityController.isOpen(currentSessionId),
+  )
   useEffect(() => subscribeSessionAccess(value => {
     if (value.sessionId === currentSessionId) setInjection(value)
   }), [currentSessionId])
@@ -174,8 +177,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
     setProfiles(next)
     setInjection(sessionId === undefined ? null : await loadInjection(String(sessionId)).catch(() => null))
   }, [sessionId])
-  useEffect(() => { void refresh() }, [refresh, props.controller.isOpen()])
-  const activityOpen = currentSessionId !== undefined && props.activityController.isOpen(currentSessionId)
+  useEffect(() => { void refresh() }, [refresh, remoteOpen])
   const availableProfiles = injection === null ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
   useEffect(() => {
     if (currentSessionId === undefined || injection?.permission !== 'terminal') return

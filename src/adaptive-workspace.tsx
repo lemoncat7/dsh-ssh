@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export interface AdaptiveWorkspaceControls {
   closePanel(): void
@@ -23,13 +23,27 @@ interface AdaptiveWorkspaceProps {
 
 export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navigationLabel, navigationIcon, inspector, inspectorLabel = '详情', inspectorIcon, children }: AdaptiveWorkspaceProps): JSX.Element {
   const [panel, setPanel] = useState<AdaptivePanel>()
+  const navigationRef = useRef<HTMLElement>(null)
+  const inspectorRef = useRef<HTMLElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const closePanel = (): void => {
+    setPanel(undefined)
+    window.requestAnimationFrame(() => {
+      const target = returnFocusRef.current
+      if (target?.isConnected) target.focus()
+    })
+  }
   const controls: AdaptiveWorkspaceControls = {
-    closePanel: () => setPanel(undefined),
+    closePanel,
     openPanel: next => setPanel(next),
   }
   useEffect(() => {
     if (panel === undefined) return
-    const close = (event: KeyboardEvent): void => { if (event.key === 'Escape') setPanel(undefined) }
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const target = panel === 'navigation' ? navigationRef.current : inspectorRef.current
+    const initial = target?.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])')
+    window.requestAnimationFrame(() => initial?.focus())
+    const close = (event: KeyboardEvent): void => { if (event.key === 'Escape') closePanel() }
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [panel])
@@ -37,14 +51,14 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
     {toolbar}
     {notice}
     <nav className="dsh-ssh-mobile-actions" aria-label="工作区面板">
-      <button type="button" aria-expanded={panel === 'navigation'} onClick={() => setPanel(current => current === 'navigation' ? undefined : 'navigation')}>{navigationIcon}<span>{navigationLabel}</span></button>
-      {inspector !== undefined && <button type="button" aria-expanded={panel === 'inspector'} onClick={() => setPanel(current => current === 'inspector' ? undefined : 'inspector')}>{inspectorIcon}<span>{inspectorLabel}</span></button>}
+      <button type="button" aria-controls="dsh-ssh-adaptive-navigation" aria-expanded={panel === 'navigation'} onClick={() => panel === 'navigation' ? closePanel() : setPanel('navigation')}>{navigationIcon}<span>{navigationLabel}</span></button>
+      {inspector !== undefined && <button type="button" aria-controls="dsh-ssh-adaptive-inspector" aria-expanded={panel === 'inspector'} onClick={() => panel === 'inspector' ? closePanel() : setPanel('inspector')}>{inspectorIcon}<span>{inspectorLabel}</span></button>}
     </nav>
     <div className="dsh-ssh-adaptive-shell">
-      <aside className="dsh-ssh-adaptive-navigation" aria-label={navigationLabel}>{renderSlot(navigation, controls)}</aside>
+      <aside ref={navigationRef} id="dsh-ssh-adaptive-navigation" className="dsh-ssh-adaptive-navigation" aria-label={navigationLabel}>{renderSlot(navigation, controls)}</aside>
       <section className="dsh-ssh-adaptive-content">{children}</section>
-      {inspector !== undefined && <aside className="dsh-ssh-adaptive-inspector" aria-label={inspectorLabel}>{renderSlot(inspector, controls)}</aside>}
-      <button type="button" className="dsh-ssh-adaptive-backdrop" aria-label="关闭面板" tabIndex={panel === undefined ? -1 : 0} onClick={() => setPanel(undefined)} />
+      {inspector !== undefined && <aside ref={inspectorRef} id="dsh-ssh-adaptive-inspector" className="dsh-ssh-adaptive-inspector" aria-label={inspectorLabel}>{renderSlot(inspector, controls)}</aside>}
+      <button type="button" className="dsh-ssh-adaptive-backdrop" aria-label="关闭面板" tabIndex={panel === undefined ? -1 : 0} onClick={closePanel} />
     </div>
   </main>
 }

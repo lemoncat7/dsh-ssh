@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  IconChevronDownOutline14, IconCloseOutline16, IconEditOutline16, IconFolderClose16,
+  IconChevronDownOutline14, IconEditOutline16, IconFolderClose16,
   IconFolderOpenOutline16, IconPlusOutline16, IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
@@ -9,6 +9,7 @@ import {
   type InjectionView, type ProfileView, type RemoteProjectView,
 } from './client-api.js'
 import { ProjectSessionDialog } from './project-session-dialog.js'
+import { Dialog } from './ui-components.js'
 
 export interface RemoteTarget {
   profileId: string
@@ -160,17 +161,14 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
     setSaving(true); setError(undefined)
     try { await deleteRemoteProject(profile.id, project.id); await onSaved() } catch (reason) { setError(message(reason)); setSaving(false) }
   }
-  return <div className="dsh-ssh-dialog-layer" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <section className="dsh-ssh-dialog dsh-ssh-project-dialog" role="dialog" aria-modal="true" aria-labelledby="dsh-ssh-project-title">
-      <header><span><h2 id="dsh-ssh-project-title">{project === undefined ? '添加固定目录' : '编辑固定目录'}</h2><p>{profile.name} · 终端与 SFTP 的默认远端路径</p></span><button type="button" className="dsh-ssh-icon-button" onClick={onClose} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
-      <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
+  return <Dialog className="dsh-ssh-project-dialog" title={project === undefined ? '添加固定目录' : '编辑固定目录'} subtitle={`${profile.name} · 终端与 SFTP 的默认远端路径`} onClose={onClose}>
+    <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
         <label className="dsh-ssh-field"><span>名称</span><input required maxLength={80} value={name} placeholder="网站项目" onChange={event => setName(event.target.value)} /></label>
         <label className="dsh-ssh-field"><span>远端路径</span><input required maxLength={4096} value={path} spellCheck={false} placeholder="/var/www/example" onChange={event => setPath(event.target.value)} /><small>保存前会在右侧 SFTP 中验证路径是否可访问。</small></label>
         {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
         <div className="dsh-ssh-dialog-actions">{project !== undefined && <button type="button" className="dsh-ssh-danger-button" disabled={saving} onClick={() => { void remove() }}><IconTrashOutline16 size={15} />删除</button>}<span className="dsh-ssh-dialog-spacer" /><button type="button" className="dsh-ssh-secondary-button" disabled={saving} onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '保存中…' : '保存目录'}</button></div>
-      </form>
-    </section>
-  </div>
+    </form>
+  </Dialog>
 }
 
 function groupProfiles(profiles: ProfileView[]): Array<{ name: string; profiles: ProfileView[] }> {
