@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react'
-import { IconCloseOutline16, IconDataOutline16, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseOutline16, IconDataOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 
 interface DialogProps {
   title: string
@@ -29,8 +29,8 @@ export function Segment({ active, onClick, children }: { active: boolean; onClic
   return <button type="button" role="tab" className={active ? 'is-active' : ''} aria-selected={active} onClick={onClick}>{children}</button>
 }
 
-export function EmptyState({ onNew }: { onNew(): void }): JSX.Element {
-  return <div className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>连接你的第一台远端主机</h1><p>保存 SSH 配置后，可以在这里打开终端、建立端口转发，并按会话授权给 AI。</p><button type="button" className="dsh-ssh-primary-button" onClick={onNew}><IconPlusOutline16 size={16} />新建连接</button></div>
+export function EmptyState(): JSX.Element {
+  return <div className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>连接你的第一台远端主机</h1><p>使用“主机与项目”旁的添加按钮保存 SSH 配置，随后即可打开终端、建立端口转发，并按会话授权给 AI。</p></div>
 }
 
 export function ServerGlyph(): JSX.Element {
