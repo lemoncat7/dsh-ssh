@@ -505,6 +505,8 @@
 }
 
 .dsh-ssh-session-create-modal {
+  --ssh-surface: var(--ssh-modal-surface);
+  --ssh-surface-raised: var(--ssh-modal-surface-raised);
   width: min(520px, calc(100vw - 40px));
   max-width: none;
   max-height: min(720px, calc(100dvh - 40px));
@@ -513,7 +515,7 @@
   border-color: var(--ssh-border);
   border-radius: 16px;
   color: var(--ssh-text);
-  background: var(--ssh-surface);
+  background: var(--ssh-modal-surface);
   box-shadow: 0 24px 70px color-mix(in srgb, #07100d 22%, transparent);
 }
 

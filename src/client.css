@@ -33,6 +33,10 @@
   --ssh-warning: #927443;
   --ssh-surface: var(--ssh-canvas);
   --ssh-surface-raised: var(--ssh-panel);
+  /* Modal tasks need an opaque semantic plane even when the active theme uses
+     translucent canvas and panel tokens over artwork. */
+  --ssh-modal-surface: var(--dsw-alias-bg-overlay, #e9eef0);
+  --ssh-modal-surface-raised: var(--dsw-alias-bg-layer-3, #f4f6f5);
   --ssh-activity-surface: var(--ssh-surface);
   --ssh-activity-surface-raised: var(--ssh-surface-raised);
   --ssh-border: color-mix(in srgb, var(--ssh-text) 11%, transparent);
@@ -293,6 +297,58 @@
   font-size: inherit;
   line-height: inherit;
   letter-spacing: inherit;
+}
+.dsh-ssh-workspace button,
+.dsh-ssh-activity-panel button,
+.dsh-ssh-dialog button,
+.dsh-ssh-sidebar button,
+.dsh-ssh-preview-modal button,
+.dsh-ssh-session-create-modal button {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: none;
+  text-align: inherit;
+}
+.dsh-ssh-workspace :where(fieldset, legend),
+.dsh-ssh-dialog :where(fieldset, legend),
+.dsh-ssh-session-create-modal :where(fieldset, legend) {
+  min-inline-size: 0;
+  margin: 0;
+}
+.dsh-ssh-workspace legend,
+.dsh-ssh-dialog legend,
+.dsh-ssh-session-create-modal legend {
+  padding: 0;
+}
+.dsh-ssh-workspace :where(input, select, textarea),
+.dsh-ssh-dialog :where(input, select, textarea),
+.dsh-ssh-activity-panel :where(input, select, textarea),
+.dsh-ssh-session-create-modal :where(input, select, textarea) {
+  color: var(--ssh-text);
+}
+.dsh-ssh-workspace option,
+.dsh-ssh-dialog option,
+.dsh-ssh-activity-panel option,
+.dsh-ssh-session-create-modal option {
+  color: var(--ssh-text);
+  background: var(--ssh-modal-surface);
+}
+.dsh-ssh-workspace :where(table),
+.dsh-ssh-activity-panel :where(table),
+.dsh-ssh-dialog :where(table),
+.dsh-ssh-preview-modal :where(table) {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+.dsh-ssh-workspace button::-moz-focus-inner,
+.dsh-ssh-activity-panel button::-moz-focus-inner,
+.dsh-ssh-dialog button::-moz-focus-inner,
+.dsh-ssh-sidebar button::-moz-focus-inner,
+.dsh-ssh-preview-modal button::-moz-focus-inner,
+.dsh-ssh-session-create-modal button::-moz-focus-inner {
+  padding: 0;
+  border: 0;
 }
 .dsh-ssh-workspace :where(button, input, select, textarea),
 .dsh-ssh-activity-panel :where(button, input, select, textarea),
@@ -956,10 +1012,12 @@
   border: 0;
   border-radius: 15px;
   color: var(--ssh-text);
-  background: transparent;
+  background: var(--ssh-modal-surface);
   box-shadow: 0 24px 70px color-mix(in srgb, #07100d 24%, transparent);
 }
 .dsh-ssh-dialog {
+  --ssh-surface: var(--ssh-modal-surface);
+  --ssh-surface-raised: var(--ssh-modal-surface-raised);
   box-sizing: border-box;
   width: 100%;
   max-height: min(780px, calc(100dvh - 40px));
@@ -968,7 +1026,7 @@
     color-mix(in srgb, var(--ssh-text) 15%, transparent);
   border-radius: 14px;
   color: var(--ssh-text);
-  background: var(--ssh-surface);
+  background: var(--ssh-modal-surface);
   box-shadow: 0 24px 70px #07100d2e;
   animation: dsh-ssh-dialog-enter var(--ssh-motion-standard) var(--ssh-ease-out) both;
 }
@@ -1954,6 +2012,8 @@
   background: #fff;
 }
 .dsh-ssh-preview-modal {
+  --ssh-surface: var(--ssh-modal-surface);
+  --ssh-surface-raised: var(--ssh-modal-surface-raised);
   width: min(940px, calc(100vw - 64px));
   height: min(760px, calc(100dvh - 64px));
   max-width: none;
@@ -1962,7 +2022,7 @@
   border-color: var(--ssh-border);
   border-radius: 16px;
   color: var(--ssh-text);
-  background: var(--ssh-surface-raised);
+  background: var(--ssh-modal-surface);
   box-shadow: 0 24px 72px color-mix(in srgb, #08100e 24%, transparent);
 }
 .dsh-ssh-preview-modal-shell {
