@@ -1,6 +1,6 @@
 {
   "name": "@lemoncat7/dsh-ssh",
-  "version": "1.2.0-alpha.21",
+  "version": "1.2.0",
   "description": "Secure SSH profiles, browser terminals, proxies, port forwarding, and session-scoped AI access for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
