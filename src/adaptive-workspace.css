@@ -1,0 +1,139 @@
+.dsh-ssh-adaptive-workspace {
+  container: dsh-ssh-workspace/inline-size;
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dsh-ssh-adaptive-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ssh-adaptive-navigation-width, 248px) minmax(0, 1fr) var(--ssh-adaptive-inspector-width, 292px);
+  min-height: 0;
+  flex: 1;
+}
+.dsh-ssh-adaptive-navigation,
+.dsh-ssh-adaptive-content,
+.dsh-ssh-adaptive-inspector {
+  min-width: 0;
+  min-height: 0;
+}
+.dsh-ssh-adaptive-navigation > *,
+.dsh-ssh-adaptive-content > *,
+.dsh-ssh-adaptive-inspector > * {
+  box-sizing: border-box;
+  height: 100%;
+}
+.dsh-ssh-adaptive-content {
+  position: relative;
+  z-index: 0;
+}
+.dsh-ssh-mobile-actions,
+.dsh-ssh-adaptive-backdrop {
+  display: none;
+}
+@container dsh-ssh-workspace (max-width:820px) {
+  .dsh-ssh-mobile-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 46px;
+    padding: 5px max(10px, env(safe-area-inset-left)) 5px max(10px, env(safe-area-inset-right));
+    border-bottom: 1px solid var(--ssh-adaptive-border, color-mix(in srgb, currentColor 10%, transparent));
+    background: var(--ssh-adaptive-toolbar-surface, var(--ssh-surface-raised));
+    overflow-x: auto;
+  }
+  .dsh-ssh-mobile-actions button {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid var(--ssh-adaptive-border, color-mix(in srgb, currentColor 10%, transparent));
+    border-radius: 9px;
+    color: var(--ssh-text-muted);
+    background: var(--ssh-adaptive-raised-surface, var(--ssh-surface-raised));
+    font: 550 12px/1 var(--ssh-font-sans);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .dsh-ssh-mobile-actions button[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--ssh-adaptive-accent, var(--ssh-accent)) 28%, transparent);
+    color: var(--ssh-adaptive-accent-strong, var(--ssh-accent-strong));
+    background: color-mix(in srgb, var(--ssh-adaptive-accent, var(--ssh-accent)) 9%, var(--ssh-adaptive-raised-surface, var(--ssh-surface-raised)));
+  }
+  .dsh-ssh-adaptive-shell {
+    display: block;
+    isolation: isolate;
+  }
+  .dsh-ssh-adaptive-content {
+    width: 100%;
+    height: 100%;
+  }
+  .dsh-ssh-adaptive-navigation,
+  .dsh-ssh-adaptive-inspector {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    bottom: 0;
+    width: min(88%, 360px);
+    overflow: hidden;
+    visibility: hidden;
+    background: var(--ssh-adaptive-drawer-surface, var(--ssh-surface-raised));
+    box-shadow: 0 18px 48px color-mix(in srgb, var(--ssh-text) 18%, transparent);
+    transition: transform 190ms cubic-bezier(.2, .8, .2, 1), visibility 190ms;
+  }
+  .dsh-ssh-adaptive-navigation {
+    left: 0;
+    transform: translateX(-102%);
+    border-right: 1px solid var(--ssh-adaptive-border, var(--ssh-border));
+  }
+  .dsh-ssh-adaptive-inspector {
+    right: 0;
+    transform: translateX(102%);
+    border-left: 1px solid var(--ssh-adaptive-border, var(--ssh-border));
+  }
+  .dsh-ssh-adaptive-workspace[data-panel="navigation"] .dsh-ssh-adaptive-navigation,
+  .dsh-ssh-adaptive-workspace[data-panel="inspector"] .dsh-ssh-adaptive-inspector {
+    transform: translateX(0);
+    visibility: visible;
+  }
+  .dsh-ssh-adaptive-backdrop {
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: color-mix(in srgb, #0d1513 24%, transparent);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 170ms ease, visibility 170ms;
+  }
+  .dsh-ssh-adaptive-workspace:not([data-panel="none"]) .dsh-ssh-adaptive-backdrop {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+@container dsh-ssh-workspace (max-width:520px) {
+  .dsh-ssh-mobile-actions button {
+    min-height: 44px;
+    flex: 1;
+  }
+  .dsh-ssh-adaptive-navigation,
+  .dsh-ssh-adaptive-inspector {
+    width: min(92%, 380px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dsh-ssh-adaptive-navigation,
+  .dsh-ssh-adaptive-inspector,
+  .dsh-ssh-adaptive-backdrop {
+    transition: none;
+  }
+}

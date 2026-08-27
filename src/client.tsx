@@ -5,8 +5,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
-import { activatePluginWorkspace, AdaptiveWorkspace, observePluginWorkspace } from '@lemoncat7/dsh-plugin-ui'
-import adaptiveUiCss from '@lemoncat7/dsh-plugin-ui/styles.css'
+import { AdaptiveWorkspace } from './adaptive-workspace.js'
+import adaptiveUiCss from './adaptive-workspace.css'
+import { activatePluginWorkspace, observePluginWorkspace } from './workspace-ownership.js'
 import {
   IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconCodeOutline16, IconDataOutline16,
   IconEditOutline16, IconFolderClose16, IconFolderOpenOutline16, IconPanelLeftOutline16, IconPlusOutline16,

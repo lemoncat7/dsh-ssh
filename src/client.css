@@ -225,13 +225,14 @@
 }
 .dsh-ssh-workspace,
 .dsh-ssh-activity-panel {
-  --dpu-navigation-width: 248px;
-  --dpu-inspector-width: 292px;
-  --dpu-border: var(--ssh-border);
-  --dpu-accent: var(--ssh-accent);
-  --dpu-accent-strong: var(--ssh-accent-strong);
-  --dpu-raised-surface: var(--ssh-surface-raised);
-  --dpu-toolbar-surface: color-mix(in srgb, var(--ssh-surface-raised) 88%, transparent);
+  --ssh-adaptive-navigation-width: 248px;
+  --ssh-adaptive-inspector-width: 292px;
+  --ssh-adaptive-border: var(--ssh-border);
+  --ssh-adaptive-accent: var(--ssh-accent);
+  --ssh-adaptive-accent-strong: var(--ssh-accent-strong);
+  --ssh-adaptive-raised-surface: var(--ssh-surface-raised);
+  --ssh-adaptive-toolbar-surface: color-mix(in srgb, var(--ssh-surface-raised) 88%, transparent);
+  --ssh-adaptive-drawer-surface: var(--ssh-surface-raised);
 }
 .dsh-ssh-workspace *,
 .dsh-ssh-workspace *::before,
@@ -383,7 +384,7 @@
   min-height: 62px;
   padding: 0 20px;
   border-bottom: 1px solid var(--ssh-border);
-  background: color-mix(in srgb, var(--dpu-toolbar-surface) 96%, transparent);
+  background: color-mix(in srgb, var(--ssh-adaptive-toolbar-surface) 96%, transparent);
   box-shadow: 0 1px 0 color-mix(in srgb, #fff 42%, transparent);
 }
 .dsh-ssh-brand {
@@ -1407,7 +1408,7 @@
 .dsh-ssh-form .dsh-ssh-inline-error {
   margin: 0;
 }
-@container dpu-workspace (max-width: 1120px) {
+@container dsh-ssh-workspace (max-width: 1120px) {
   .dsh-ssh-toolbar {
     grid-template-columns: 1fr auto auto;
   }
@@ -1415,7 +1416,7 @@
     display: none;
   }
 }
-@container dpu-workspace (max-width: 820px) {
+@container dsh-ssh-workspace (max-width: 820px) {
   .dsh-ssh-toolbar {
     grid-template-columns: 1fr auto;
     gap: 8px;
@@ -1455,7 +1456,7 @@
     display: none;
   }
 }
-@container dpu-workspace (max-width: 520px) {
+@container dsh-ssh-workspace (max-width: 520px) {
   .dsh-ssh-toolbar {
     padding-right: max(10px, env(safe-area-inset-right));
     padding-left: max(10px, env(safe-area-inset-left));
