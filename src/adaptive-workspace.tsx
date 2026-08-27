@@ -33,7 +33,7 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [panel])
-  return <main className={`dsh-ssh-adaptive-workspace${className === undefined ? '' : ` ${className}`}`} data-panel={panel ?? 'none'}>
+  return <main className={`dsh-ssh-adaptive-workspace${className === undefined ? '' : ` ${className}`}`} data-panel={panel ?? 'none'} data-has-inspector={inspector === undefined ? 'false' : 'true'}>
     {toolbar}
     {notice}
     <nav className="dsh-ssh-mobile-actions" aria-label="工作区面板">

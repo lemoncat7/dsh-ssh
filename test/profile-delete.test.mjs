@@ -9,7 +9,7 @@ test('profile deletion blocks jump-host references and cascades owned resources'
   const state = {
     profiles: [host('host-delete'), { ...host('host-dependent'), proxy: { type: 'jump', profileIds: ['host-delete'] } }],
     forwardRules: [{ id: 'forward-delete', profileId: 'host-delete' }],
-    injections: [{ sessionId: 'session-test', profileIds: ['host-delete'], permission: 'terminal', requireCommandApproval: false, workingDirectories: { 'host-delete': '/srv' }, updatedAt: now }],
+    injections: [{ sessionId: 'session-test', profileIds: ['host-delete'], permission: 'terminal', requireCommandApproval: false, workingDirectories: { 'host-delete': '/srv' }, workingProjectIds: {}, updatedAt: now }],
   }
   const stopped = []
   const deletedCredentials = []

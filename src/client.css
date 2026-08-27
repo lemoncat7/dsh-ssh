@@ -12,7 +12,8 @@
 .dsh-ssh-sidebar,
 .dsh-ssh-workspace,
 .dsh-ssh-activity-panel,
-.dsh-ssh-dialog-layer {
+.dsh-ssh-dialog-layer,
+.dsh-ssh-preview-modal {
   --ssh-font-sans: "SF Pro Text", "SF Pro Display", -apple-system,
     BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
   --ssh-font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono",
@@ -128,7 +129,7 @@
 }
 .dsh-ssh-sidebar-row {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) 18px;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-height: 40px;
@@ -185,9 +186,18 @@
   font-size: 10px;
 }
 .dsh-ssh-injected-mark {
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  height: 19px;
+  align-items: center;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, #5b8f82 22%, transparent);
+  border-radius: 6px;
   color: #5b8f82;
+  background: color-mix(in srgb, #5b8f82 8%, transparent);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
 }
 .dsh-ssh-sidebar-empty,
 .dsh-ssh-sidebar-more {
@@ -245,13 +255,17 @@
 .dsh-ssh-dialog-layer *::after,
 .dsh-ssh-sidebar *,
 .dsh-ssh-sidebar *::before,
-.dsh-ssh-sidebar *::after {
+.dsh-ssh-sidebar *::after,
+.dsh-ssh-preview-modal *,
+.dsh-ssh-preview-modal *::before,
+.dsh-ssh-preview-modal *::after {
   box-sizing: border-box;
 }
 .dsh-ssh-workspace :where(button, input, select, textarea),
 .dsh-ssh-activity-panel :where(button, input, select, textarea),
 .dsh-ssh-dialog :where(button, input, select, textarea),
-.dsh-ssh-sidebar :where(button, input, select, textarea) {
+.dsh-ssh-sidebar :where(button, input, select, textarea),
+.dsh-ssh-preview-modal :where(button, input, select, textarea) {
   margin: 0;
   font-family: var(--ssh-font-sans);
   font-size: inherit;
@@ -262,6 +276,7 @@
 .dsh-ssh-activity-panel :where(button, input, select, textarea),
 .dsh-ssh-dialog :where(button, input, select, textarea),
 .dsh-ssh-sidebar :where(button, input, select, textarea),
+.dsh-ssh-preview-modal :where(button, input, select, textarea),
 .dsh-ssh-activity-trigger {
   -webkit-appearance: none;
   appearance: none;
@@ -269,7 +284,8 @@
 .dsh-ssh-workspace :where(button, input, select, textarea):disabled,
 .dsh-ssh-activity-panel :where(button, input, select, textarea):disabled,
 .dsh-ssh-dialog :where(button, input, select, textarea):disabled,
-.dsh-ssh-sidebar :where(button, input, select, textarea):disabled {
+.dsh-ssh-sidebar :where(button, input, select, textarea):disabled,
+.dsh-ssh-preview-modal :where(button, input, select, textarea):disabled {
   cursor: not-allowed;
 }
 .dsh-ssh-workspace :where(input, select, textarea)::placeholder,
@@ -498,46 +514,11 @@
   min-height: 26px;
   padding: 0 10px;
 }
-.dsh-ssh-profile-panel,
-.dsh-ssh-inspector {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
-  background: color-mix(in srgb, var(--ssh-surface-raised) 98%, var(--ssh-surface));
-}
-.dsh-ssh-profile-panel {
-  border-right: 1px solid var(--ssh-border);
-}
-.dsh-ssh-inspector {
-  border-left: 1px solid var(--ssh-border);
-}
 .dsh-ssh-main-panel {
   min-width: 0;
   min-height: 0;
   overflow: auto;
   background: color-mix(in srgb, var(--ssh-surface) 98%, var(--ssh-surface-raised));
-}
-.dsh-ssh-panel-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 60px;
-  padding: 0 14px;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--ssh-border) 74%, transparent);
-}
-.dsh-ssh-panel-heading > span {
-  display: grid;
-  gap: 2px;
-}
-.dsh-ssh-panel-heading strong {
-  font-size: 13px;
-  font-weight: 650;
-}
-.dsh-ssh-panel-heading small {
-  color: var(--ssh-text-subtle);
-  font-size: 11px;
 }
 .dsh-ssh-search {
   padding: 10px 10px 6px;
@@ -568,146 +549,6 @@
   border-color: color-mix(in srgb, var(--ssh-accent) 65%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ssh-accent) 12%, transparent);
 }
-.dsh-ssh-profile-list {
-  display: grid;
-  align-content: start;
-  gap: 3px;
-  min-height: 0;
-  overflow: auto;
-  padding: 4px 7px 12px;
-}
-.dsh-ssh-profile-group {
-  min-width: 0;
-}
-.dsh-ssh-profile-group-heading {
-  display: grid;
-  grid-template-columns: 14px 18px minmax(0, 1fr);
-  align-items: center;
-  gap: 5px;
-  width: 100%;
-  min-height: 34px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 8px;
-  color: var(--ssh-text-muted);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-}
-.dsh-ssh-profile-group-heading:hover {
-  color: var(--ssh-text);
-  background: color-mix(
-    in srgb,
-    var(--ssh-hover) 58%,
-    transparent
-  );
-}
-.dsh-ssh-profile-group-chevron {
-  display: grid;
-  place-items: center;
-  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.dsh-ssh-profile-group-chevron[data-open="false"] {
-  transform: rotate(-90deg);
-}
-.dsh-ssh-profile-group-folder {
-  display: grid;
-  place-items: center;
-  color: color-mix(
-    in srgb,
-    var(--ssh-accent-strong) 72%,
-    var(--ssh-text-muted)
-  );
-}
-.dsh-ssh-profile-group-copy {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.dsh-ssh-profile-group-copy strong {
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dsh-ssh-profile-group-copy small {
-  display: grid;
-  place-items: center;
-  min-width: 16px;
-  height: 16px;
-  color: var(--ssh-text-subtle);
-  font:
-    10px/1 var(--ssh-font-mono),
-    monospace;
-}
-.dsh-ssh-profile-group-children {
-  display: grid;
-  gap: 1px;
-  margin-left: 13px;
-  padding-left: 6px;
-  border-left: 1px solid color-mix(in srgb, var(--ssh-border) 66%, transparent);
-  animation: dsh-ssh-group-open 140ms ease-out both;
-}
-.dsh-ssh-profile-empty {
-  margin: 18px 8px;
-  color: var(--ssh-text-subtle);
-  font-size: 11px;
-  text-align: center;
-}
-.dsh-ssh-profile-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 10px;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  padding: 5px 7px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: inherit;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background 140ms ease,
-    border-color 140ms ease,
-    transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.dsh-ssh-profile-row::before {
-  position: absolute;
-  width: 2px;
-  left: 0;
-  top: 11px;
-  bottom: 11px;
-  border-radius: 2px;
-  background: var(--ssh-accent);
-  opacity: 0;
-  transform: scaleY(0.45);
-  transition:
-    opacity 140ms ease,
-    transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  content: "";
-}
-.dsh-ssh-profile-row:hover {
-  background: color-mix(
-    in srgb,
-    var(--ssh-hover) 74%,
-    transparent
-  );
-}
-.dsh-ssh-profile-row.is-active {
-  border-color: color-mix(in srgb, var(--ssh-accent) 16%, transparent);
-  background: color-mix(in srgb, var(--ssh-accent) 7%, transparent);
-  transform: translateX(2px);
-}
-.dsh-ssh-profile-row.is-active::before {
-  opacity: 0.8;
-  transform: scaleY(1);
-}
 .dsh-ssh-host-monogram {
   display: grid;
   place-items: center;
@@ -719,37 +560,6 @@
   background: var(--ssh-surface-raised);
   font-size: 11px;
   font-weight: 650;
-}
-.dsh-ssh-profile-row > span:nth-child(2) {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-.dsh-ssh-profile-row strong,
-.dsh-ssh-profile-row small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.dsh-ssh-profile-row strong {
-  font-size: 12px;
-  font-weight: 550;
-}
-.dsh-ssh-profile-row small {
-  color: var(--ssh-text-subtle);
-  font:
-    10px/1.2 var(--ssh-font-mono),
-    monospace;
-}
-.dsh-ssh-credential-state {
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--ssh-text-subtle);
-  border-radius: 50%;
-}
-.dsh-ssh-credential-state.is-ready {
-  border-color: #5c8a76;
-  background: #5c8a76;
 }
 .dsh-ssh-terminal-pane,
 .dsh-ssh-forward-pane,
@@ -950,147 +760,6 @@
   font-size: 12px;
   line-height: 1.6;
 }
-.dsh-ssh-inspector {
-  overflow: auto;
-}
-.dsh-ssh-session-chip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 12px 12px 4px;
-  padding: 10px 10px;
-  border: 1px solid var(--ssh-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ssh-surface-raised) 86%, transparent);
-}
-.dsh-ssh-session-chip > span:nth-child(2) {
-  display: grid;
-  gap: 2px;
-}
-.dsh-ssh-session-chip strong {
-  font-size: 11px;
-}
-.dsh-ssh-session-chip small {
-  color: var(--ssh-text-subtle);
-  font:
-    10px/1 var(--ssh-font-mono),
-    monospace;
-}
-.dsh-ssh-session-pulse {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ssh-accent);
-}
-.dsh-ssh-fieldset {
-  display: grid;
-  gap: 3px;
-  margin: 13px 12px 0;
-  padding: 0;
-  border: 0;
-}
-.dsh-ssh-fieldset legend {
-  margin-bottom: 5px;
-  color: var(--ssh-text-subtle);
-  font-size: 10px;
-  font-weight: 600;
-}
-.dsh-ssh-check-row,
-.dsh-ssh-radio-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 38px;
-  padding: 3px 5px;
-  border-radius: 8px;
-}
-.dsh-ssh-check-row:hover,
-.dsh-ssh-radio-row:hover {
-  background: var(--ssh-hover);
-}
-.dsh-ssh-check-row > input,
-.dsh-ssh-radio-row > input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-.dsh-ssh-check-row > i,
-.dsh-ssh-radio-row > i {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  flex: none;
-  border: 1px solid color-mix(in srgb, var(--ssh-text-muted) 54%, transparent);
-  background: var(--ssh-control);
-  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
-}
-.dsh-ssh-check-row > i {
-  border-radius: 5px;
-}
-.dsh-ssh-radio-row > i {
-  border-radius: 50%;
-}
-.dsh-ssh-check-row > i::after {
-  width: 7px;
-  height: 4px;
-  margin-top: -2px;
-  border: solid #f7fbfa;
-  border-width: 0 0 2px 2px;
-  content: "";
-  opacity: 0;
-  transform: rotate(-45deg) scale(0.7);
-  transition: opacity 120ms ease, transform 120ms ease;
-}
-.dsh-ssh-radio-row > i::after {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #f7fbfa;
-  content: "";
-  opacity: 0;
-  transform: scale(0.55);
-  transition: opacity 120ms ease, transform 120ms ease;
-}
-.dsh-ssh-check-row > input:checked + i,
-.dsh-ssh-radio-row > input:checked + i {
-  border-color: var(--ssh-accent-strong);
-  background: var(--ssh-accent-strong);
-}
-.dsh-ssh-check-row > input:checked + i::after,
-.dsh-ssh-radio-row > input:checked + i::after {
-  opacity: 1;
-  transform: rotate(-45deg) scale(1);
-}
-.dsh-ssh-radio-row > input:checked + i::after {
-  transform: scale(1);
-}
-.dsh-ssh-check-row > input:focus-visible + i,
-.dsh-ssh-radio-row > input:focus-visible + i {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ssh-focus-ring) 34%, transparent);
-}
-.dsh-ssh-check-row > span,
-.dsh-ssh-radio-row > span {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-.dsh-ssh-check-row strong,
-.dsh-ssh-radio-row strong {
-  font-size: 11px;
-  font-weight: 550;
-}
-.dsh-ssh-check-row small,
-.dsh-ssh-radio-row small {
-  overflow: hidden;
-  color: var(--ssh-text-subtle);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .dsh-ssh-switch-row {
   display: flex;
   align-items: center;
@@ -1118,18 +787,6 @@
 .dsh-ssh-switch-row input {
   width: 34px;
   height: 20px;
-}
-.dsh-ssh-inspector-hint,
-.dsh-ssh-save-state {
-  margin: 10px 12px 0;
-  color: var(--ssh-text-subtle);
-  font-size: 10px;
-}
-.dsh-ssh-inspector-empty {
-  margin: 14px;
-  color: var(--ssh-text-subtle);
-  font-size: 11px;
-  line-height: 1.55;
 }
 .dsh-ssh-forward-list {
   display: grid;
@@ -1672,9 +1329,51 @@
   font-size: 11px;
 }
 .dsh-ssh-sftp {
+  position: relative;
   display: flex;
   min-height: 100%;
   flex-direction: column;
+}
+.dsh-ssh-sftp-dropzone {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, var(--ssh-accent) 52%, transparent);
+  border-radius: 12px;
+  color: var(--ssh-text);
+  background: color-mix(in srgb, var(--ssh-activity-surface-raised, var(--ssh-surface-raised)) 90%, transparent);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--ssh-accent) 5%, transparent);
+  pointer-events: none;
+  animation: dsh-ssh-dropzone-enter 140ms ease-out both;
+}
+.dsh-ssh-sftp-dropzone > span {
+  display: grid;
+  max-width: min(320px, 90%);
+  gap: 5px;
+  padding: 14px 18px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 11px;
+  background: var(--ssh-activity-surface-raised, var(--ssh-surface-raised));
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ssh-text) 8%, transparent);
+  text-align: center;
+}
+.dsh-ssh-sftp-dropzone strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+.dsh-ssh-sftp-dropzone small {
+  overflow: hidden;
+  color: var(--ssh-text-subtle);
+  font: 10px/1.4 var(--ssh-font-mono), monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes dsh-ssh-dropzone-enter {
+  from { opacity: 0; transform: scale(.992); }
+  to { opacity: 1; transform: scale(1); }
 }
 .dsh-ssh-sftp-hostbar {
   display: grid;
@@ -1978,41 +1677,53 @@
 }
 .dsh-ssh-file-preview > header {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-height: 42px;
   padding: 0 7px;
   border-bottom: 1px solid var(--ssh-activity-border);
 }
-.dsh-ssh-file-preview > header > span {
+.dsh-ssh-file-preview-title {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
-.dsh-ssh-file-preview > header strong,
-.dsh-ssh-file-preview > header small {
+.dsh-ssh-file-preview-title strong,
+.dsh-ssh-file-preview-title small,
+.dsh-ssh-preview-modal-shell > header > span:first-child strong,
+.dsh-ssh-preview-modal-shell > header > span:first-child small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dsh-ssh-file-preview > header strong {
+.dsh-ssh-file-preview-title strong {
   font-size: 10px;
 }
-.dsh-ssh-file-preview > header small {
+.dsh-ssh-file-preview-title small {
   color: var(--ssh-text-subtle);
   font-size: 8px;
 }
-.dsh-ssh-file-preview > header > a {
+.dsh-ssh-file-preview-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.dsh-ssh-file-preview-actions > :where(a, button) {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
+  padding: 0;
+  border: 0;
   border-radius: 8px;
   color: var(--ssh-text-muted);
+  background: transparent;
   text-decoration: none;
+  cursor: pointer;
 }
-.dsh-ssh-file-preview > header > a:hover {
+.dsh-ssh-file-preview-actions > :where(a, button):hover {
   color: var(--ssh-text);
   background: var(--ssh-hover);
 }
@@ -2165,6 +1876,61 @@
   border: 0;
   background: #fff;
 }
+.dsh-ssh-preview-modal {
+  width: min(940px, calc(100vw - 64px));
+  height: min(760px, calc(100dvh - 64px));
+  max-width: none;
+  padding: 0;
+  gap: 0;
+  border-color: var(--ssh-border);
+  border-radius: 16px;
+  color: var(--ssh-text);
+  background: var(--ssh-surface-raised);
+  box-shadow: 0 24px 72px color-mix(in srgb, #08100e 24%, transparent);
+}
+.dsh-ssh-preview-modal-shell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+}
+.dsh-ssh-preview-modal-shell > header {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--ssh-border);
+}
+.dsh-ssh-preview-modal-shell > header > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.dsh-ssh-preview-modal-shell > header strong {
+  font-size: 12px;
+  font-weight: 620;
+}
+.dsh-ssh-preview-modal-shell > header small {
+  color: var(--ssh-text-subtle);
+  font-size: 9px;
+}
+.dsh-ssh-file-preview-body.is-modal > pre {
+  padding: 22px 24px 40px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.dsh-ssh-file-preview-body.is-modal > img {
+  padding: 18px;
+}
+.dsh-ssh-file-preview-body.is-modal > iframe {
+  min-height: 100%;
+}
 .dsh-ssh-file-binary {
   display: grid;
   place-items: center;
@@ -2278,7 +2044,6 @@
   font-size: 10px;
 }
 
-.dsh-ssh-profile-row:active,
 .dsh-ssh-sftp-row:active,
 .dsh-ssh-terminal-switcher button:active {
   transform: scale(0.985);
@@ -2555,17 +2320,12 @@
     transform: translateY(0);
   }
 }
-@keyframes dsh-ssh-group-open {
-  from {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 @media (max-width: 820px) {
+  .dsh-ssh-preview-modal {
+    width: calc(100vw - 32px);
+    height: calc(100dvh - 32px);
+    border-radius: 14px;
+  }
   .dsh-ssh-vault-row,
   .dsh-ssh-proxy-row {
     grid-template-columns: 34px minmax(120px, 1fr) auto 28px;
@@ -2580,12 +2340,9 @@
 @media (prefers-reduced-motion: reduce) {
   .dsh-ssh-activity-panel,
   .dsh-ssh-file-preview-body,
-  .dsh-ssh-profile-group-children {
+  .dsh-ssh-sftp-dropzone {
     animation: none;
   }
-  .dsh-ssh-profile-row,
-  .dsh-ssh-profile-row::before,
-  .dsh-ssh-profile-group-chevron,
   .dsh-ssh-vault-row,
   .dsh-ssh-proxy-row,
   .dsh-ssh-sftp-row,

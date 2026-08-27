@@ -357,6 +357,16 @@ export class AiTerminalManager {
     return true
   }
 
+  async closeProfile(ownerId: string, profileId: string): Promise<void> {
+    const records = [...(this.sessions.get(ownerId) ?? new Map()).values()].filter(record => record.profileId === profileId)
+    await this.removeRecords(ownerId, records, 'SSH profile access revoked')
+  }
+
+  async closeOwner(ownerId: string): Promise<void> {
+    const records = [...(this.sessions.get(ownerId) ?? new Map()).values()]
+    await this.removeRecords(ownerId, records, 'SSH terminal access revoked')
+  }
+
   async closeAll(): Promise<void> {
     this.closing = true
     await Promise.allSettled(this.pendingOpens.values())
@@ -365,13 +375,13 @@ export class AiTerminalManager {
     await Promise.all(sessions.map(session => session.close('dsh-ssh disposed').catch(() => {})))
   }
 
-  private async removeRecords(ownerId: string, records: AiTerminalRecord[]): Promise<void> {
+  private async removeRecords(ownerId: string, records: AiTerminalRecord[], reason = 'replaced by reusable SSH terminal'): Promise<void> {
     if (records.length === 0) return
     const owned = this.sessions.get(ownerId)
     if (owned === undefined) return
     for (const record of records) owned.delete(record.terminalId)
     if (owned.size === 0) this.sessions.delete(ownerId)
-    await Promise.all(records.map(record => record.session.close('replaced by reusable SSH terminal').catch(() => {})))
+    await Promise.all(records.map(record => record.session.close(reason).catch(() => {})))
   }
 
   private notifyTerminalOpened(ownerId: string, terminalId: string): void {

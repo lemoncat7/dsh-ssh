@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
-  IconChevronLeftOutline14, IconDataOutline16, IconDownloadOutline16, IconFolderClose16,
-  IconRefreshOutline16, IconSendOutline14,
+  IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconDownloadOutline16, IconFolderClose16,
+  IconEditOutline16, IconFullscreenOutline16, IconRefreshOutline16, IconSendOutline14, IconTrashOutline16, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   ApiError, loadLocalWorkspaceDirectory, loadLocalWorkspaceFilePreview, loadProfileSftpDirectory, loadProfileSftpFilePreview,
@@ -22,6 +22,12 @@ interface SftpExplorerProps {
   loadPreview(path: string): Promise<SftpFilePreviewView>
   fileUrl(path: string, inline?: boolean): string
   uploadFile?(directory: string, file: File, overwrite: boolean): Promise<unknown>
+}
+
+interface PendingOverwriteUpload {
+  file: File
+  remaining: File[]
+  directory: string
 }
 
 export function LocalWorkspaceBrowser({ sessionId }: { sessionId: string }): JSX.Element {
@@ -47,25 +53,27 @@ export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, o
   return <SftpExplorer initialPath={profile.cwd} header={header} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} />
 }
 
-export function ProfileSftpPane({ profile }: { profile: ProfileView }): JSX.Element {
+export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean }): JSX.Element {
   const loadDirectory = useCallback((path: string) => loadProfileSftpDirectory(profile.id, path), [profile.id])
   const loadPreview = useCallback((path: string) => loadProfileSftpFilePreview(profile.id, path), [profile.id])
   const fileUrl = useCallback((path: string, inline = false) => profileSftpFileUrl(profile.id, path, inline), [profile.id])
   const uploadFile = useCallback((directory: string, file: File, overwrite: boolean) => uploadProfileSftpFile(profile.id, directory, file, overwrite), [profile.id])
-  return <div className="dsh-ssh-profile-sftp-pane">
-    <div className="dsh-ssh-content-heading"><div><h1>{profile.name} · SFTP</h1><p>{profileAddress(profile)} · 浏览和传输远端文件</p></div></div>
-    <SftpExplorer workspace initialPath="~" loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} />
+  return <div className={`dsh-ssh-profile-sftp-pane${embedded ? ' is-embedded' : ''}`}>
+    <div className="dsh-ssh-content-heading"><div><h1>{embedded ? 'SFTP' : `${profile.name} · SFTP`}</h1><p>{embedded ? initialPath : `${profileAddress(profile)} · ${initialPath}`}</p></div><div className="dsh-ssh-heading-actions">{onDelete && <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button>}{onEdit && <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button>}</div></div>
+    <SftpExplorer workspace initialPath={initialPath} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} />
   </div>
 }
 
 function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, loadPreview, fileUrl, uploadFile }: SftpExplorerProps): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dragDepthRef = useRef(0)
   const [directory, setDirectory] = useState<SftpDirectoryView>()
   const [openedFile, setOpenedFile] = useState<SftpEntryView>()
   const [path, setPath] = useState(initialPath)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState<string>()
-  const [pendingOverwrite, setPendingOverwrite] = useState<File>()
+  const [pendingOverwrite, setPendingOverwrite] = useState<PendingOverwriteUpload>()
+  const [draggingFiles, setDraggingFiles] = useState(false)
   const [error, setError] = useState<string>()
   const browse = useCallback(async (target: string, persist: boolean) => {
     setLoading(true); setError(undefined); setOpenedFile(undefined); setPendingOverwrite(undefined)
@@ -76,29 +84,64 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
   }, [loadDirectory])
   useEffect(() => { void browse(initialPath, false) }, [browse, initialPath])
   const submit = (event: FormEvent): void => { event.preventDefault(); void browse(path, true) }
-  const upload = async (file: File, overwrite: boolean): Promise<void> => {
-    if (uploadFile === undefined || directory === undefined) return
-    if (file.size > MAX_UPLOAD_BYTES) { setError('单个文件不能超过 512 MB'); return }
-    setUploading(file.name); setError(undefined)
-    try {
-      await uploadFile(directory.path, file, overwrite)
-      setPendingOverwrite(undefined)
-      await browse(directory.path, false)
-    } catch (reason) {
-      if (!overwrite && reason instanceof ApiError && reason.status === 409) setPendingOverwrite(file)
-      else setError(errorMessage(reason))
-    } finally { setUploading(undefined) }
+  const uploadFiles = async (files: File[], targetDirectory = directory?.path, overwriteFirst = false): Promise<void> => {
+    if (uploadFile === undefined || targetDirectory === undefined || files.length === 0) return
+    const accepted = files.filter(file => file.size <= MAX_UPLOAD_BYTES)
+    const oversized = files.length - accepted.length
+    if (accepted.length === 0) { setError('单个文件不能超过 512 MB'); return }
+    setPendingOverwrite(undefined); setError(undefined)
+    for (let index = 0; index < accepted.length; index += 1) {
+      const file = accepted[index]!
+      const overwrite = overwriteFirst && index === 0
+      setUploading(file.name)
+      try {
+        await uploadFile(targetDirectory, file, overwrite)
+      } catch (reason) {
+        if (!overwrite && reason instanceof ApiError && reason.status === 409) {
+          setPendingOverwrite({ file, remaining: accepted.slice(index + 1), directory: targetDirectory })
+        } else {
+          setError(errorMessage(reason))
+        }
+        setUploading(undefined)
+        return
+      }
+    }
+    setUploading(undefined)
+    await browse(targetDirectory, false)
+    if (oversized > 0) setError(`已跳过 ${oversized} 个超过 512 MB 的文件`)
   }
-  return <div className={`dsh-ssh-sftp${workspace ? ' is-workspace' : ''}`}>
+  const canDropFiles = uploadFile !== undefined && directory !== undefined && uploading === undefined && pendingOverwrite === undefined
+  const isFileDrag = (event: DragEvent<HTMLDivElement>): boolean => Array.from(event.dataTransfer.types).includes('Files')
+  const handleDragEnter = (event: DragEvent<HTMLDivElement>): void => {
+    if (!canDropFiles || !isFileDrag(event)) return
+    event.preventDefault(); dragDepthRef.current += 1; setDraggingFiles(true)
+  }
+  const handleDragOver = (event: DragEvent<HTMLDivElement>): void => {
+    if (!canDropFiles || !isFileDrag(event)) return
+    event.preventDefault(); event.dataTransfer.dropEffect = 'copy'
+  }
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>): void => {
+    if (!isFileDrag(event)) return
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDraggingFiles(false)
+  }
+  const handleDrop = (event: DragEvent<HTMLDivElement>): void => {
+    dragDepthRef.current = 0; setDraggingFiles(false)
+    if (!canDropFiles || !isFileDrag(event)) return
+    event.preventDefault()
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length > 0) void uploadFiles(files)
+  }
+  return <div className={`dsh-ssh-sftp${workspace ? ' is-workspace' : ''}${draggingFiles ? ' is-dragging-files' : ''}`} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
     {header}
     {openedFile ? <SftpFilePreview entry={openedFile} loadPreview={loadPreview} fileUrl={fileUrl} onBack={() => setOpenedFile(undefined)} /> : <>
       <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}`} onSubmit={submit}>
         <button type="button" aria-label="返回上级目录" title="返回上级目录" disabled={directory?.parent == null || loading} onClick={() => { if (directory?.parent) void browse(directory.parent, true) }}><IconChevronLeftOutline14 size={14} /></button>
         <input aria-label="当前远端目录" value={path} spellCheck={false} onChange={event => setPath(event.target.value)} />
         <button type="button" aria-label="刷新目录" title="刷新目录" disabled={loading} onClick={() => { void browse(directory?.path ?? path, false) }}><IconRefreshOutline16 size={15} /></button>
-        {uploadFile !== undefined && <><input ref={fileInputRef} className="sr-only" type="file" tabIndex={-1} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file !== undefined) void upload(file, false) }} /><button type="button" className="dsh-ssh-sftp-upload-button" disabled={directory === undefined || uploading !== undefined} onClick={() => fileInputRef.current?.click()}><IconSendOutline14 size={14} />{uploading === undefined ? '上传' : '上传中'}</button></>}
+        {uploadFile !== undefined && <><input ref={fileInputRef} className="sr-only" type="file" multiple tabIndex={-1} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length > 0) void uploadFiles(files) }} /><button type="button" className="dsh-ssh-sftp-upload-button" disabled={directory === undefined || uploading !== undefined || pendingOverwrite !== undefined} onClick={() => fileInputRef.current?.click()}><IconSendOutline14 size={14} />{uploading === undefined ? '上传' : '上传中'}</button></>}
       </form>
-      {pendingOverwrite !== undefined && <div className="dsh-ssh-upload-conflict" role="alert"><span><strong>同名文件已存在</strong><small>{pendingOverwrite.name}</small></span><span><button type="button" onClick={() => setPendingOverwrite(undefined)}>取消</button><button type="button" className="is-primary" disabled={uploading !== undefined} onClick={() => { void upload(pendingOverwrite, true) }}>覆盖上传</button></span></div>}
+      {pendingOverwrite !== undefined && <div className="dsh-ssh-upload-conflict" role="alert"><span><strong>同名文件已存在</strong><small>{pendingOverwrite.file.name}</small></span><span><button type="button" onClick={() => { const pending = pendingOverwrite; setPendingOverwrite(undefined); void uploadFiles(pending.remaining, pending.directory) }}>跳过</button><button type="button" className="is-primary" disabled={uploading !== undefined} onClick={() => { const pending = pendingOverwrite; void uploadFiles([pending.file, ...pending.remaining], pending.directory, true) }}>覆盖上传</button></span></div>}
       {error && <p className="dsh-ssh-directory-error" role="alert">{error}</p>}
       <div className="dsh-ssh-sftp-table dsh-ssh-scroll-surface" aria-busy={loading}>
         <div className="dsh-ssh-sftp-columns"><span>名称</span><span>大小</span><span>修改时间</span></div>
@@ -111,12 +154,14 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
             </button>)}
       </div>
     </>}
+    {draggingFiles && <div className="dsh-ssh-sftp-dropzone" aria-hidden="true"><span><strong>松开以上传</strong><small>上传到 {directory?.path ?? path}</small></span></div>}
   </div>
 }
 
 function SftpFilePreview({ entry, loadPreview, fileUrl, onBack }: { entry: SftpEntryView; loadPreview(path: string): Promise<SftpFilePreviewView>; fileUrl(path: string, inline?: boolean): string; onBack(): void }): JSX.Element {
   const [preview, setPreview] = useState<SftpFilePreviewView>()
   const [error, setError] = useState<string>()
+  const [expanded, setExpanded] = useState(false)
   useEffect(() => {
     let cancelled = false
     setPreview(undefined); setError(undefined)
@@ -124,18 +169,20 @@ function SftpFilePreview({ entry, loadPreview, fileUrl, onBack }: { entry: SftpE
     return () => { cancelled = true }
   }, [entry.path, loadPreview])
   const downloadUrl = fileUrl(entry.path)
-  return <section className="dsh-ssh-file-preview">
-    <header><button type="button" className="dsh-ssh-icon-button" aria-label="返回目录" title="返回目录" onClick={onBack}><IconChevronLeftOutline14 size={14} /></button><span><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a></header>
-    <div className="dsh-ssh-file-preview-body dsh-ssh-scroll-surface">
-      {error ? <p className="dsh-ssh-directory-error" role="alert">{error}</p>
-        : preview === undefined ? <p className="dsh-ssh-sftp-state">正在打开文件…</p>
-          : preview.kind === 'text' && preview.mimeType === 'text/markdown' ? <><article className="dsh-ssh-markdown-preview"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: props => <a {...props} target="_blank" rel="noreferrer" /> }}>{preview.text || ''}</ReactMarkdown></article>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
-            : preview.kind === 'text' ? <><pre>{preview.text || ''}</pre>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
-            : preview.kind === 'image' ? <img src={fileUrl(entry.path, true)} alt={entry.name} />
-              : preview.kind === 'pdf' ? <iframe src={fileUrl(entry.path, true)} title={entry.name} />
-                : <div className="dsh-ssh-file-binary"><IconDataOutline16 size={24} /><strong>此文件无法直接预览</strong><p>{preview.mimeType}</p><a href={downloadUrl}><IconDownloadOutline16 size={16} />下载文件</a></div>}
-    </div>
-  </section>
+  return <><section className="dsh-ssh-file-preview">
+    <header><button type="button" className="dsh-ssh-icon-button" aria-label="返回目录" title="返回目录" onClick={onBack}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-file-preview-title"><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><span className="dsh-ssh-file-preview-actions"><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a><button type="button" aria-label="放大预览" title="放大预览" onClick={() => setExpanded(true)}><IconFullscreenOutline16 size={16} /></button></span></header>
+    <div className="dsh-ssh-file-preview-body dsh-ssh-scroll-surface"><SftpPreviewContent entry={entry} preview={preview} error={error} fileUrl={fileUrl} downloadUrl={downloadUrl} /></div>
+  </section><Modal open={expanded} onClose={() => setExpanded(false)} title={`预览 ${entry.name}`} closeLabel="关闭预览" headless className="dsh-ssh-preview-modal"><section className="dsh-ssh-preview-modal-shell"><header><span><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><span className="dsh-ssh-file-preview-actions"><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a><button type="button" aria-label="关闭预览" title="关闭预览" onClick={() => setExpanded(false)}><IconCloseOutline16 size={16} /></button></span></header><div className="dsh-ssh-file-preview-body is-modal dsh-ssh-scroll-surface"><SftpPreviewContent entry={entry} preview={preview} error={error} fileUrl={fileUrl} downloadUrl={downloadUrl} /></div></section></Modal></>
+}
+
+function SftpPreviewContent({ entry, preview, error, fileUrl, downloadUrl }: { entry: SftpEntryView; preview: SftpFilePreviewView | undefined; error: string | undefined; fileUrl(path: string, inline?: boolean): string; downloadUrl: string }): JSX.Element {
+  if (error) return <p className="dsh-ssh-directory-error" role="alert">{error}</p>
+  if (preview === undefined) return <p className="dsh-ssh-sftp-state">正在打开文件…</p>
+  if (preview.kind === 'text' && preview.mimeType === 'text/markdown') return <><article className="dsh-ssh-markdown-preview"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: props => <a {...props} target="_blank" rel="noreferrer" /> }}>{preview.text || ''}</ReactMarkdown></article>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
+  if (preview.kind === 'text') return <><pre>{preview.text || ''}</pre>{preview.truncated && <small>文件较大，仅显示前 1 MB。下载可查看完整内容。</small>}</>
+  if (preview.kind === 'image') return <img src={fileUrl(entry.path, true)} alt={entry.name} />
+  if (preview.kind === 'pdf') return <iframe src={fileUrl(entry.path, true)} title={entry.name} />
+  return <div className="dsh-ssh-file-binary"><IconDataOutline16 size={24} /><strong>此文件无法直接预览</strong><p>{preview.mimeType}</p><a href={downloadUrl}><IconDownloadOutline16 size={16} />下载文件</a></div>
 }
 
 function formatBytes(value: number): string {

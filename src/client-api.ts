@@ -24,7 +24,8 @@ export interface ForwardView {
   bindHost: string; bindPort: number; targetHost?: string; targetPort?: number; autoStart: boolean
 }
 export interface ForwardStatus { ruleId: string; state: 'stopped' | 'starting' | 'running' | 'error'; bindHost: string; bindPort: number; connections: number; error?: string }
-export interface InjectionView { sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean; workingDirectories: Record<string, string>; updatedAt: number }
+export interface InjectionView { sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean; workingDirectories: Record<string, string>; workingProjectIds: Record<string, string>; updatedAt: number }
+export interface RemoteProjectView { id: string; profileId: string; name: string; path: string; createdAt: number; updatedAt: number }
 export interface SettingsView { allowPublicBind: boolean; defaultCommandTimeoutMs: number; maxOutputChars: number }
 export interface ActivityProfileView { id: string; name: string; host: string; port: number; username: string; cwd: string }
 export interface ActivityCommandView { id: string; command: string; submitted: boolean; startedAt: number; completedAt: number; output: string; waitReason: string; truncated: boolean }
@@ -64,6 +65,19 @@ export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vau
 export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }
 export function loadInjection(sessionId: string): Promise<InjectionView | null> { return api(`/injections?sessionId=${encodeURIComponent(sessionId)}`) }
+export function loadRemoteProjects(profileId: string): Promise<RemoteProjectView[]> { return api(`/profiles/${encodeURIComponent(profileId)}/projects`) }
+export function createRemoteProject(profileId: string, project: { name: string; path: string }): Promise<RemoteProjectView> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/projects`, { method: 'POST', body: JSON.stringify({ project }) })
+}
+export function updateRemoteProject(profileId: string, projectId: string, project: { name: string; path: string }): Promise<RemoteProjectView> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}`, { method: 'PUT', body: JSON.stringify({ project }) })
+}
+export function deleteRemoteProject(profileId: string, projectId: string): Promise<void> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' })
+}
+export function saveSessionAccess(value: InjectionView): Promise<InjectionView> {
+  return api(`/injections/${encodeURIComponent(value.sessionId)}`, { method: 'PUT', body: JSON.stringify(value) })
+}
 export function loadActivity(sessionId: string): Promise<ActivityView> { return api(`/activity?sessionId=${encodeURIComponent(sessionId)}`) }
 export function activityEventStreamUrl(sessionId: string): string {
   return `${SSH_API}/activity/events?sessionId=${encodeURIComponent(sessionId)}`

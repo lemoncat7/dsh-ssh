@@ -29,7 +29,7 @@ test('terminal-control mode removes ssh_exec from the model-facing tool assembly
   const now = Date.now()
   await store.update(state => {
     state.profiles.push({ id: 'host-test', name: 'Test', host: '127.0.0.1', port: 22, username: 'test', authType: 'agent', proxy: { type: 'none' }, keepAliveIntervalMs: 0, connectTimeoutMs: 5000, terminalType: 'xterm-256color', tags: [], createdAt: now, updatedAt: now })
-    state.injections.push({ sessionId: 'session-test', profileIds: ['host-test'], permission: 'terminal', requireCommandApproval: false, workingDirectories: {}, updatedAt: now })
+    state.injections.push({ sessionId: 'session-test', profileIds: ['host-test'], permission: 'terminal', requireCommandApproval: false, workingDirectories: {}, workingProjectIds: {}, updatedAt: now })
   })
   let assemble
   const agent = { session: { id: 'session-test' }, ctx: { on(name, listener) { if (name === 'system-prompt/assemble') assemble = listener; return () => {} } } }
@@ -53,7 +53,7 @@ async function toolFixture(t, permission) {
   const now = Date.now()
   await store.update(state => {
     state.profiles.push({ id: 'host-test', name: 'Test', host: '127.0.0.1', port: 22, username: 'test', authType: 'agent', proxy: { type: 'none' }, keepAliveIntervalMs: 0, connectTimeoutMs: 5000, terminalType: 'xterm-256color', tags: [], createdAt: now, updatedAt: now })
-    state.injections.push({ sessionId: 'session-test', profileIds: ['host-test'], permission, requireCommandApproval: false, workingDirectories: {}, updatedAt: now })
+    state.injections.push({ sessionId: 'session-test', profileIds: ['host-test'], permission, requireCommandApproval: false, workingDirectories: {}, workingProjectIds: {}, updatedAt: now })
   })
   const tools = new Map()
   const ctx = {

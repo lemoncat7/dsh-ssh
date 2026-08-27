@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { CredentialEntry, ForwardRule, ProxyEntry, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
+import type { CredentialEntry, ForwardRule, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
 
 export class SshStore {
   private state: SshState
@@ -13,7 +13,7 @@ export class SshStore {
 
   static async open(path: string, defaults: SshSettings): Promise<SshStore> {
     await mkdir(dirname(path), { recursive: true })
-    let initial: SshState = { schemaVersion: 2, profiles: [], credentialEntries: [], proxyEntries: [], forwardRules: [], injections: [], settings: defaults }
+    let initial: SshState = { schemaVersion: 4, profiles: [], remoteProjects: [], credentialEntries: [], proxyEntries: [], forwardRules: [], injections: [], settings: defaults }
     try {
       const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown
       initial = parseState(parsed, defaults)
@@ -28,6 +28,8 @@ export class SshStore {
   snapshot(): SshState { return structuredClone(this.state) }
   profiles(): SshProfile[] { return structuredClone(this.state.profiles) }
   profile(id: string): SshProfile | undefined { return structuredClone(this.state.profiles.find(profile => profile.id === id)) }
+  remoteProjects(profileId?: string): RemoteProject[] { return structuredClone(profileId === undefined ? this.state.remoteProjects : this.state.remoteProjects.filter(project => project.profileId === profileId)) }
+  remoteProject(id: string): RemoteProject | undefined { return structuredClone(this.state.remoteProjects.find(project => project.id === id)) }
   credentialEntries(): CredentialEntry[] { return structuredClone(this.state.credentialEntries) }
   credentialEntry(id: string): CredentialEntry | undefined { return structuredClone(this.state.credentialEntries.find(entry => entry.id === id)) }
   proxyEntries(): ProxyEntry[] { return structuredClone(this.state.proxyEntries) }
@@ -79,16 +81,18 @@ export class SshStore {
 function parseState(value: unknown, defaults: SshSettings): SshState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('dsh-ssh state must be an object')
   const state = value as Omit<Partial<SshState>, 'schemaVersion'> & { schemaVersion?: unknown }
-  if (state.schemaVersion !== 1 && state.schemaVersion !== 2) throw new Error(`unsupported dsh-ssh state version ${String(state.schemaVersion)}`)
+  if (state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3 && state.schemaVersion !== 4) throw new Error(`unsupported dsh-ssh state version ${String(state.schemaVersion)}`)
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
     profiles: Array.isArray(state.profiles) ? state.profiles.map(normalizeStoredProfile) : [],
+    remoteProjects: Array.isArray(state.remoteProjects) ? state.remoteProjects.filter(isStoredRemoteProject) : [],
     credentialEntries: Array.isArray(state.credentialEntries) ? state.credentialEntries : [],
     proxyEntries: Array.isArray(state.proxyEntries) ? state.proxyEntries : [],
     forwardRules: Array.isArray(state.forwardRules) ? state.forwardRules : [],
     injections: Array.isArray(state.injections) ? state.injections.map(injection => ({
       ...injection,
       workingDirectories: normalizeWorkingDirectories(injection),
+      workingProjectIds: normalizeWorkingProjectIds(injection),
     })) : [],
     settings: typeof state.settings === 'object' && state.settings !== null ? { ...defaults, ...state.settings } : defaults,
   }
@@ -109,10 +113,24 @@ function validateReferences(state: SshState): void {
     }
   }
   for (const rule of state.forwardRules) if (!ids.has(rule.profileId)) throw new Error(`forward rule references missing profile ${rule.profileId}`)
+  const projectIds = new Set(state.remoteProjects.map(project => project.id))
+  const projects = new Map(state.remoteProjects.map(project => [project.id, project]))
+  if (projectIds.size !== state.remoteProjects.length) throw new Error('duplicate remote project id')
+  for (const project of state.remoteProjects) if (!ids.has(project.profileId)) throw new Error(`remote project references missing profile ${project.profileId}`)
   for (const injection of state.injections) {
     injection.profileIds = [...new Set(injection.profileIds.filter(id => ids.has(id)))]
     injection.workingDirectories = Object.fromEntries(Object.entries(injection.workingDirectories).filter(([profileId]) => injection.profileIds.includes(profileId)))
+    injection.workingProjectIds = Object.fromEntries(Object.entries(injection.workingProjectIds ?? {}).filter(([profileId, projectId]) => {
+      const project = projects.get(projectId)
+      return injection.profileIds.includes(profileId) && project?.profileId === profileId
+    }))
   }
+}
+
+function isStoredRemoteProject(value: unknown): value is RemoteProject {
+  if (typeof value !== 'object' || value === null) return false
+  const project = value as Partial<RemoteProject>
+  return typeof project.id === 'string' && typeof project.profileId === 'string' && typeof project.name === 'string' && typeof project.path === 'string' && typeof project.createdAt === 'number' && typeof project.updatedAt === 'number'
 }
 
 function normalizeStoredProfile(profile: SshProfile): SshProfile {
@@ -132,6 +150,16 @@ function normalizeWorkingDirectories(injection: unknown): Record<string, string>
     const [profileId, cwd] = entry
     return profileId.length > 0 && profileId.length <= 100 && typeof cwd === 'string' && cwd.trim().length > 0 && cwd.length <= 4096 && !/[\0\r\n]/.test(cwd)
   }).map(([profileId, cwd]) => [profileId, cwd.trim()]))
+}
+
+function normalizeWorkingProjectIds(injection: unknown): Record<string, string> {
+  if (typeof injection !== 'object' || injection === null) return {}
+  const value = (injection as { workingProjectIds?: unknown }).workingProjectIds
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => {
+    const [profileId, projectId] = entry
+    return profileId.length > 0 && profileId.length <= 100 && typeof projectId === 'string' && projectId.length > 0 && projectId.length <= 100
+  }))
 }
 
 async function fileExists(path: string): Promise<boolean> {

@@ -1,0 +1,252 @@
+.dsh-ssh-host-workbench {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dsh-ssh-workbench-heading {
+  display: flex;
+  min-height: 64px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ssh-border) 72%, transparent);
+  background: color-mix(in srgb, var(--ssh-surface-raised) 82%, transparent);
+}
+
+.dsh-ssh-workbench-heading > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.dsh-ssh-workbench-heading > div:first-child > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.dsh-ssh-workbench-heading h1,
+.dsh-ssh-workbench-heading p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-ssh-workbench-heading h1 {
+  color: var(--ssh-text);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.dsh-ssh-workbench-heading p {
+  color: var(--ssh-text-subtle);
+  font: 10px/1.25 var(--ssh-font-mono);
+}
+
+.dsh-ssh-workbench-split {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) 7px minmax(280px, var(--ssh-sftp-width, 38%));
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.dsh-ssh-workbench-resizer {
+  position: relative;
+  z-index: 2;
+  width: 7px;
+  min-width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.dsh-ssh-workbench-resizer::before,
+.dsh-ssh-workbench-resizer::after {
+  position: absolute;
+  left: 50%;
+  content: "";
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: background-color 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.dsh-ssh-workbench-resizer::before {
+  inset-block: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--ssh-border) 80%, transparent);
+}
+
+.dsh-ssh-workbench-resizer::after {
+  top: 50%;
+  width: 2px;
+  height: 28px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ssh-text-subtle) 32%, transparent);
+  opacity: .55;
+  transform: translate(-50%, -50%) scaleY(.72);
+}
+
+.dsh-ssh-workbench-resizer:hover::before,
+.dsh-ssh-workbench-resizer:focus-visible::before,
+.dsh-ssh-workbench-split.is-resizing .dsh-ssh-workbench-resizer::before {
+  width: 2px;
+  background: color-mix(in srgb, var(--ssh-accent) 54%, var(--ssh-border));
+}
+
+.dsh-ssh-workbench-resizer:hover::after,
+.dsh-ssh-workbench-resizer:focus-visible::after,
+.dsh-ssh-workbench-split.is-resizing .dsh-ssh-workbench-resizer::after {
+  background: color-mix(in srgb, var(--ssh-accent) 66%, var(--ssh-text-subtle));
+  opacity: .9;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+.dsh-ssh-workbench-split.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.dsh-ssh-workbench-terminal,
+.dsh-ssh-workbench-files {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dsh-ssh-workbench-terminal {
+  background: color-mix(in srgb, var(--ssh-surface) 96%, var(--ssh-surface-raised));
+}
+
+.dsh-ssh-workbench-files {
+  background: color-mix(in srgb, var(--ssh-surface-raised) 82%, var(--ssh-surface));
+}
+
+.dsh-ssh-sftp-deferred {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  place-content: center;
+  justify-items: center;
+  padding: 24px;
+  color: var(--ssh-text-subtle);
+  text-align: center;
+}
+
+.dsh-ssh-sftp-deferred span {
+  display: grid;
+  min-width: 44px;
+  height: 24px;
+  place-items: center;
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--ssh-border) 78%, transparent);
+  border-radius: 7px;
+  color: var(--ssh-text-muted);
+  background: color-mix(in srgb, var(--ssh-surface-raised) 68%, transparent);
+  font: 600 9px/1 var(--ssh-font-mono);
+  letter-spacing: .08em;
+}
+
+.dsh-ssh-sftp-deferred strong {
+  color: var(--ssh-text-muted);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.dsh-ssh-sftp-deferred p {
+  margin: 5px 0 0;
+  color: var(--ssh-text-subtle);
+  font-size: 10px;
+}
+
+.dsh-ssh-terminal-pane.is-embedded,
+.dsh-ssh-profile-sftp-pane.is-embedded {
+  height: 100%;
+  min-height: 0;
+  padding: 0 12px 12px;
+}
+
+.dsh-ssh-terminal-pane.is-embedded > .dsh-ssh-content-heading,
+.dsh-ssh-profile-sftp-pane.is-embedded > .dsh-ssh-content-heading {
+  min-height: 58px;
+}
+
+.dsh-ssh-terminal-pane.is-embedded .dsh-ssh-content-heading h1,
+.dsh-ssh-profile-sftp-pane.is-embedded .dsh-ssh-content-heading h1 {
+  font-size: 13px;
+}
+
+.dsh-ssh-terminal-pane.is-embedded .dsh-ssh-content-heading p,
+.dsh-ssh-profile-sftp-pane.is-embedded .dsh-ssh-content-heading p {
+  max-width: 38ch;
+  overflow: hidden;
+  font-family: var(--ssh-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-ssh-terminal-pane.is-embedded .dsh-ssh-terminal-frame {
+  min-height: 0;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px color-mix(in srgb, #0d1513 10%, transparent);
+}
+
+.dsh-ssh-profile-sftp-pane.is-embedded .dsh-ssh-sftp.is-workspace {
+  min-height: 0;
+}
+
+@container dsh-ssh-workspace (max-width: 980px) {
+  .dsh-ssh-host-workbench {
+    overflow: auto;
+  }
+
+  .dsh-ssh-workbench-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(360px, 48%) minmax(400px, 52%);
+    overflow: visible;
+  }
+
+  .dsh-ssh-workbench-resizer {
+    display: none;
+  }
+
+  .dsh-ssh-workbench-files {
+    border-top: 1px solid color-mix(in srgb, var(--ssh-border) 80%, transparent);
+    border-left: 0;
+  }
+}
+
+@container dsh-ssh-workspace (max-width: 520px) {
+  .dsh-ssh-workbench-heading {
+    min-height: 58px;
+    padding-inline: 12px;
+  }
+
+  .dsh-ssh-workbench-heading .dsh-ssh-secondary-button {
+    width: 32px;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .dsh-ssh-workbench-heading .dsh-ssh-secondary-button svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .dsh-ssh-terminal-pane.is-embedded,
+  .dsh-ssh-profile-sftp-pane.is-embedded {
+    padding-inline: 10px;
+  }
+}

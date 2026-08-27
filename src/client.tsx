@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ISessions, IWorkspaces } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -19,16 +20,22 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
+import remoteWorkspaceCss from './remote-workspace-tree.css'
+import hostWorkbenchCss from './host-workbench.css'
 import {
   ApiError, activityEventStreamUrl, activityTerminalStreamUrl, api, browserTerminalStreamUrl, loadActivity, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
   closeActivityTerminal, profileAddress, readActivityTerminalOutput, resizeActivityTerminal, sendActivityTerminalInput,
   type ActivityProfileView, type ActivityTerminalView, type ActivityView, type ForwardStatus, type ForwardView,
-  type InjectionView, type ProfileView, type ProxyEntryView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
+  saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ActivitySftpBrowser, LocalWorkspaceBrowser, ProfileSftpPane } from './sftp-client.js'
 import { TerminalTransport } from './terminal-transport.js'
 import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
+import { RemoteWorkspaceTree, type RemoteTarget } from './remote-workspace-tree.js'
+import { emptyAccess, useSessionAccess } from './session-access.js'
+import { subscribeSessionAccess } from './session-access-channel.js'
+import { ResizableSplit } from './resizable-split.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -43,6 +50,7 @@ interface RemoteController {
   isOpen(): boolean
   selected(): string | undefined
   subscribe(listener: () => void): () => void
+  createProjectSession(workspaceId: string, project: RemoteProjectView, permission: InjectionView['permission'], requireCommandApproval: boolean): Promise<string>
 }
 
 interface ActivityController {
@@ -57,7 +65,7 @@ interface ActivityController {
 
 type ActivityViewMode = 'local-directory' | 'remote-directory' | 'terminals'
 
-export const inject = ['slots', 'layout']
+export const inject = ['slots', 'layout', 'sessions', 'workspaces']
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(installStyles, 'dsh-ssh: styles')
@@ -76,6 +84,7 @@ export function apply(ctx: ClientContext): void {
 }
 
 function createController(ctx: ClientContext, beforeOpen: () => void): RemoteController {
+  const runtime = ctx as unknown as { sessions: ISessions; workspaces: IWorkspaces }
   const listeners = new Set<() => void>()
   let selected: string | undefined
   let dispose: (() => void) | undefined
@@ -97,6 +106,12 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
     isOpen: () => dispose !== undefined,
     selected: () => selected,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
+    async createProjectSession(workspaceId, project, permission, requireCommandApproval) {
+      const sessionId = await runtime.workspaces.connectWorkspace(workspaceId as never)
+      await saveSessionAccess({ ...emptyAccess(String(sessionId)), profileIds: [project.profileId], permission, requireCommandApproval, workingDirectories: { [project.profileId]: project.path }, workingProjectIds: { [project.profileId]: project.id } })
+      runtime.sessions.open(sessionId)
+      return String(sessionId)
+    },
   }
   return controller
 }
@@ -198,7 +213,7 @@ function SshActivityPanel(props: DetailsProps & { controller: ActivityController
 
 function RemoteDirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
   const profile = profiles.find(item => item.id === selectedProfileId) ?? profiles[0]
-  if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先向当前会话注入一个 SSH 连接。</p></div>
+  if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先在 SSH 面板中允许当前会话访问一台主机。</p></div>
   return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
 }
 
@@ -281,18 +296,21 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   const ref = useRef<HTMLElement>(null)
   useWorkspaceTopAnchor(ref)
   const sessionId = props.useSessions(state => state.current)
+  const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [injection, setInjection] = useState<InjectionView | null>(null)
   const [open, setOpen] = useState(true)
   const [, setRevision] = useState(0)
   useEffect(() => props.controller.subscribe(() => setRevision(value => value + 1)), [props.controller])
+  useEffect(() => subscribeSessionAccess(value => {
+    if (value.sessionId === currentSessionId) setInjection(value)
+  }), [currentSessionId])
   const refresh = useCallback(async () => {
     const next = await loadProfiles().catch(() => [])
     setProfiles(next)
     setInjection(sessionId === undefined ? null : await loadInjection(String(sessionId)).catch(() => null))
   }, [sessionId])
   useEffect(() => { void refresh() }, [refresh, props.controller.isOpen()])
-  const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const activityOpen = currentSessionId !== undefined && props.activityController.isOpen(currentSessionId)
   const availableProfiles = injection === null ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
   useEffect(() => {
@@ -344,7 +362,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
           : availableProfiles.slice(0, 6).map(profile => <button type="button" className={`dsh-ssh-sidebar-row${activityOpen && props.activityController.selected(currentSessionId) === profile.id ? ' is-active' : ''}`} key={profile.id} onClick={() => openActivity(profile.id)}>
             <span className="dsh-ssh-status-dot is-injected" aria-hidden="true" />
             <span className="dsh-ssh-sidebar-copy"><strong>{profile.name}</strong><small>{profile.host}</small></span>
-            <span className="dsh-ssh-injected-mark" title="当前会话可用"><IconCheckOutline14 size={12} /></span>
+            <span className="dsh-ssh-injected-mark">已挂载</span>
           </button>)}
       {availableProfiles.length > 6 && <button type="button" className="dsh-ssh-sidebar-more" onClick={toggleActivity}>还有 {availableProfiles.length - 6} 台可用远端</button>}
     </div>}
@@ -353,15 +371,17 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
 
 function RemoteWorkspace(props: ConversationProps & { controller: RemoteController }): JSX.Element {
   const sessionId = props.useSessions(state => state.current)
+  const workspaceList = props.useWorkspaces(state => state)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
   const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
-  const [selectedId, setSelectedId] = useState(props.controller.selected())
-  const [view, setView] = useState<'terminal' | 'sftp' | 'forwards' | 'vault' | 'proxies' | 'settings'>('terminal')
+  const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
+  const [view, setView] = useState<'workspace' | 'forwards' | 'vault' | 'proxies' | 'settings'>('workspace')
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [deleting, setDeleting] = useState<ProfileView>()
   const [refreshKey, setRefreshKey] = useState(0)
   const [error, setError] = useState<string>()
+  const access = useSessionAccess(sessionId === undefined ? undefined : String(sessionId))
   const openedSessionRef = useRef(sessionId)
   const refresh = useCallback(async () => {
     try {
@@ -369,14 +389,14 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       setProfiles(next)
       setVaultEntries(credentials)
       setProxyEntries(proxies)
-      setSelectedId(current => current !== undefined && next.some(item => item.id === current) ? current : next[0]?.id)
+      setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : next[0] === undefined ? null : { profileId: next[0].id, path: '~' })
       setError(undefined)
     } catch (reason) { setError(message(reason)) }
   }, [])
   useEffect(() => {
     const sync = (): void => {
       const next = props.controller.selected()
-      if (next !== undefined) setSelectedId(next)
+      if (next !== undefined) setTarget(current => ({ profileId: next, path: current?.profileId === next ? current.path : '~' }))
     }
     sync()
     return props.controller.subscribe(sync)
@@ -385,12 +405,12 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   useEffect(() => {
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
-  const selected = profiles.find(item => item.id === selectedId)
+  const selected = profiles.find(item => item.id === target?.profileId)
+  const workspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId ?? workspaceList.recentWorkspaceId
   const toolbar = <header className="dsh-ssh-toolbar">
-      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端</strong><small>SSH 会话与转发</small></span></div>
+      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>远端工作区</strong><small>{selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" aria-label="远端视图">
-        <Segment active={view === 'terminal'} onClick={() => setView('terminal')}>终端</Segment>
-        <Segment active={view === 'sftp'} onClick={() => setView('sftp')}>SFTP</Segment>
+        <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>工作区</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>端口转发</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
         <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>代理库</Segment>
@@ -406,18 +426,35 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       notice={notice}
       navigationLabel="主机"
       navigationIcon={<IconDataOutline16 size={15} />}
-      navigation={controls => <ProfileList profiles={profiles} selectedId={selectedId} onSelect={id => { props.controller.open(id); controls.closePanel() }} onNew={() => { setEditing('new'); controls.closePanel() }} />}
-      inspectorLabel="会话授权"
-      inspectorIcon={<IconUserOutline16 size={15} />}
-      inspector={<InjectionInspector sessionId={sessionId === undefined ? undefined : String(sessionId)} profiles={profiles} selected={selected} />}
+      navigation={controls => <RemoteWorkspaceTree
+        profiles={profiles}
+        access={access.value}
+        accessLoading={access.loading}
+        accessSaving={access.saving}
+        accessError={access.error}
+        selected={target}
+        onSelect={next => { setTarget(next); setView('workspace'); props.controller.open(next.profileId); controls.closePanel() }}
+        onProfiles={access.setProfiles}
+        onDirectory={(profileId, path, projectId) => {
+          access.setDirectory(profileId, path, projectId)
+          if (path !== undefined) { setTarget({ profileId, path, ...(projectId === undefined ? {} : { projectId }) }); setView('workspace') }
+        }}
+        onPermission={access.setPermission}
+        onApproval={access.setRequireCommandApproval}
+        onCreateSession={async project => {
+          if (workspaceId === undefined) throw new Error('请先在 DSH 中打开或创建一个本地工作区')
+          await props.controller.createProjectSession(String(workspaceId), project, access.value?.permission ?? 'exec', access.value?.requireCommandApproval ?? true)
+          props.controller.close()
+        }}
+        onNewProfile={() => { setEditing('new'); controls.closePanel() }}
+      />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
         {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState onNew={() => setEditing('new')} />
-          : view === 'terminal' ? <TerminalPane profile={selected} onEdit={() => setEditing(selected)} onDelete={() => setDeleting(selected)} />
-            : view === 'sftp' ? <ProfileSftpPane key={selected.id} profile={selected} />
-              : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
+          : view === 'workspace' ? <HostWorkbench key={selected.id} profile={selected} initialPath={target?.path ?? '~'} onEdit={() => setEditing(selected)} onDelete={() => setDeleting(selected)} />
+            : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
                 : <SettingsPane />}
       </section>
     </AdaptiveWorkspace>
@@ -426,74 +463,26 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   </>
 }
 
-function ProfileList({ profiles, selectedId, onSelect, onNew }: { profiles: ProfileView[]; selectedId?: string | undefined; onSelect(id: string): void; onNew(): void }): JSX.Element {
-  const [query, setQuery] = useState('')
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
-  const normalizedQuery = query.trim().toLocaleLowerCase()
-  const groups = useMemo(() => groupProfiles(profiles.filter(profile => profileSearchText(profile).includes(normalizedQuery))), [normalizedQuery, profiles])
-  const selectedGroup = profiles.find(profile => profile.id === selectedId)?.group?.trim() || '未分组'
-  useEffect(() => {
-    if (selectedId === undefined) return
-    setCollapsedGroups(current => {
-      if (!current.has(selectedGroup)) return current
-      const next = new Set(current)
-      next.delete(selectedGroup)
-      return next
-    })
-  }, [selectedGroup, selectedId])
-  const toggleGroup = (name: string): void => {
-    setCollapsedGroups(current => {
-      const next = new Set(current)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }
-  return <aside className="dsh-ssh-profile-panel">
-    <div className="dsh-ssh-panel-heading"><span><strong>主机</strong><small>{groups.length} 个分组 · {profiles.length} 台主机</small></span><button className="dsh-ssh-icon-button" onClick={onNew} aria-label="新建连接"><IconPlusOutline16 size={16} /></button></div>
-    <label className="dsh-ssh-search"><span className="sr-only">搜索连接</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索主机、分组、标签…" /></label>
-    <div className="dsh-ssh-profile-list dsh-ssh-scroll-surface">
-      {groups.map(group => <ProfileGroup key={group.name} group={group} open={normalizedQuery !== '' || !collapsedGroups.has(group.name)} selectedId={selectedId} onToggle={() => toggleGroup(group.name)} onSelect={onSelect} />)}
-      {groups.length === 0 && <p className="dsh-ssh-profile-empty">{profiles.length === 0 ? '还没有 SSH 主机' : '没有匹配的主机'}</p>}
-    </div>
-  </aside>
+function HostWorkbench({ profile, initialPath, onEdit, onDelete }: { profile: ProfileView; initialPath: string; onEdit(): void; onDelete(): void }): JSX.Element {
+  const [sftpReady, setSftpReady] = useState(false)
+  return <div className="dsh-ssh-host-workbench">
+    <header className="dsh-ssh-workbench-heading">
+      <div><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
+      <div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button></div>
+    </header>
+    <ResizableSplit
+      storageKey="dsh-ssh:workbench:sftp-width"
+      label="调整终端与 SFTP 的宽度"
+      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalPane profile={profile} onEdit={onEdit} onDelete={onDelete} onConnected={() => setSftpReady(true)} embedded /></section>}
+      secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady
+        ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} embedded />
+        : <div className="dsh-ssh-sftp-deferred"><span>SFTP</span><strong>等待终端连接</strong><p>打开终端后再读取远端目录。</p></div>}
+      </section>}
+    />
+  </div>
 }
 
-interface ProfileGroupView { name: string; profiles: ProfileView[] }
-
-function groupProfiles(profiles: ProfileView[]): ProfileGroupView[] {
-  const groups = new Map<string, ProfileView[]>()
-  for (const profile of profiles) {
-    const name = profile.group?.trim() || '未分组'
-    const group = groups.get(name)
-    if (group === undefined) groups.set(name, [profile])
-    else group.push(profile)
-  }
-  return [...groups].map(([name, groupedProfiles]) => ({ name, profiles: groupedProfiles }))
-}
-
-function profileSearchText(profile: ProfileView): string {
-  return `${profile.name} ${profile.group ?? ''} ${profile.host} ${profile.username} ${profile.tags.join(' ')}`.toLocaleLowerCase()
-}
-
-function ProfileGroup({ group, open, selectedId, onToggle, onSelect }: { group: ProfileGroupView; open: boolean; selectedId?: string | undefined; onToggle(): void; onSelect(id: string): void }): JSX.Element {
-  return <section className="dsh-ssh-profile-group">
-    <button type="button" className="dsh-ssh-profile-group-heading" aria-expanded={open} onClick={onToggle}>
-      <span className="dsh-ssh-profile-group-chevron" data-open={open}><IconChevronDownOutline14 size={12} /></span>
-      <span className="dsh-ssh-profile-group-folder">{open ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span>
-      <span className="dsh-ssh-profile-group-copy"><strong>{group.name}</strong><small>{group.profiles.length}</small></span>
-    </button>
-    {open && <div className="dsh-ssh-profile-group-children" role="group" aria-label={`${group.name}中的主机`}>
-      {group.profiles.map(profile => <button type="button" key={profile.id} className={`dsh-ssh-profile-row${selectedId === profile.id ? ' is-active' : ''}`} onClick={() => onSelect(profile.id)}>
-        <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
-        <span><strong>{profile.name}</strong><small>{profileAddress(profile)}</small></span>
-        <span className={`dsh-ssh-credential-state${profile.credential.configured ? ' is-ready' : ''}`} title={profile.credential.configured ? '凭据已配置' : '凭据缺失'} />
-      </button>)}
-    </div>}
-  </section>
-}
-
-function TerminalPane({ profile, onEdit, onDelete }: { profile: ProfileView; onEdit(): void; onDelete(): void }): JSX.Element {
+function TerminalPane({ profile, onEdit, onDelete, onConnected, embedded = false }: { profile: ProfileView; onEdit(): void; onDelete(): void; onConnected?(): void; embedded?: boolean }): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal>()
   const fitRef = useRef<FitAddon>()
@@ -550,19 +539,18 @@ function TerminalPane({ profile, onEdit, onDelete }: { profile: ProfileView; onE
     try {
       fitRef.current?.fit()
       const result = await api<{ id: string }>('/terminals', { method: 'POST', body: JSON.stringify({ profileId: profile.id, cols: terminal.cols, rows: terminal.rows }) })
-      setTerminalId(result.id); setPhase('connected'); terminal.focus()
+      setTerminalId(result.id); setPhase('connected'); onConnected?.(); terminal.focus()
     } catch (reason) { setPhase('error'); setError(message(reason)); terminal.write(`\r\n\x1b[31m${message(reason)}\x1b[0m\r\n`) }
   }
   const disconnect = async (): Promise<void> => {
     if (terminalId !== undefined) await api(`/terminals/${terminalId}`, { method: 'DELETE' }).catch(() => {})
     setTerminalId(undefined); setPhase('idle')
   }
-  return <div className="dsh-ssh-terminal-pane">
+  return <div className={`dsh-ssh-terminal-pane${embedded ? ' is-embedded' : ''}`}>
     <div className="dsh-ssh-content-heading">
-      <div><div className="dsh-ssh-title-line"><span className={`dsh-ssh-live-dot is-${phase}`} /> <h1>{profile.name}</h1></div><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></div>
+      <div><div className="dsh-ssh-title-line"><span className={`dsh-ssh-live-dot is-${phase}`} /> <h1>{embedded ? '终端' : profile.name}</h1></div><p>{embedded ? profileAddress(profile) : `${profileAddress(profile)} · ${proxyLabel(profile)}`}</p></div>
       <div className="dsh-ssh-heading-actions">
-        <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button>
-        <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑</button>
+        {!embedded && <><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑</button></>}
         {phase === 'connected' ? <button type="button" className="dsh-ssh-danger-button" onClick={() => { void disconnect() }}><IconStopFill16 size={16} />断开</button>
           : <button type="button" className="dsh-ssh-primary-button" disabled={phase === 'connecting'} onClick={() => { void connect() }}>{phase === 'connecting' ? '连接中…' : '打开终端'}</button>}
       </div>
@@ -597,80 +585,6 @@ function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }: { prof
       <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting || dependents.length > 0} onClick={() => { void remove() }}>{deleting ? '正在删除…' : '删除主机'}</button></div>
     </div>
   </Dialog>
-}
-
-function InjectionInspector({ sessionId, profiles, selected }: { sessionId?: string | undefined; profiles: ProfileView[]; selected?: ProfileView | undefined }): JSX.Element {
-  const [value, setValue] = useState<InjectionView | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string>()
-  const valueRef = useRef<InjectionView | null>(null)
-  const sessionRef = useRef(sessionId)
-  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
-  const pendingSavesRef = useRef(0)
-  sessionRef.current = sessionId
-  useEffect(() => {
-    let cancelled = false
-    valueRef.current = null
-    setValue(null)
-    setSaving(false)
-    setError(undefined)
-    if (sessionId !== undefined) void loadInjection(sessionId).then(stored => {
-      if (cancelled || valueRef.current !== null) return
-      valueRef.current = stored
-      setValue(stored)
-    }).catch(reason => { if (!cancelled) setError(message(reason)) })
-    return () => { cancelled = true }
-  }, [sessionId])
-  const model = value ?? (sessionId === undefined ? null : { sessionId, profileIds: [], permission: 'terminal' as const, requireCommandApproval: true, workingDirectories: {}, updatedAt: 0 })
-  const save = (next: InjectionView): void => {
-    const targetSessionId = sessionId
-    if (targetSessionId === undefined) return
-    valueRef.current = next
-    setValue(next)
-    setError(undefined)
-    pendingSavesRef.current += 1
-    setSaving(true)
-    const request = saveQueueRef.current.catch(() => undefined).then(async () => {
-      const stored = await api<InjectionView>(`/injections/${encodeURIComponent(targetSessionId)}`, { method: 'PUT', body: JSON.stringify(next) })
-      if (sessionRef.current === targetSessionId && valueRef.current === next) {
-        valueRef.current = stored
-        setValue(stored)
-      }
-    })
-    saveQueueRef.current = request.catch(() => undefined)
-    void request.catch(reason => {
-      if (sessionRef.current === targetSessionId) setError(message(reason))
-    }).finally(() => {
-      pendingSavesRef.current = Math.max(0, pendingSavesRef.current - 1)
-      if (sessionRef.current === targetSessionId && pendingSavesRef.current === 0) setSaving(false)
-    })
-  }
-  const update = (patch: Partial<Pick<InjectionView, 'profileIds' | 'permission' | 'requireCommandApproval'>>): void => {
-    const current = valueRef.current ?? model
-    if (current !== null) save({ ...current, ...patch })
-  }
-  const toggle = (profileId: string): void => {
-    const current = valueRef.current ?? model
-    if (current === null) return
-    const profileIds = current.profileIds.includes(profileId) ? current.profileIds.filter(id => id !== profileId) : [...current.profileIds, profileId]
-    update({ profileIds })
-  }
-  return <aside className="dsh-ssh-inspector dsh-ssh-scroll-surface">
-    <div className="dsh-ssh-panel-heading"><span><strong>会话注入</strong><small>{sessionId === undefined ? '当前没有会话' : '仅对当前对话生效'}</small></span></div>
-    {sessionId === undefined ? <div className="dsh-ssh-inspector-empty">先打开一个 DSH 会话，再选择允许 AI 使用的远端连接。</div> : <>
-      <div className="dsh-ssh-session-chip"><span className="dsh-ssh-session-pulse" /><span><strong>当前会话</strong><small>{shortId(sessionId)}</small></span></div>
-      <fieldset className="dsh-ssh-fieldset"><legend>可用连接</legend>
-        {profiles.map(profile => <label className="dsh-ssh-check-row" key={profile.id}><input type="checkbox" checked={model?.profileIds.includes(profile.id) === true} onChange={() => toggle(profile.id)} /><i aria-hidden="true" /><span><strong>{profile.name}</strong><small>{profile.host}</small></span></label>)}
-      </fieldset>
-      <fieldset className="dsh-ssh-fieldset"><legend>权限</legend>
-        <label className="dsh-ssh-radio-row"><input type="radio" name="dsh-ssh-injection-permission" checked={model?.permission === 'exec'} onChange={() => update({ permission: 'exec' })} /><i aria-hidden="true" /><span><strong>仅执行命令</strong><small>允许 ssh_exec，不开放交互终端</small></span></label>
-        <label className="dsh-ssh-radio-row"><input type="radio" name="dsh-ssh-injection-permission" checked={model?.permission === 'terminal'} onChange={() => update({ permission: 'terminal' })} /><i aria-hidden="true" /><span><strong>终端控制</strong><small>可打开、读取和操作交互终端</small></span></label>
-      </fieldset>
-      <label className="dsh-ssh-switch-row"><span><strong>自动允许 SSH 操作</strong><small>开启后，AI 可在上述权限范围内直接执行；关闭后每次操作都需要手动批准。</small></span><input type="checkbox" checked={model?.requireCommandApproval === false} onChange={event => update({ requireCommandApproval: !event.target.checked })} /></label>
-      {selected && <p className="dsh-ssh-inspector-hint">选中的连接：<strong>{selected.name}</strong></p>}
-      {saving && <p className="dsh-ssh-save-state" role="status">正在保存…</p>}{error && <p className="dsh-ssh-inline-error">{error}</p>}
-    </>}
-  </aside>
 }
 
 function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected: ProfileView }): JSX.Element {
@@ -949,7 +863,7 @@ function installStyles(): () => void {
   if (previous !== null) return () => {}
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${cssText}`
+  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}`
   document.head.append(style)
   return () => style.remove()
 }

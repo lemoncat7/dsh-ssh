@@ -74,6 +74,17 @@ export interface SessionInjection {
   permission: 'exec' | 'terminal'
   requireCommandApproval: boolean
   workingDirectories: Record<string, string>
+  workingProjectIds: Record<string, string>
+  updatedAt: number
+}
+
+/** A reusable remote project root attached to one SSH profile. */
+export interface RemoteProject {
+  id: string
+  profileId: string
+  name: string
+  path: string
+  createdAt: number
   updatedAt: number
 }
 
@@ -84,13 +95,19 @@ export interface SshSettings {
 }
 
 export interface SshState {
-  schemaVersion: 2
+  schemaVersion: 4
   profiles: SshProfile[]
+  remoteProjects: RemoteProject[]
   credentialEntries: CredentialEntry[]
   proxyEntries: ProxyEntry[]
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
   settings: SshSettings
+}
+
+export interface RemoteProjectDraft {
+  name: string
+  path: string
 }
 
 export interface ProfileDraft {
@@ -197,6 +214,14 @@ export function normalizeForwardDraft(value: unknown): ForwardDraft {
   }
 }
 
+export function normalizeRemoteProjectDraft(value: unknown): RemoteProjectDraft {
+  const input = record(value, 'remote project')
+  return {
+    name: text(input.name, 'name', 1, 80),
+    path: remotePath(input.path, 'path'),
+  }
+}
+
 export function normalizeSecrets(value: unknown): SshCredentialPayload {
   const input = value === undefined ? {} : record(value, 'secrets')
   const password = secret(input.password, 'password')
@@ -275,6 +300,13 @@ function secret(value: unknown, label: string, max = 65_536): string | undefined
   if (value === undefined || value === null || value === '') return undefined
   if (typeof value !== 'string' || value.length > max) throw bad(`${label} is invalid`)
   return value
+}
+
+function remotePath(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw bad(`${label} must be a string`)
+  const result = value.trim()
+  if (result.length < 1 || result.length > 4096 || /[\0\r\n]/.test(result)) throw bad(`${label} is invalid`)
+  return result
 }
 
 function bad(message: string): Error {

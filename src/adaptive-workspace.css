@@ -16,6 +16,9 @@
   min-height: 0;
   flex: 1;
 }
+.dsh-ssh-adaptive-workspace[data-has-inspector="false"] .dsh-ssh-adaptive-shell {
+  grid-template-columns: var(--ssh-adaptive-navigation-width, 292px) minmax(0, 1fr);
+}
 .dsh-ssh-adaptive-navigation,
 .dsh-ssh-adaptive-content,
 .dsh-ssh-adaptive-inspector {

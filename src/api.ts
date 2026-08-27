@@ -4,8 +4,8 @@ import { pipeline } from 'node:stream/promises'
 import { HostKeyRequiredError, SshConnector } from './connector.js'
 import { SshCredentialVault } from './credentials.js'
 import {
-  normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeProfileDraft, normalizeProxyEntryDraft, normalizeSecrets,
-  type CredentialEntry, type ForwardRule, type ProxyEntry, type SessionInjection, type SshProfile,
+  normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeProfileDraft, normalizeProxyEntryDraft, normalizeRemoteProjectDraft, normalizeSecrets,
+  type CredentialEntry, type ForwardRule, type ProxyEntry, type RemoteProject, type SessionInjection, type SshProfile,
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
@@ -59,7 +59,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
 
-  if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 2 })
+  if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 4 })
 
   if (segments[0] === 'vault') {
     if (method === 'GET' && segments.length === 1) return sendJson(res, 200, await credentialEntryViews(runtime))
@@ -174,6 +174,46 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 201, await profileView(runtime, profile))
     }
     const id = segments[1]
+    if (id !== undefined && segments[2] === 'projects') {
+      requiredProfile(runtime.store, id)
+      if (method === 'GET' && segments.length === 3) return sendJson(res, 200, runtime.store.remoteProjects(id))
+      if (method === 'POST' && segments.length === 3) {
+        requireMutationHeader(req)
+        const draft = normalizeRemoteProjectDraft((await readObject(req)).project)
+        const now = Date.now()
+        const project: RemoteProject = { ...draft, id: createId('project'), profileId: id, createdAt: now, updatedAt: now }
+        await runtime.store.update(state => { state.remoteProjects.push(project) })
+        return sendJson(res, 201, project)
+      }
+      const projectId = segments[3]
+      if (projectId !== undefined && method === 'PUT' && segments.length === 4) {
+        requireMutationHeader(req)
+        const previous = requiredRemoteProject(runtime.store, projectId, id)
+        const draft = normalizeRemoteProjectDraft((await readObject(req)).project)
+        const next: RemoteProject = { ...previous, ...draft, updatedAt: Date.now() }
+        await runtime.store.update(state => {
+          state.remoteProjects = state.remoteProjects.map(project => project.id === projectId ? next : project)
+          state.injections = state.injections.map(injection => {
+            if (injection.workingProjectIds[previous.profileId] !== projectId || injection.workingDirectories[previous.profileId] !== previous.path) return injection
+            return { ...injection, workingDirectories: { ...injection.workingDirectories, [previous.profileId]: next.path } }
+          })
+        })
+        return sendJson(res, 200, next)
+      }
+      if (projectId !== undefined && method === 'DELETE' && segments.length === 4) {
+        requireMutationHeader(req)
+        requiredRemoteProject(runtime.store, projectId, id)
+        await runtime.store.update(state => {
+          state.remoteProjects = state.remoteProjects.filter(project => project.id !== projectId)
+          state.injections = state.injections.map(injection => {
+            if (injection.workingProjectIds[id] !== projectId) return injection
+            const { [id]: _removed, ...workingProjectIds } = injection.workingProjectIds
+            return { ...injection, workingProjectIds }
+          })
+        })
+        return sendJson(res, 204, undefined)
+      }
+    }
     if (id !== undefined && segments[2] === 'sftp') {
       requiredProfile(runtime.store, id)
       const operation = segments[3]
@@ -223,10 +263,12 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       await Promise.all(related.map(rule => runtime.forwards.stop(rule.id).catch(() => {})))
       await runtime.store.update(state => {
         state.profiles = state.profiles.filter(profile => profile.id !== id)
+        state.remoteProjects = (state.remoteProjects ?? []).filter(project => project.profileId !== id)
         state.forwardRules = state.forwardRules.filter(rule => rule.profileId !== id)
         state.injections = state.injections.map(item => {
           const { [id]: _removed, ...workingDirectories } = item.workingDirectories
-          return { ...item, profileIds: item.profileIds.filter(profileId => profileId !== id), workingDirectories }
+          const { [id]: _removedProject, ...workingProjectIds } = item.workingProjectIds
+          return { ...item, profileIds: item.profileIds.filter(profileId => profileId !== id), workingDirectories, workingProjectIds }
         })
       })
       await runtime.credentials.delete(id)
@@ -309,15 +351,20 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const profileIds = parseProfileIds(body.profileIds, runtime.store)
       const permission = body.permission === 'exec' ? 'exec' : body.permission === 'terminal' ? 'terminal' : undefined
       if (permission === undefined) throw httpError(400, 'permission must be exec or terminal')
-      const previousDirectories = runtime.store.injection(sessionId)?.workingDirectories ?? {}
-      const workingDirectories = Object.fromEntries(Object.entries(previousDirectories).filter(([profileId]) => profileIds.includes(profileId)))
-      const injection: SessionInjection = { sessionId, profileIds, permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, updatedAt: Date.now() }
+      const previous = runtime.store.injection(sessionId)
+      const workingDirectories = parseWorkingDirectories(body.workingDirectories, profileIds)
+      const workingProjectIds = parseWorkingProjectIds(body.workingProjectIds, profileIds, runtime.store)
+      const injection: SessionInjection = { sessionId, profileIds, permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, updatedAt: Date.now() }
       await runtime.store.update(state => { state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection] })
+      const revoked = previous?.profileIds.filter(profileId => !profileIds.includes(profileId)) ?? []
+      if (permission !== 'terminal') await runtime.aiTerminals.closeOwner(sessionId)
+      else await Promise.all(revoked.map(profileId => runtime.aiTerminals.closeProfile(sessionId, profileId)))
       return sendJson(res, 200, injection)
     }
     if (sessionId !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
       await runtime.store.update(state => { state.injections = state.injections.filter(item => item.sessionId !== sessionId) })
+      await runtime.aiTerminals.closeOwner(sessionId)
       return sendJson(res, 204, undefined)
     }
   }
@@ -540,6 +587,12 @@ function requiredProfile(store: SshStore, id: string): SshProfile {
   return profile
 }
 
+function requiredRemoteProject(store: SshStore, id: string, profileId: string): RemoteProject {
+  const project = store.remoteProject(id)
+  if (project === undefined || project.profileId !== profileId) throw httpError(404, 'remote project was not found')
+  return project
+}
+
 function requiredForward(store: SshStore, id: string): ForwardRule {
   const rule = store.forward(id)
   if (rule === undefined) throw httpError(404, 'port-forward rule was not found')
@@ -584,6 +637,30 @@ function requireActivityTerminal(store: SshStore, sessionId: string): SessionInj
 function parseProfileIds(value: unknown, store: SshStore): string[] {
   if (!Array.isArray(value) || value.length > 100) throw httpError(400, 'profileIds must be an array')
   return [...new Set(value.map(item => requireText(item, 'profileId', 100)))].map(id => requiredProfile(store, id).id)
+}
+
+function parseWorkingDirectories(value: unknown, profileIds: string[]): Record<string, string> {
+  if (value === undefined) return {}
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw httpError(400, 'workingDirectories must be an object')
+  const result: Record<string, string> = {}
+  for (const [profileId, rawPath] of Object.entries(value)) {
+    if (!profileIds.includes(profileId)) continue
+    const path = requireRawText(rawPath, 'working directory', 4096).trim()
+    if (path.length > 0) result[profileId] = path
+  }
+  return result
+}
+
+function parseWorkingProjectIds(value: unknown, profileIds: string[], store: SshStore): Record<string, string> {
+  if (value === undefined) return {}
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw httpError(400, 'workingProjectIds must be an object')
+  const result: Record<string, string> = {}
+  for (const [profileId, rawProjectId] of Object.entries(value)) {
+    if (!profileIds.includes(profileId)) continue
+    const projectId = requireText(rawProjectId, 'working project id', 100)
+    result[profileId] = requiredRemoteProject(store, projectId, profileId).id
+  }
+  return result
 }
 
 function createId(prefix: string): string { return `${prefix}-${randomBytes(10).toString('hex')}` }
