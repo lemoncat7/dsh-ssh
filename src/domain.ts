@@ -71,11 +71,48 @@ export interface ForwardRule {
 export interface SessionInjection {
   sessionId: string
   profileIds: string[]
+  fileEndpointIds: string[]
+  filePermission: 'browse' | 'transfer'
+  requireFileApproval: boolean
   permission: 'exec' | 'terminal'
   requireCommandApproval: boolean
   workingDirectories: Record<string, string>
   workingProjectIds: Record<string, string>
   updatedAt: number
+}
+
+export type FtpProtocol = 'ftp' | 'ftps-explicit' | 'ftps-implicit'
+export type FtpProxyConfig = { type: 'none' } | { type: 'saved'; proxyId: string }
+
+export interface FtpProfile {
+  id: string
+  name: string
+  group?: string
+  protocol: FtpProtocol
+  host: string
+  port: number
+  username: string
+  credentialId?: string
+  proxy: FtpProxyConfig
+  initialPath: string
+  connectTimeoutMs: number
+  tlsServerName?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface FtpProfileDraft {
+  name: string
+  group?: string
+  protocol: FtpProtocol
+  host: string
+  port?: number
+  username: string
+  credentialId?: string
+  proxy?: FtpProxyConfig
+  initialPath?: string
+  connectTimeoutMs?: number
+  tlsServerName?: string
 }
 
 /** A reusable remote project root attached to one SSH profile. */
@@ -95,14 +132,38 @@ export interface SshSettings {
 }
 
 export interface SshState {
-  schemaVersion: 4
+  schemaVersion: 5
   profiles: SshProfile[]
+  ftpProfiles: FtpProfile[]
   remoteProjects: RemoteProject[]
   credentialEntries: CredentialEntry[]
   proxyEntries: ProxyEntry[]
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
   settings: SshSettings
+}
+
+export function normalizeFtpProfileDraft(value: unknown): FtpProfileDraft {
+  const input = record(value, 'FTP profile')
+  const protocol = input.protocol
+  if (protocol !== 'ftp' && protocol !== 'ftps-explicit' && protocol !== 'ftps-implicit') {
+    throw bad('protocol must be ftp, ftps-explicit, or ftps-implicit')
+  }
+  const proxy = normalizeFtpProxy(input.proxy)
+  const defaultPort = protocol === 'ftps-implicit' ? 990 : 21
+  return {
+    name: text(input.name, 'name', 1, 80),
+    ...optionalText(input.group, 'group', 1, 64),
+    protocol,
+    host: text(input.host, 'host', 1, 253),
+    port: integer(input.port ?? defaultPort, 'port', 1, 65_535),
+    username: text(input.username, 'username', 1, 128),
+    ...optionalText(input.credentialId, 'credentialId', 1, 100),
+    proxy,
+    initialPath: remotePath(input.initialPath ?? '/', 'initialPath'),
+    connectTimeoutMs: integer(input.connectTimeoutMs ?? 15_000, 'connectTimeoutMs', 1000, 120_000),
+    ...optionalText(input.tlsServerName, 'tlsServerName', 1, 253),
+  }
 }
 
 export interface RemoteProjectDraft {
@@ -266,6 +327,14 @@ function normalizeProxy(value: unknown): ProxyConfig {
     }
   }
   throw bad('proxy.type must be none, saved, http, socks5, or jump')
+}
+
+function normalizeFtpProxy(value: unknown): FtpProxyConfig {
+  if (value === undefined || value === null) return { type: 'none' }
+  const input = record(value, 'FTP proxy')
+  if (input.type === 'none') return { type: 'none' }
+  if (input.type === 'saved') return { type: 'saved', proxyId: text(input.proxyId, 'proxy.proxyId', 1, 100) }
+  throw bad('FTP proxy.type must be none or saved')
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

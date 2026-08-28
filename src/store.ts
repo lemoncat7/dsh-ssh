@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { CredentialEntry, ForwardRule, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
+import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
 
 export class SshStore {
   private state: SshState
@@ -13,7 +13,7 @@ export class SshStore {
 
   static async open(path: string, defaults: SshSettings): Promise<SshStore> {
     await mkdir(dirname(path), { recursive: true })
-    let initial: SshState = { schemaVersion: 4, profiles: [], remoteProjects: [], credentialEntries: [], proxyEntries: [], forwardRules: [], injections: [], settings: defaults }
+    let initial: SshState = { schemaVersion: 5, profiles: [], ftpProfiles: [], remoteProjects: [], credentialEntries: [], proxyEntries: [], forwardRules: [], injections: [], settings: defaults }
     try {
       const parsed = JSON.parse(await readFile(path, 'utf8')) as unknown
       initial = parseState(parsed, defaults)
@@ -28,6 +28,8 @@ export class SshStore {
   snapshot(): SshState { return structuredClone(this.state) }
   profiles(): SshProfile[] { return structuredClone(this.state.profiles) }
   profile(id: string): SshProfile | undefined { return structuredClone(this.state.profiles.find(profile => profile.id === id)) }
+  ftpProfiles(): FtpProfile[] { return structuredClone(this.state.ftpProfiles) }
+  ftpProfile(id: string): FtpProfile | undefined { return structuredClone(this.state.ftpProfiles.find(profile => profile.id === id)) }
   remoteProjects(profileId?: string): RemoteProject[] { return structuredClone(profileId === undefined ? this.state.remoteProjects : this.state.remoteProjects.filter(project => project.profileId === profileId)) }
   remoteProject(id: string): RemoteProject | undefined { return structuredClone(this.state.remoteProjects.find(project => project.id === id)) }
   credentialEntries(): CredentialEntry[] { return structuredClone(this.state.credentialEntries) }
@@ -81,16 +83,20 @@ export class SshStore {
 function parseState(value: unknown, defaults: SshSettings): SshState {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error('dsh-ssh state must be an object')
   const state = value as Omit<Partial<SshState>, 'schemaVersion'> & { schemaVersion?: unknown }
-  if (state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3 && state.schemaVersion !== 4) throw new Error(`unsupported dsh-ssh state version ${String(state.schemaVersion)}`)
+  if (state.schemaVersion !== 1 && state.schemaVersion !== 2 && state.schemaVersion !== 3 && state.schemaVersion !== 4 && state.schemaVersion !== 5) throw new Error(`unsupported dsh-ssh state version ${String(state.schemaVersion)}`)
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     profiles: Array.isArray(state.profiles) ? state.profiles.map(normalizeStoredProfile) : [],
+    ftpProfiles: Array.isArray(state.ftpProfiles) ? state.ftpProfiles.filter(isStoredFtpProfile) : [],
     remoteProjects: Array.isArray(state.remoteProjects) ? state.remoteProjects.filter(isStoredRemoteProject) : [],
     credentialEntries: Array.isArray(state.credentialEntries) ? state.credentialEntries : [],
     proxyEntries: Array.isArray(state.proxyEntries) ? state.proxyEntries : [],
     forwardRules: Array.isArray(state.forwardRules) ? state.forwardRules : [],
     injections: Array.isArray(state.injections) ? state.injections.map(injection => ({
       ...injection,
+      fileEndpointIds: normalizeFileEndpointIds(injection),
+      filePermission: normalizeFilePermission(injection),
+      requireFileApproval: normalizeRequireFileApproval(injection),
       workingDirectories: normalizeWorkingDirectories(injection),
       workingProjectIds: normalizeWorkingProjectIds(injection),
     })) : [],
@@ -100,9 +106,11 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
 
 function validateReferences(state: SshState): void {
   const ids = new Set(state.profiles.map(profile => profile.id))
+  const ftpIds = new Set(state.ftpProfiles.map(profile => profile.id))
   const credentialIds = new Set(state.credentialEntries.map(entry => entry.id))
   const proxyIds = new Set(state.proxyEntries.map(entry => entry.id))
   if (ids.size !== state.profiles.length) throw new Error('duplicate SSH profile id')
+  if (ftpIds.size !== state.ftpProfiles.length) throw new Error('duplicate FTP profile id')
   if (credentialIds.size !== state.credentialEntries.length) throw new Error('duplicate SSH credential entry id')
   if (proxyIds.size !== state.proxyEntries.length) throw new Error('duplicate SSH proxy entry id')
   for (const profile of state.profiles) {
@@ -111,6 +119,13 @@ function validateReferences(state: SshState): void {
     if (profile.proxy.type === 'jump' && (profile.proxy.profileIds.length === 0 || profile.proxy.profileIds.some(id => !ids.has(id) || id === profile.id) || new Set(profile.proxy.profileIds).size !== profile.proxy.profileIds.length)) {
       throw Object.assign(new Error('jump proxy chain must reference unique existing profiles other than itself'), { status: 400 })
     }
+  }
+  for (const profile of state.ftpProfiles) {
+    if (profile.credentialId !== undefined) {
+      const credential = state.credentialEntries.find(entry => entry.id === profile.credentialId)
+      if (credential === undefined || credential.authType !== 'password') throw Object.assign(new Error('FTP profile requires an existing password credential entry'), { status: 400 })
+    }
+    if (profile.proxy.type === 'saved' && !proxyIds.has(profile.proxy.proxyId)) throw Object.assign(new Error('FTP profile references a missing proxy entry'), { status: 400 })
   }
   for (const rule of state.forwardRules) if (!ids.has(rule.profileId)) throw new Error(`forward rule references missing profile ${rule.profileId}`)
   const projectIds = new Set(state.remoteProjects.map(project => project.id))
@@ -124,7 +139,23 @@ function validateReferences(state: SshState): void {
       const project = projects.get(projectId)
       return injection.profileIds.includes(profileId) && project?.profileId === profileId
     }))
+    injection.fileEndpointIds = [...new Set((injection.fileEndpointIds ?? []).filter(endpointId => {
+      const [kind, id] = endpointId.split(':', 2)
+      return kind === 'sftp' ? ids.has(id ?? '') : kind === 'ftp' && ftpIds.has(id ?? '')
+    }))]
   }
+}
+
+function isStoredFtpProfile(value: unknown): value is FtpProfile {
+  if (typeof value !== 'object' || value === null) return false
+  const profile = value as Partial<FtpProfile>
+  const proxy = profile.proxy
+  return typeof profile.id === 'string' && typeof profile.name === 'string' &&
+    (profile.protocol === 'ftp' || profile.protocol === 'ftps-explicit' || profile.protocol === 'ftps-implicit') &&
+    typeof profile.host === 'string' && Number.isInteger(profile.port) && profile.port! >= 1 && profile.port! <= 65_535 && typeof profile.username === 'string' &&
+    typeof profile.initialPath === 'string' && Number.isInteger(profile.connectTimeoutMs) && profile.connectTimeoutMs! >= 1000 && profile.connectTimeoutMs! <= 120_000 &&
+    typeof profile.createdAt === 'number' && typeof profile.updatedAt === 'number' &&
+    typeof proxy === 'object' && proxy !== null && (proxy.type === 'none' || proxy.type === 'saved' && typeof proxy.proxyId === 'string')
 }
 
 function isStoredRemoteProject(value: unknown): value is RemoteProject {
@@ -160,6 +191,21 @@ function normalizeWorkingProjectIds(injection: unknown): Record<string, string> 
     const [profileId, projectId] = entry
     return profileId.length > 0 && profileId.length <= 100 && typeof projectId === 'string' && projectId.length > 0 && projectId.length <= 100
   }))
+}
+
+function normalizeFileEndpointIds(injection: unknown): string[] {
+  if (typeof injection !== 'object' || injection === null) return []
+  const value = (injection as { fileEndpointIds?: unknown }).fileEndpointIds
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((id): id is string => typeof id === 'string' && /^(?:sftp|ftp):[^:\s]{1,100}$/.test(id)))]
+}
+
+function normalizeFilePermission(injection: unknown): SessionInjection['filePermission'] {
+  return typeof injection === 'object' && injection !== null && (injection as { filePermission?: unknown }).filePermission === 'transfer' ? 'transfer' : 'browse'
+}
+
+function normalizeRequireFileApproval(injection: unknown): boolean {
+  return !(typeof injection === 'object' && injection !== null && (injection as { requireFileApproval?: unknown }).requireFileApproval === false)
 }
 
 async function fileExists(path: string): Promise<boolean> {

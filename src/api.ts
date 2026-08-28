@@ -4,8 +4,8 @@ import { pipeline } from 'node:stream/promises'
 import { HostKeyRequiredError, SshConnector } from './connector.js'
 import { SshCredentialVault } from './credentials.js'
 import {
-  normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeProfileDraft, normalizeProxyEntryDraft, normalizeRemoteProjectDraft, normalizeSecrets,
-  type CredentialEntry, type ForwardRule, type ProxyEntry, type RemoteProject, type SessionInjection, type SshProfile,
+  normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeFtpProfileDraft, normalizeProfileDraft, normalizeProxyEntryDraft, normalizeRemoteProjectDraft, normalizeSecrets,
+  type CredentialEntry, type ForwardRule, type FtpProfile, type ProxyEntry, type RemoteProject, type SessionInjection, type SshProfile,
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
@@ -15,6 +15,11 @@ import { streamTerminalOutput } from './terminal-stream.js'
 import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
 import { ActivityEventBus, streamActivityEvents } from './activity-events.js'
 import { listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview } from './local-workspace.js'
+import { connectFtpProfile } from './ftp-adapter.js'
+import { NetworkDialer } from './network-dialer.js'
+import { RemoteFileSystems } from './remote-file-systems.js'
+import { FileTransferManager, type TransferConflictPolicy } from './file-transfer-manager.js'
+import { EndpointSessionManager } from './endpoint-session-manager.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -35,6 +40,10 @@ export interface SshApiRuntime {
   terminals: BrowserTerminalManager
   aiTerminals: AiTerminalManager
   activityEvents: ActivityEventBus
+  dialer: NetworkDialer
+  files: RemoteFileSystems
+  transfers: FileTransferManager
+  fileSessions: EndpointSessionManager
   sessionCwd(sessionId: string): string | undefined
 }
 
@@ -59,7 +68,90 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
 
-  if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 4 })
+  if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 5 })
+
+  if (segments[0] === 'file-transfer') {
+    if (method === 'GET' && segments[1] === 'endpoints' && segments.length === 2) return sendJson(res, 200, runtime.files.endpoints())
+    if (method === 'GET' && segments[1] === 'directory' && segments.length === 2) {
+      const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
+      const paneId = requireText(url.searchParams.get('paneId'), 'paneId', 100)
+      return sendJson(res, 200, await runtime.fileSessions.run(paneId, endpointId, session => session.list(url.searchParams.get('path') ?? session.endpoint.initialPath)))
+    }
+    if (segments[1] === 'jobs') {
+      if (method === 'GET' && segments.length === 2) return sendJson(res, 200, runtime.transfers.list())
+      if (method === 'POST' && segments.length === 2) {
+        requireMutationHeader(req)
+        const body = await readObject(req)
+        return sendJson(res, 202, runtime.transfers.start('ui', parseTransferRequest(body)))
+      }
+      const jobId = segments[2]
+      if (jobId !== undefined && method === 'GET' && segments.length === 3) return sendJson(res, 200, runtime.transfers.get(jobId))
+      if (jobId !== undefined && method === 'DELETE' && segments.length === 3) { requireMutationHeader(req); runtime.transfers.cancel(jobId); return sendJson(res, 204, undefined) }
+    }
+  }
+
+  if (segments[0] === 'ftp-profiles') {
+    if (method === 'GET' && segments.length === 1) return sendJson(res, 200, await ftpProfileViews(runtime))
+    if (method === 'POST' && segments[1] === 'test-draft' && segments.length === 2) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const draft = normalizeFtpProfileDraft(body.profile)
+      const id = body.profileId === undefined ? createId('ftp-preview') : requiredFtpProfile(runtime.store, requireText(body.profileId, 'profileId', 100)).id
+      const previous = body.profileId === undefined ? {} : await runtime.credentials.readFtp(id)
+      const secrets = { ...previous, ...normalizeSecrets(body.secrets) }
+      if (!secrets.password && draft.credentialId === undefined) throw httpError(400, 'FTP password is required')
+      const credentialEntry = draft.credentialId === undefined ? undefined : requiredPasswordCredential(runtime.store, draft.credentialId)
+      const password = credentialEntry === undefined ? secrets.password! : (await runtime.credentials.readEntry(credentialEntry.id)).password
+      if (!password) throw httpError(400, 'FTP password credential is not configured')
+      const now = Date.now()
+      const profile: FtpProfile = { ...draft, id, username: credentialEntry?.username ?? draft.username, port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: now, updatedAt: now }
+      const session = await connectFtpProfile(profile, password, runtime.dialer)
+      try { await session.list(profile.initialPath); return sendJson(res, 200, { ok: true }) } finally { session.close() }
+    }
+    if (method === 'POST' && segments.length === 1) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const draft = normalizeFtpProfileDraft(body.profile)
+      if (draft.credentialId !== undefined) requiredPasswordCredential(runtime.store, draft.credentialId)
+      const secrets = normalizeSecrets(body.secrets)
+      if (draft.credentialId === undefined && !secrets.password) throw httpError(400, 'FTP password is required')
+      const now = Date.now()
+      const profile: FtpProfile = { ...draft, id: createId('ftp'), port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: now, updatedAt: now }
+      if (profile.credentialId === undefined) await runtime.credentials.replaceFtp(profile.id, { password: secrets.password! })
+      try { await runtime.store.update(state => { state.ftpProfiles.push(profile) }) }
+      catch (error) { if (profile.credentialId === undefined) await runtime.credentials.deleteFtp(profile.id).catch(() => {}); throw error }
+      return sendJson(res, 201, await ftpProfileView(runtime, profile))
+    }
+    const id = segments[1]
+    if (id !== undefined && method === 'PUT' && segments.length === 2) {
+      requireMutationHeader(req)
+      const previous = requiredFtpProfile(runtime.store, id)
+      const body = await readObject(req)
+      const draft = normalizeFtpProfileDraft(body.profile)
+      if (draft.credentialId !== undefined) requiredPasswordCredential(runtime.store, draft.credentialId)
+      const secrets = normalizeSecrets(body.secrets)
+      const next: FtpProfile = { ...previous, ...draft, id, port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: previous.createdAt, updatedAt: Date.now() }
+      if (draft.group === undefined) delete next.group
+      if (draft.tlsServerName === undefined) delete next.tlsServerName
+      const oldSecrets = await runtime.credentials.readFtp(id)
+      if (next.credentialId === undefined && !secrets.password && !oldSecrets.password) throw httpError(400, 'FTP password is required when switching to connection-specific credentials')
+      if (next.credentialId === undefined && secrets.password) await runtime.credentials.writeFtp(id, { password: secrets.password })
+      try { await runtime.store.update(state => { state.ftpProfiles = state.ftpProfiles.map(profile => profile.id === id ? next : profile) }) }
+      catch (error) { await runtime.credentials.replaceFtp(id, oldSecrets).catch(() => {}); throw error }
+      if (next.credentialId !== undefined && previous.credentialId === undefined) await runtime.credentials.deleteFtp(id).catch(() => {})
+      return sendJson(res, 200, await ftpProfileView(runtime, next))
+    }
+    if (id !== undefined && method === 'DELETE' && segments.length === 2) {
+      requireMutationHeader(req)
+      requiredFtpProfile(runtime.store, id)
+      await runtime.store.update(state => {
+        state.ftpProfiles = state.ftpProfiles.filter(profile => profile.id !== id)
+        state.injections = state.injections.map(injection => ({ ...injection, fileEndpointIds: injection.fileEndpointIds.filter(endpointId => endpointId !== `ftp:${id}`) }))
+      })
+      await runtime.credentials.deleteFtp(id)
+      return sendJson(res, 204, undefined)
+    }
+  }
 
   if (segments[0] === 'vault') {
     if (method === 'GET' && segments.length === 1) return sendJson(res, 200, await credentialEntryViews(runtime))
@@ -94,8 +186,8 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
       requiredCredentialEntry(runtime.store, id)
-      const references = runtime.store.profiles().filter(profile => profile.credentialId === id)
-      if (references.length > 0) throw httpError(409, `credential entry is used by ${references.length} SSH profile(s)`)
+      const references = runtime.store.profiles().filter(profile => profile.credentialId === id).length + runtime.store.ftpProfiles().filter(profile => profile.credentialId === id).length
+      if (references > 0) throw httpError(409, `credential entry is used by ${references} connection(s)`)
       await runtime.store.update(state => { state.credentialEntries = state.credentialEntries.filter(entry => entry.id !== id) })
       await runtime.credentials.deleteEntry(id)
       return sendJson(res, 204, undefined)
@@ -133,8 +225,8 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
       requiredProxyEntry(runtime.store, id)
-      const references = runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === id)
-      if (references.length > 0) throw httpError(409, `proxy entry is used by ${references.length} SSH profile(s)`)
+      const references = runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === id).length + runtime.store.ftpProfiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === id).length
+      if (references > 0) throw httpError(409, `proxy entry is used by ${references} connection(s)`)
       await runtime.store.update(state => { state.proxyEntries = state.proxyEntries.filter(entry => entry.id !== id) })
       await runtime.credentials.deleteProxyEntry(id)
       return sendJson(res, 204, undefined)
@@ -268,7 +360,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         state.injections = state.injections.map(item => {
           const { [id]: _removed, ...workingDirectories } = item.workingDirectories
           const { [id]: _removedProject, ...workingProjectIds } = item.workingProjectIds
-          return { ...item, profileIds: item.profileIds.filter(profileId => profileId !== id), workingDirectories, workingProjectIds }
+          return { ...item, profileIds: item.profileIds.filter(profileId => profileId !== id), fileEndpointIds: (item.fileEndpointIds ?? []).filter(endpointId => endpointId !== `sftp:${id}`), workingDirectories, workingProjectIds }
         })
       })
       await runtime.credentials.delete(id)
@@ -348,13 +440,19 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (sessionId !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const body = await readObject(req)
+      const previous = runtime.store.injection(sessionId)
       const profileIds = parseProfileIds(body.profileIds, runtime.store)
+      const fileEndpointIds = body.fileEndpointIds === undefined ? previous?.fileEndpointIds ?? [] : parseFileEndpointIds(body.fileEndpointIds, runtime.files)
+      const filePermission = body.filePermission === undefined ? previous?.filePermission ?? 'browse' : body.filePermission === 'browse' ? 'browse' : body.filePermission === 'transfer' ? 'transfer' : undefined
+      if (filePermission === undefined) throw httpError(400, 'filePermission must be browse or transfer')
       const permission = body.permission === 'exec' ? 'exec' : body.permission === 'terminal' ? 'terminal' : undefined
       if (permission === undefined) throw httpError(400, 'permission must be exec or terminal')
-      const previous = runtime.store.injection(sessionId)
       const workingDirectories = parseWorkingDirectories(body.workingDirectories, profileIds)
       const workingProjectIds = parseWorkingProjectIds(body.workingProjectIds, profileIds, runtime.store)
-      const injection: SessionInjection = { sessionId, profileIds, permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, updatedAt: Date.now() }
+      const injection: SessionInjection = {
+        sessionId, profileIds, fileEndpointIds, filePermission, requireFileApproval: body.requireFileApproval === undefined ? previous?.requireFileApproval ?? true : body.requireFileApproval !== false,
+        permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, updatedAt: Date.now(),
+      }
       await runtime.store.update(state => { state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection] })
       const revoked = previous?.profileIds.filter(profileId => !profileIds.includes(profileId)) ?? []
       if (permission !== 'terminal') await runtime.aiTerminals.closeOwner(sessionId)
@@ -569,7 +667,7 @@ async function credentialEntryViews(runtime: SshApiRuntime): Promise<unknown[]> 
 async function credentialEntryView(runtime: SshApiRuntime, entry: CredentialEntry): Promise<unknown> {
   const credential = await runtime.credentials.describeEntry(entry.id)
   const requiredField = entry.authType === 'password' ? 'password' : 'privateKey'
-  return { ...entry, credential: { ...credential, configured: credential.fields.includes(requiredField) }, references: runtime.store.profiles().filter(profile => profile.credentialId === entry.id).length }
+  return { ...entry, credential: { ...credential, configured: credential.fields.includes(requiredField) }, references: runtime.store.profiles().filter(profile => profile.credentialId === entry.id).length + runtime.store.ftpProfiles().filter(profile => profile.credentialId === entry.id).length }
 }
 
 async function proxyEntryViews(runtime: SshApiRuntime): Promise<unknown[]> {
@@ -578,13 +676,37 @@ async function proxyEntryViews(runtime: SshApiRuntime): Promise<unknown[]> {
 
 async function proxyEntryView(runtime: SshApiRuntime, entry: ProxyEntry): Promise<unknown> {
   const credential = await runtime.credentials.describeProxyEntry(entry.id)
-  return { ...entry, credential, references: runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length }
+  return { ...entry, credential, references: runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length + runtime.store.ftpProfiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length }
+}
+
+async function ftpProfileViews(runtime: SshApiRuntime): Promise<unknown[]> { return Promise.all(runtime.store.ftpProfiles().map(profile => ftpProfileView(runtime, profile))) }
+
+async function ftpProfileView(runtime: SshApiRuntime, profile: FtpProfile): Promise<unknown> {
+  if (profile.credentialId !== undefined) {
+    const entry = requiredPasswordCredential(runtime.store, profile.credentialId)
+    const credential = await runtime.credentials.describeEntry(entry.id)
+    return { ...profile, username: entry.username, credential: { ...credential, configured: credential.fields.includes('password'), source: 'vault', entryId: entry.id, entryName: entry.name } }
+  }
+  const credential = await runtime.credentials.describeFtp(profile.id)
+  return { ...profile, credential: { ...credential, configured: credential.fields.includes('password'), source: 'profile' } }
 }
 
 function requiredProfile(store: SshStore, id: string): SshProfile {
   const profile = store.profile(id)
   if (profile === undefined) throw httpError(404, 'SSH profile was not found')
   return profile
+}
+
+function requiredFtpProfile(store: SshStore, id: string): FtpProfile {
+  const profile = store.ftpProfile(id)
+  if (profile === undefined) throw httpError(404, 'FTP profile was not found')
+  return profile
+}
+
+function requiredPasswordCredential(store: SshStore, id: string): CredentialEntry {
+  const entry = requiredCredentialEntry(store, id)
+  if (entry.authType !== 'password') throw httpError(400, 'FTP connections require a password credential')
+  return entry
 }
 
 function requiredRemoteProject(store: SshStore, id: string, profileId: string): RemoteProject {
@@ -662,6 +784,30 @@ function parseWorkingProjectIds(value: unknown, profileIds: string[], store: Ssh
   }
   return result
 }
+
+function parseFileEndpointIds(value: unknown, files: RemoteFileSystems): string[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > 100) throw httpError(400, 'fileEndpointIds must be an array')
+  return [...new Set(value.map(item => requireText(item, 'fileEndpointId', 110)))].map(id => {
+    if (files.endpoint(id) === undefined) throw httpError(404, `file endpoint ${id} was not found`)
+    return id
+  })
+}
+
+function parseTransferRequest(value: Record<string, unknown>) {
+  const conflict = value.conflictPolicy
+  if (conflict !== 'fail' && conflict !== 'skip' && conflict !== 'overwrite' && conflict !== 'rename') throw httpError(400, 'invalid conflictPolicy')
+  if (!Array.isArray(value.sourcePaths)) throw httpError(400, 'sourcePaths must be an array')
+  return {
+    sourceEndpointId: requireText(value.sourceEndpointId, 'sourceEndpointId', 110),
+    sourcePaths: value.sourcePaths.map(path => requireRawText(path, 'source path', 4096)),
+    destinationEndpointId: requireText(value.destinationEndpointId, 'destinationEndpointId', 110),
+    destinationDirectory: requireRawText(value.destinationDirectory, 'destinationDirectory', 4096),
+    conflictPolicy: conflict as TransferConflictPolicy,
+  }
+}
+
+function defaultFtpPort(protocol: FtpProfile['protocol']): number { return protocol === 'ftps-implicit' ? 990 : 21 }
 
 function createId(prefix: string): string { return `${prefix}-${randomBytes(10).toString('hex')}` }
 

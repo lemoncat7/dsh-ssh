@@ -1,6 +1,6 @@
 # DSH SSH architecture
 
-This plugin is split into four boundaries. UI code never reaches the SSH transport directly, and server code never depends on the DSH client runtime.
+This plugin is split into four boundaries. UI code never reaches SSH or file transports directly, and server code never depends on the DSH client runtime.
 
 ## Runtime boundaries
 
@@ -12,10 +12,15 @@ This plugin is split into four boundaries. UI code never reaches the SSH transpo
 
 ### Server application
 
-- `src/api.ts` translates HTTP routes into explicit store, terminal, SFTP, forwarding, and credential operations.
+- `src/api.ts` translates HTTP routes into explicit store, terminal, file-transfer, forwarding, and credential operations.
 - `src/store.ts` owns persistent SSH configuration.
 - `src/session-access.ts` and `src/tools.ts` define the session authorization boundary used by AI tools.
-- `src/connector.ts`, `src/terminal.ts`, `src/sftp.ts`, and `src/forwards.ts` own long-lived resources and their cleanup.
+- `src/remote-files.ts` defines the protocol-neutral endpoint and remote filesystem contract.
+- `src/sftp-adapter.ts` and `src/ftp-adapter.ts` implement that contract without leaking protocol details upward.
+- `src/network-dialer.ts` owns routed TCP creation for FTP control and passive data connections.
+- `src/endpoint-session-manager.ts` owns sequential, idle-reaped browser pane sessions.
+- `src/file-transfer-manager.ts` owns bounded asynchronous jobs, recursive scans, stream backpressure, progress, cancellation, and cleanup.
+- `src/connector.ts`, `src/terminal.ts`, `src/sftp.ts`, and `src/forwards.ts` retain SSH-specific resources and cleanup.
 
 ### Browser features
 
@@ -23,6 +28,8 @@ This plugin is split into four boundaries. UI code never reaches the SSH transpo
 - `src/profile-editor.tsx` owns connection editing, validation, jump chains, and deletion safeguards.
 - `src/remote-workspace-tree.tsx` owns host mounting, fixed directories, and remote-session creation.
 - `src/sftp-client.tsx` owns directory browsing, upload, preview, and download.
+- `src/file-transfer-workspace.tsx` owns transfer task tabs, 2–4 file panes, cross-pane actions, job feedback, and file authorization UI.
+- `src/ftp-profile-editor.tsx` owns FTP/FTPS connection editing and validation.
 - `src/resizable-split.tsx` owns the terminal/SFTP split and persisted sizing.
 - `src/ui-components.tsx` provides shared dialog, field, segment, and empty-state behavior.
 
@@ -37,7 +44,11 @@ This plugin is split into four boundaries. UI code never reaches the SSH transpo
 | State | Owner | Persistence |
 | --- | --- | --- |
 | SSH profiles, proxies, credentials, forwards | server store | profile data + DSH credential service |
+| FTP/FTPS profiles | server store | profile data + DSH credential service |
 | Mounted hosts, permission, fixed directories | session access store | per DSH session |
+| Authorized file endpoints and file permission | session access store | per DSH session |
+| Browser file control sessions | endpoint session manager | process lifetime, 60-second idle reap |
+| File transfer jobs | file transfer manager | process lifetime |
 | Browser terminal process | terminal manager | process lifetime |
 | Active panel, selected host, open dialog | React feature component | browser lifetime |
 | Terminal/SFTP split width | `ResizableSplit` | browser local storage |
@@ -46,6 +57,10 @@ This plugin is split into four boundaries. UI code never reaches the SSH transpo
 
 - The plugin uses only public DSH slots and injected client services; it does not patch DSH source code.
 - A tool call must pass the session access boundary before reaching SSH resources.
+- SSH command permission and remote-file permission are independent; authorizing one never implies the other.
+- FTP control and passive data sockets use the same route policy. FTPS wraps both socket classes with verified TLS.
+- Remote-to-remote transfers use backpressured streams and never stage a complete file on local disk.
+- Browser browsing sessions and transfer job sessions are isolated so a long transfer cannot block pane navigation.
 - Secrets are write-only from the browser and are never returned by profile APIs.
 - Terminal input is sequenced and terminal resources are explicitly disposed on close or unmount.
 - Visual motion uses `transform` and `opacity`, remains interruptible, and is disabled by `prefers-reduced-motion`.

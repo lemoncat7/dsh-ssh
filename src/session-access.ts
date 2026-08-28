@@ -11,6 +11,9 @@ export interface SessionAccessState {
   setDirectory(profileId: string, path?: string, projectId?: string): void
   setPermission(permission: InjectionView['permission']): void
   setRequireCommandApproval(value: boolean): void
+  setFileEndpoints(endpointIds: string[]): void
+  setFilePermission(permission: InjectionView['filePermission']): void
+  setRequireFileApproval(value: boolean): void
   replace(value: InjectionView): Promise<InjectionView>
 }
 
@@ -92,12 +95,15 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
     },
     setPermission: permission => update({ permission }),
     setRequireCommandApproval: requireCommandApproval => update({ requireCommandApproval }),
+    setFileEndpoints: fileEndpointIds => update({ fileEndpointIds }),
+    setFilePermission: filePermission => update({ filePermission }),
+    setRequireFileApproval: requireFileApproval => update({ requireFileApproval }),
     replace,
   }
 }
 
 export function emptyAccess(sessionId: string): InjectionView {
-  return { sessionId, profileIds: [], permission: 'exec', requireCommandApproval: true, workingDirectories: {}, workingProjectIds: {}, updatedAt: 0 }
+  return { sessionId, profileIds: [], permission: 'exec', requireCommandApproval: true, fileEndpointIds: [], filePermission: 'browse', requireFileApproval: true, workingDirectories: {}, workingProjectIds: {}, updatedAt: 0 }
 }
 
 function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }

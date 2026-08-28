@@ -1,8 +1,9 @@
 import path from 'node:path'
-import { Transform, type Readable } from 'node:stream'
+import { Transform, type Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { FileEntry, SFTPWrapper } from 'ssh2'
-import { SshConnector } from './connector.js'
+import { SshConnector, type ManagedSshConnection } from './connector.js'
+import type { RemoteDirectoryView, RemoteEndpointView, RemoteFileEntry, RemoteFileSystemSession } from './remote-files.js'
 
 export interface SftpDirectoryEntry {
   name: string
@@ -40,6 +41,176 @@ export interface SftpUploadResult {
   path: string
   name: string
   size: number
+}
+
+/** Opens one reusable SFTP channel. Browser panes and transfer jobs own its lifecycle. */
+export async function openSftpFileSystemSession(
+  connector: SshConnector,
+  profileId: string,
+  endpoint: RemoteEndpointView,
+  signal?: AbortSignal,
+): Promise<RemoteFileSystemSession> {
+  signal?.throwIfAborted()
+  const connection = await connector.connect(profileId, signal)
+  try {
+    const sftp = await openSftp(connection.client, signal)
+    const home = await realpath(sftp, '.')
+    return new ReusableSftpSession(endpoint, connection, sftp, home)
+  } catch (error) {
+    connection.close()
+    throw error
+  }
+}
+
+class ReusableSftpSession implements RemoteFileSystemSession {
+  private closed = false
+
+  constructor(
+    readonly endpoint: RemoteEndpointView,
+    private readonly connection: ManagedSshConnection,
+    private readonly sftp: SFTPWrapper,
+    private readonly home: string,
+  ) {}
+
+  list(requestedPath: string, signal?: AbortSignal): Promise<RemoteDirectoryView> {
+    return this.run(async () => {
+      const resolved = await realpath(this.sftp, expandHome(requestedPath.trim() || '~', this.home))
+      const entries = (await readdir(this.sftp, resolved))
+        .filter(entry => entry.filename !== '.' && entry.filename !== '..')
+        .map(entry => viewEntry(resolved, entry))
+        .sort((left, right) => {
+          if (left.kind === 'directory' && right.kind !== 'directory') return -1
+          if (left.kind !== 'directory' && right.kind === 'directory') return 1
+          return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
+        })
+      return { path: resolved, parent: remoteParent(resolved), entries }
+    }, signal)
+  }
+
+  stat(requestedPath: string, signal?: AbortSignal): Promise<RemoteFileEntry> {
+    return this.run(async () => {
+      const resolved = await realpath(this.sftp, expandHome(requestedPath.trim() || '~', this.home))
+      const attributes = await stat(this.sftp, resolved)
+      const fileType = attributes.mode & 0o170000
+      return {
+        name: remoteName(resolved), path: resolved,
+        kind: fileType === 0o040000 ? 'directory' : fileType === 0o100000 ? 'file' : fileType === 0o120000 ? 'symlink' : 'other',
+        size: attributes.size, modifiedAt: attributes.mtime * 1000,
+      }
+    }, signal)
+  }
+
+  download(requestedPath: string, destination: Writable, signal?: AbortSignal): Promise<void> {
+    return this.run(async () => {
+      const resolved = await realpath(this.sftp, expandHome(requestedPath, this.home))
+      await pipeline(createSftpReadStream(this.sftp, resolved), destination, { signal })
+    }, signal)
+  }
+
+  upload(requestedPath: string, source: Readable, overwrite: boolean, signal?: AbortSignal): Promise<void> {
+    return this.run(async () => {
+      const target = expandHome(requestedPath, this.home).replaceAll('\\', '/')
+      if (!overwrite && await sftpPathExists(this.sftp, target)) throw Object.assign(new Error('A file with this name already exists'), { status: 409 })
+      const output = this.sftp.createWriteStream(target, { flags: 'w', mode: 0o600 })
+      output.on('error', () => {})
+      await pipeline(source, output, { signal })
+    }, signal)
+  }
+
+  ensureDirectory(requestedPath: string, signal?: AbortSignal): Promise<void> {
+    return this.run(async () => {
+      const target = expandHome(requestedPath.trim() || '~', this.home).replaceAll('\\', '/')
+      const drive = /^([A-Za-z]:)\//.exec(target)?.[1]
+      const absolute = target.startsWith('/') || drive !== undefined
+      const parts = target.split('/').filter(Boolean).slice(drive === undefined ? 0 : 1)
+      let current = drive === undefined ? absolute ? '/' : this.home : `${drive}/`
+      for (const part of parts) {
+        current = remoteJoin(current, part)
+        if (!await sftpPathExists(this.sftp, current)) await mkdirSftp(this.sftp, current)
+      }
+    }, signal)
+  }
+
+  close(): void {
+    if (this.closed) return
+    this.closed = true
+    this.sftp.end()
+    this.connection.close()
+  }
+
+  private async run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (this.closed) throw new Error('SFTP session is closed')
+    signal?.throwIfAborted()
+    const abort = (): void => this.close()
+    signal?.addEventListener('abort', abort, { once: true })
+    try { return await operation() }
+    finally { signal?.removeEventListener('abort', abort) }
+  }
+}
+
+export async function statSftpPath(
+  connector: SshConnector,
+  profileId: string,
+  requestedPath: string,
+  signal?: AbortSignal,
+): Promise<SftpDirectoryEntry> {
+  signal?.throwIfAborted()
+  const connection = await connector.connect(profileId, signal)
+  let sftp: SFTPWrapper | undefined
+  try {
+    sftp = await openSftp(connection.client, signal)
+    const home = await realpath(sftp, '.')
+    const resolved = await realpath(sftp, expandHome(requestedPath.trim() || '~', home))
+    const attributes = await stat(sftp, resolved)
+    const fileType = attributes.mode & 0o170000
+    return {
+      name: remoteName(resolved), path: resolved,
+      kind: fileType === 0o040000 ? 'directory' : fileType === 0o100000 ? 'file' : fileType === 0o120000 ? 'symlink' : 'other',
+      size: attributes.size, modifiedAt: attributes.mtime * 1000,
+    }
+  } finally {
+    sftp?.end()
+    connection.close()
+  }
+}
+
+export async function downloadSftpFile(
+  connector: SshConnector,
+  profileId: string,
+  requestedPath: string,
+  destination: import('node:stream').Writable,
+  signal?: AbortSignal,
+): Promise<void> {
+  const handle = await openSftpFile(connector, profileId, requestedPath, signal)
+  try { await pipeline(handle.stream, destination, { signal }) }
+  finally { handle.close() }
+}
+
+export async function ensureSftpDirectory(
+  connector: SshConnector,
+  profileId: string,
+  requestedPath: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  signal?.throwIfAborted()
+  const connection = await connector.connect(profileId, signal)
+  let sftp: SFTPWrapper | undefined
+  try {
+    sftp = await openSftp(connection.client, signal)
+    const home = await realpath(sftp, '.')
+    const target = expandHome(requestedPath.trim() || '~', home).replaceAll('\\', '/')
+    const absolute = target.startsWith('/')
+    const parts = target.split('/').filter(Boolean)
+    let current = absolute ? '/' : home
+    for (const part of parts) {
+      current = remoteJoin(current, part)
+      if (!await sftpPathExists(sftp, current)) await mkdirSftp(sftp, current)
+    }
+    return realpath(sftp, current)
+  } finally {
+    sftp?.end()
+    connection.close()
+  }
 }
 
 export async function listSftpDirectory(
@@ -153,9 +324,10 @@ export async function uploadSftpFile(
   requestedDirectory: string,
   filename: string,
   input: Readable,
-  options: { overwrite: boolean; maxBytes: number },
+  options: { overwrite: boolean; maxBytes: number; signal?: AbortSignal },
 ): Promise<SftpUploadResult> {
-  const connection = await connector.connect(profileId)
+  options.signal?.throwIfAborted()
+  const connection = await connector.connect(profileId, options.signal)
   let sftp: SFTPWrapper | undefined
   try {
     sftp = await openSftp(connection.client)
@@ -174,12 +346,16 @@ export async function uploadSftpFile(
     })
     const output = sftp.createWriteStream(target, { flags: 'w', mode: 0o600 })
     output.on('error', () => {})
-    await pipeline(input, limiter, output)
+    await pipeline(input, limiter, output, { signal: options.signal })
     return { path: target, name: filename, size }
   } finally {
     sftp?.end()
     connection.close()
   }
+}
+
+function mkdirSftp(sftp: SFTPWrapper, value: string): Promise<void> {
+  return new Promise((resolve, reject) => sftp.mkdir(value, { mode: 0o755 }, error => error ? reject(error) : resolve()))
 }
 
 function openSftp(client: import('ssh2').Client, signal?: AbortSignal): Promise<SFTPWrapper> {

@@ -45,12 +45,12 @@ export class SshConnector {
         socket = await connectHttpProxy(resolvedProxy.config.host, resolvedProxy.config.port, profile.host, profile.port, {
           ...resolvedProxy.config.username === undefined ? {} : { username: resolvedProxy.config.username },
           ...resolvedProxy.password === undefined ? {} : { password: resolvedProxy.password },
-        }, profile.connectTimeoutMs)
+        }, profile.connectTimeoutMs, signal)
       } else if (resolvedProxy.config.type === 'socks5') {
         socket = await connectSocks5Proxy(resolvedProxy.config.host, resolvedProxy.config.port, profile.host, profile.port, {
           ...resolvedProxy.config.username === undefined ? {} : { username: resolvedProxy.config.username },
           ...resolvedProxy.password === undefined ? {} : { password: resolvedProxy.password },
-        }, profile.connectTimeoutMs)
+        }, profile.connectTimeoutMs, signal)
       } else if (profile.proxy.type === 'jump') {
         parent = await this.connectJumpChain(profile.proxy.profileIds, chain, signal)
         socket = await forwardOut(parent.client, profile.host, profile.port)

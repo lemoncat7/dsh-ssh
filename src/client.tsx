@@ -23,9 +23,9 @@ import cssText from './client.css'
 import remoteWorkspaceCss from './remote-workspace-tree.css'
 import hostWorkbenchCss from './host-workbench.css'
 import {
-  activityEventStreamUrl, api, browserTerminalStreamUrl, loadForwards, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
+  activityEventStreamUrl, api, browserTerminalStreamUrl, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
   profileAddress,
-  type ForwardStatus, type ForwardView,
+  type ForwardStatus, type ForwardView, type FtpProfileView,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
@@ -38,6 +38,8 @@ import { subscribeSessionAccess } from './session-access-channel.js'
 import { ResizableSplit } from './resizable-split.js'
 import { Dialog, EmptyState, Field, Segment, ServerGlyph, errorMessage } from './ui-components.js'
 import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
+import { FileTransferWorkspace } from './file-transfer-workspace.js'
+import fileTransferCss from './file-transfer-workspace.css'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -241,8 +243,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
   const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
+  const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
-  const [view, setView] = useState<'workspace' | 'forwards' | 'vault' | 'proxies' | 'settings'>('workspace')
+  const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings'>('workspace')
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [deleting, setDeleting] = useState<ProfileView>()
   const [refreshKey, setRefreshKey] = useState(0)
@@ -251,8 +254,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const openedSessionRef = useRef(sessionId)
   const refresh = useCallback(async () => {
     try {
-      const [next, credentials, proxies] = await Promise.all([loadProfiles(), loadVaultEntries(), loadProxyEntries()])
+      const [next, ftp, credentials, proxies] = await Promise.all([loadProfiles(), loadFtpProfiles(), loadVaultEntries(), loadProxyEntries()])
       setProfiles(next)
+      setFtpProfiles(ftp)
       setVaultEntries(credentials)
       setProxyEntries(proxies)
       setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : next[0] === undefined ? null : { profileId: next[0].id, path: '~' })
@@ -274,9 +278,10 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const selected = profiles.find(item => item.id === target?.profileId)
   const currentWorkspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
   const toolbar = <header className="dsh-ssh-toolbar">
-      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>SSH 工作台</strong><small>{selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
+      <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>SSH 工作台</strong><small>{view === 'transfer' ? 'FTP · FTPS · SFTP' : selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" role="tablist" aria-label="SSH 工作台视图">
         <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>终端与文件</Segment>
+        <Segment active={view === 'transfer'} onClick={() => setView('transfer')}>文件传输</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>端口转发</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
         <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>代理库</Segment>
@@ -317,7 +322,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
-        {view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
+        {view === 'transfer' ? <FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} />
+          : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : selected === undefined ? <EmptyState />
           : view === 'workspace' ? <HostWorkbench key={selected.id} profile={selected} initialPath={target?.path ?? '~'} onEdit={() => setEditing(selected)} onDelete={() => setDeleting(selected)} />
@@ -617,7 +623,7 @@ function installStyles(): () => void {
   if (previous !== null) return () => {}
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}`
+  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${fileTransferCss}`
   document.head.append(style)
   return () => style.remove()
 }

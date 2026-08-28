@@ -2,6 +2,7 @@ import { credentialKey, type CredentialProvider, type GrantRecord } from '@deeps
 import { compactSecrets, type SshCredentialPayload } from './domain.js'
 
 const SCOPE = 'dsh-ssh'
+const FTP_SCOPE = 'dsh-ftp'
 const VAULT_SCOPE = 'dsh-ssh-vault'
 const PROXY_SCOPE = 'dsh-ssh-proxy'
 
@@ -26,6 +27,26 @@ export class SshCredentialVault {
 
   async delete(profileId: string): Promise<void> {
     await this.deleteScoped(SCOPE, profileId)
+  }
+
+  async describeFtp(profileId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
+    return this.describeScoped(FTP_SCOPE, profileId, 'FTP credential')
+  }
+
+  async readFtp(profileId: string): Promise<SshCredentialPayload> {
+    return this.readScoped(FTP_SCOPE, profileId, 'FTP credential')
+  }
+
+  async writeFtp(profileId: string, patch: SshCredentialPayload): Promise<void> {
+    await this.writeScoped(FTP_SCOPE, profileId, 'FTP credential', patch)
+  }
+
+  async replaceFtp(profileId: string, value: SshCredentialPayload): Promise<void> {
+    await this.replaceScoped(FTP_SCOPE, profileId, value)
+  }
+
+  async deleteFtp(profileId: string): Promise<void> {
+    await this.deleteScoped(FTP_SCOPE, profileId)
   }
 
   async describeEntry(entryId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {

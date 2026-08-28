@@ -9,6 +9,9 @@ import { ForwardManager } from './forwards.js'
 import { SshConnector } from './connector.js'
 import { SshStore } from './store.js'
 import { AiTerminalManager } from './terminal.js'
+import { registerFileTransferTools } from './file-transfer-tools.js'
+import { RemoteFileSystems } from './remote-file-systems.js'
+import { FileTransferManager } from './file-transfer-manager.js'
 
 const textOutput = {
   schema: { type: 'string' as const },
@@ -18,7 +21,7 @@ const textOutput = {
 const APPROVAL_TOOLS = new Set(['ssh_exec', 'ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_signal', 'ssh_forward_start', 'ssh_forward_stop'])
 const TERMINAL_ONLY_TOOLS = new Set(['ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_read', 'ssh_terminal_signal', 'ssh_terminal_close'])
 
-export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager): () => void {
+export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager, files?: RemoteFileSystems, transfers?: FileTransferManager): () => void {
   const tools: ToolDefinition[] = [
     listTool(store),
     cwdTool(store, connector),
@@ -43,7 +46,9 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
     return { kind: 'ask', reason: `SSH access to an injected remote host was requested by ${exec.name}.` }
   })
   const disposeVisibility = installModeToolVisibility(ctx, store)
+  const disposeFileTools = files === undefined || transfers === undefined ? () => {} : registerFileTransferTools(ctx, store, files, transfers)
   return () => {
+    disposeFileTools()
     disposeVisibility()
     disposeApproval()
     for (const dispose of disposers.reverse()) dispose()

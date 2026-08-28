@@ -24,7 +24,25 @@ export interface ForwardView {
   bindHost: string; bindPort: number; targetHost?: string; targetPort?: number; autoStart: boolean
 }
 export interface ForwardStatus { ruleId: string; state: 'stopped' | 'starting' | 'running' | 'error'; bindHost: string; bindPort: number; connections: number; error?: string }
-export interface InjectionView { sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean; workingDirectories: Record<string, string>; workingProjectIds: Record<string, string>; updatedAt: number }
+export interface InjectionView {
+  sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean
+  fileEndpointIds: string[]; filePermission: 'browse' | 'transfer'; requireFileApproval: boolean
+  workingDirectories: Record<string, string>; workingProjectIds: Record<string, string>; updatedAt: number
+}
+export interface FtpProfileView {
+  id: string; name: string; group?: string; protocol: 'ftp' | 'ftps-explicit' | 'ftps-implicit'
+  host: string; port: number; username: string; credentialId?: string
+  proxy: { type: 'none' } | { type: 'saved'; proxyId: string }
+  initialPath: string; connectTimeoutMs: number; tlsServerName?: string
+  credential: CredentialView
+}
+export interface FileEndpointView { id: string; kind: 'sftp' | 'ftp'; protocol: 'sftp' | 'ftp' | 'ftps-explicit' | 'ftps-implicit'; name: string; group?: string; address: string; initialPath: string }
+export interface TransferJobView {
+  id: string; ownerId: string; state: 'queued' | 'scanning' | 'transferring' | 'completed' | 'failed' | 'cancelled'
+  request: { sourceEndpointId: string; sourcePaths: string[]; destinationEndpointId: string; destinationDirectory: string; conflictPolicy: 'fail' | 'skip' | 'overwrite' | 'rename' }
+  totalFiles: number; completedFiles: number; skippedFiles: number; totalBytes: number; transferredBytes: number
+  currentPath?: string; error?: string; createdAt: number; startedAt?: number; completedAt?: number
+}
 export interface RemoteProjectView { id: string; profileId: string; name: string; path: string; createdAt: number; updatedAt: number }
 export interface SettingsView { allowPublicBind: boolean; defaultCommandTimeoutMs: number; maxOutputChars: number }
 export interface ActivityProfileView { id: string; name: string; host: string; port: number; username: string; cwd: string }
@@ -61,6 +79,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function loadProfiles(): Promise<ProfileView[]> { return api('/profiles') }
+export function loadFtpProfiles(): Promise<FtpProfileView[]> { return api('/ftp-profiles') }
+export function loadFileEndpoints(): Promise<FileEndpointView[]> { return api('/file-transfer/endpoints') }
+export function loadFileEndpointDirectory(paneId: string, endpointId: string, path?: string): Promise<SftpDirectoryView> {
+  const query = new URLSearchParams({ paneId, endpointId }); if (path !== undefined) query.set('path', path)
+  return api(`/file-transfer/directory?${query.toString()}`)
+}
+export function loadTransferJobs(): Promise<TransferJobView[]> { return api('/file-transfer/jobs') }
+export function startFileTransfer(request: TransferJobView['request']): Promise<TransferJobView> { return api('/file-transfer/jobs', { method: 'POST', body: JSON.stringify(request) }) }
+export function cancelFileTransfer(jobId: string): Promise<void> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' }) }
 export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vault') }
 export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }

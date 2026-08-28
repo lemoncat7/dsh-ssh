@@ -10,6 +10,12 @@ import { SshStore } from './store.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { registerSshTools } from './tools.js'
 import { ActivityEventBus } from './activity-events.js'
+import { NetworkDialer } from './network-dialer.js'
+import { SftpFileSystemAdapter } from './sftp-adapter.js'
+import { FtpFileSystemAdapter } from './ftp-adapter.js'
+import { RemoteFileSystems } from './remote-file-systems.js'
+import { FileTransferManager } from './file-transfer-manager.js'
+import { EndpointSessionManager } from './endpoint-session-manager.js'
 
 export const Config = ConfigSchema
 export type Config = SshConfig
@@ -34,18 +40,25 @@ export function apply(context: Context, config: SshConfig): void {
     })
     const credentials = new SshCredentialVault(ctx.credentials)
     const connector = new SshConnector(store, credentials)
+    const dialer = new NetworkDialer(store, credentials)
+    const files = new RemoteFileSystems([
+      new SftpFileSystemAdapter(store, connector),
+      new FtpFileSystemAdapter(store, credentials, dialer),
+    ])
+    const transfers = new FileTransferManager(files)
+    const fileSessions = new EndpointSessionManager(files)
     const forwards = new ForwardManager(connector, store)
     const terminals = new BrowserTerminalManager(connector)
     const activityEvents = new ActivityEventBus()
     const aiTerminals = new AiTerminalManager(connector, event => { activityEvents.publish(event) })
-    const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals)
+    const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals, files, transfers)
     let disposeApi: (() => void) | undefined
     const mountApi = (runtime: RuntimeContext): void => {
       if (!resolved.exposeWeb) return
       const webServer = runtime.webServer ?? runtime.get('webServer') as WebServerLike | undefined
       if (webServer === undefined) throw new Error('dsh-ssh exposeWeb requires webServer')
       disposeApi = registerSshApi(webServer, resolved.apiPrefix, {
-        store, credentials, connector, forwards, terminals, aiTerminals, activityEvents,
+        store, credentials, connector, dialer, files, transfers, fileSessions, forwards, terminals, aiTerminals, activityEvents,
         sessionCwd: sessionId => runtime.agents.get(sessionId as SessionId)?.session.header.cwd,
       })
     }
@@ -59,6 +72,8 @@ export function apply(context: Context, config: SshConfig): void {
       disposeApi?.()
       await terminals.closeAll()
       await aiTerminals.closeAll()
+      await transfers.closeAll()
+      fileSessions.closeAll()
       await forwards.closeAll()
     }
   }, 'dsh-ssh.runtime')

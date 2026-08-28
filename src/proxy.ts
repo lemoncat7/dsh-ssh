@@ -10,8 +10,9 @@ export async function connectHttpProxy(
   targetPort: number,
   credentials: ProxyCredentials,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<Socket> {
-  const socket = await connectSocket(proxyHost, proxyPort, timeoutMs)
+  const socket = await connectSocket(proxyHost, proxyPort, timeoutMs, signal)
   const authority = `${targetHost}:${targetPort}`
   const headers = [`CONNECT ${authority} HTTP/1.1`, `Host: ${authority}`, 'Proxy-Connection: Keep-Alive']
   if (credentials.username !== undefined) {
@@ -35,8 +36,9 @@ export async function connectSocks5Proxy(
   targetPort: number,
   credentials: ProxyCredentials,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<Socket> {
-  const socket = await connectSocket(proxyHost, proxyPort, timeoutMs)
+  const socket = await connectSocket(proxyHost, proxyPort, timeoutMs, signal)
   const useAuth = credentials.username !== undefined
   socket.write(Buffer.from(useAuth ? [5, 2, 0, 2] : [5, 1, 0]))
   const greeting = await readExact(socket, 2, timeoutMs)
@@ -69,13 +71,17 @@ export async function connectSocks5Proxy(
   return socket
 }
 
-export async function connectSocket(host: string, port: number, timeoutMs: number): Promise<Socket> {
+export async function connectSocket(host: string, port: number, timeoutMs: number, signal?: AbortSignal): Promise<Socket> {
+  signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     const socket = net.connect({ host, port })
     const timer = setTimeout(() => socket.destroy(new Error(`connection to ${host}:${port} timed out`)), timeoutMs)
-    const cleanup = (): void => { clearTimeout(timer); socket.off('error', reject) }
+    const abort = (): void => { socket.destroy(signal?.reason instanceof Error ? signal.reason : new Error('connection was aborted')) }
+    const cleanup = (): void => { clearTimeout(timer); signal?.removeEventListener('abort', abort); socket.off('error', failed) }
+    const failed = (error: Error): void => { cleanup(); reject(error) }
+    signal?.addEventListener('abort', abort, { once: true })
     socket.once('connect', () => { cleanup(); resolve(socket) })
-    socket.once('error', reject)
+    socket.once('error', failed)
   })
 }
 
