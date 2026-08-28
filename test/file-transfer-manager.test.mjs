@@ -5,12 +5,13 @@ import { FileTransferManager } from '../lib/file-transfer-manager.js'
 import { RemoteFileSystems } from '../lib/remote-file-systems.js'
 
 test('streams a directory between unlike remote file protocols without local staging', async t => {
+  const sourceCalls = { stat: 0, list: 0 }
   const source = memoryAdapter('sftp', 'source', new Map([
     ['/docs', { kind: 'directory' }],
     ['/docs/a.txt', { kind: 'file', data: Buffer.from('alpha') }],
     ['/docs/nested', { kind: 'directory' }],
     ['/docs/nested/b.txt', { kind: 'file', data: Buffer.from('beta') }],
-  ]))
+  ]), sourceCalls)
   const destinationFiles = new Map([['/target', { kind: 'directory' }]])
   const destination = memoryAdapter('ftp', 'destination', destinationFiles)
   const manager = new FileTransferManager(new RemoteFileSystems([source, destination]), 1)
@@ -22,6 +23,7 @@ test('streams a directory between unlike remote file protocols without local sta
   assert.equal(completed.state, 'completed')
   assert.equal(completed.completedFiles, 2)
   assert.equal(completed.transferredBytes, 9)
+  assert.deepEqual(sourceCalls, { stat: 1, list: 2 })
   assert.equal(destinationFiles.get('/target/docs/a.txt').data.toString(), 'alpha')
   assert.equal(destinationFiles.get('/target/docs/nested/b.txt').data.toString(), 'beta')
 })
@@ -41,7 +43,7 @@ test('waits for active streams to release both endpoint sessions during shutdown
   assert.throws(() => manager.start('session-test', job.request), /service is closed/)
 })
 
-function memoryAdapter(kind, id, files) {
+function memoryAdapter(kind, id, files, calls = { stat: 0, list: 0 }) {
   const endpoint = { id: `${kind}:${id}`, kind, protocol: kind, name: id, address: id, initialPath: '/' }
   return {
     kind,
@@ -52,11 +54,13 @@ function memoryAdapter(kind, id, files) {
       return {
         endpoint,
         async stat(path) {
+          calls.stat += 1
           const item = files.get(path)
           if (!item) throw Object.assign(new Error('not found'), { status: 404 })
           return entry(path, item)
         },
         async list(path) {
+          calls.list += 1
           const prefix = path === '/' ? '/' : `${path}/`
           const entries = [...files.entries()].filter(([candidate]) => candidate.startsWith(prefix) && !candidate.slice(prefix.length).includes('/')).map(([candidate, item]) => entry(candidate, item))
           return { path, parent: path === '/' ? null : path.replace(/\/[^/]+$/, '') || '/', entries }

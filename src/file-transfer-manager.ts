@@ -154,15 +154,15 @@ export class FileTransferManager {
 
   private async scan(source: RemoteFileSystemSession, sourcePaths: string[], destinationDirectory: string, signal: AbortSignal): Promise<TransferTask[]> {
     const tasks: TransferTask[] = []
-    const visit = async (sourcePath: string, destinationPath: string, depth: number): Promise<void> => {
+    const visit = async (sourcePath: string, destinationPath: string, depth: number, knownEntry?: RemoteFileEntry): Promise<void> => {
       signal.throwIfAborted()
       if (depth > 64 || tasks.length >= 20_000) throw new Error('directory transfer exceeds the safety limit')
-      const entry = await source.stat(sourcePath, signal)
+      const entry = knownEntry ?? await source.stat(sourcePath, signal)
       if (entry.kind !== 'directory') { tasks.push({ sourcePath: entry.path, destinationPath, kind: 'file', size: entry.size }); return }
       tasks.push({ sourcePath: entry.path, destinationPath, kind: 'directory', size: 0 })
       for (const child of (await source.list(entry.path, signal)).entries) {
         if (child.kind === 'symlink' || child.kind === 'other') continue
-        await visit(child.path, remoteJoin(destinationPath, child.name), depth + 1)
+        await visit(child.path, remoteJoin(destinationPath, child.name), depth + 1, child)
       }
     }
     for (const sourcePath of sourcePaths) await visit(sourcePath, remoteJoin(destinationDirectory, remoteName(sourcePath)), 0)
