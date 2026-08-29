@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canTransferIntoRemoteDirectory, isSameRemoteTransferLocation, remoteDropOperation } from '../lib/file-transfer-intent.js'
+import { canTransferIntoRemoteDirectory, isNavigableRemoteEntry, isSameRemoteTransferLocation, remoteDropOperation } from '../lib/file-transfer-intent.js'
+
+test('uses the same directory semantics for native and FTP-discovered directories', () => {
+  assert.equal(isNavigableRemoteEntry({ kind: 'directory' }), true)
+  assert.equal(isNavigableRemoteEntry({ kind: 'symlink', navigable: true }), true)
+  assert.equal(isNavigableRemoteEntry({ kind: 'file' }), false)
+})
 
 test('treats the same endpoint and normalized directory as a no-op transfer target', () => {
   assert.equal(isSameRemoteTransferLocation(

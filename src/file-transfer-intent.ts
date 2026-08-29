@@ -11,6 +11,10 @@ export interface RemoteFilesDragPayload extends RemoteTransferLocation {
 export const REMOTE_FILES_DRAG_TYPE = 'application/x-dsh-remote-files'
 export type RemoteDropOperation = 'none' | 'move' | 'copy' | 'invalid'
 
+export function isNavigableRemoteEntry(entry: { kind: string; navigable?: boolean }): boolean {
+  return entry.kind === 'directory' || entry.navigable === true
+}
+
 export function isSameRemoteTransferLocation(source: RemoteTransferLocation, destination: RemoteTransferLocation): boolean {
   return source.endpointId === destination.endpointId && normalizeRemoteDirectory(source.directory) === normalizeRemoteDirectory(destination.directory)
 }

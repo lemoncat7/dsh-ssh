@@ -11,7 +11,7 @@ import {
   updateActivityDirectory, uploadProfileSftpFile,
   type ActivityProfileView, type ProfileView, type SftpDirectoryView, type SftpEntryView, type SftpFilePreviewView,
 } from './client-api.js'
-import { REMOTE_FILES_DRAG_TYPE, parseRemoteFilesDragPayload, remoteDropOperation, type RemoteFilesDragPayload } from './file-transfer-intent.js'
+import { REMOTE_FILES_DRAG_TYPE, isNavigableRemoteEntry, parseRemoteFilesDragPayload, remoteDropOperation, type RemoteFilesDragPayload } from './file-transfer-intent.js'
 import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
 
@@ -202,10 +202,10 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
         {loading && directory === undefined ? <p className="dsh-ssh-sftp-state">正在读取远端目录…</p>
           : directory?.entries.length === 0 ? <p className="dsh-ssh-sftp-state">此目录为空</p>
             : directory?.entries.map(entry => {
-              const directoryEntry = entry.kind === 'directory' || entry.navigable === true
+              const directoryEntry = isNavigableRemoteEntry(entry)
               const dragOperation = remoteDragSource === undefined || operations === undefined ? undefined : remoteDropOperation(remoteDragSource, { endpointId: operations.endpointId, directory: entry.path })
               const acceptsRemoteDrop = directoryEntry && dragOperation !== 'none' && dragOperation !== 'invalid'
-              return <div role="row" tabIndex={0} aria-label={`${entry.name}${directoryEntry ? '，目录，单击进入；可接收拖放' : '，文件，单击预览'}`} data-ssh-interactive="row" data-ssh-context-row draggable={operations !== undefined && (entry.kind === 'file' || entry.kind === 'directory')} className={`dsh-ssh-sftp-row is-${directoryEntry ? 'directory' : entry.kind}${remoteDropTarget === entry.path ? ' is-drop-target' : ''}`} key={entry.path}
+              return <div role="row" tabIndex={0} aria-label={`${entry.name}${directoryEntry ? '，目录，单击进入；可接收拖放' : '，文件，单击预览'}`} data-ssh-interactive="row" data-ssh-context-row draggable={operations !== undefined && (entry.kind === 'file' || directoryEntry)} className={`dsh-ssh-sftp-row is-${directoryEntry ? 'directory' : entry.kind}${remoteDropTarget === entry.path ? ' is-drop-target' : ''}`} key={entry.path}
                 onClick={() => { if (directoryEntry) void browse(entry.path, true); else setOpenedFile(entry) }}
                 onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter') { if (directoryEntry) void browse(entry.path, true); else setOpenedFile(entry) } }}
                 onDragStart={event => { if (operations === undefined || directory === undefined) return; const source = { paneId: operations.paneId, endpointId: operations.endpointId, directory: directory.path, paths: [entry.path] }; setRemoteDragSource(source); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(REMOTE_FILES_DRAG_TYPE, JSON.stringify(source)) }}
