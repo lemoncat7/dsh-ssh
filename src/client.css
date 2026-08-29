@@ -15,10 +15,17 @@
 .dsh-ssh-dialog-modal,
 .dsh-ssh-preview-modal,
 .dsh-ssh-session-create-modal {
-  --ssh-font-sans: "SF Pro Text", "SF Pro Display", -apple-system,
-    BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ssh-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "Segoe UI", Inter, "PingFang SC", "Noto Sans CJK SC",
+    "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
   --ssh-font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono",
     "Noto Sans Mono CJK SC", monospace;
+  --ssh-type-caption: 11px;
+  --ssh-type-label: 12px;
+  --ssh-type-body: 13px;
+  --ssh-type-title: 17px;
+  --ssh-leading-compact: 1.35;
+  --ssh-leading-body: 1.5;
   --ssh-canvas: var(--dsw-alias-bg-base, #f4f6f5);
   --ssh-panel: var(--dsw-alias-bg-layer-2, #fbfcfb);
   --ssh-text: var(--dsw-alias-label-primary, #17201e);
@@ -50,8 +57,8 @@
   --ssh-ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   color: var(--ssh-text);
   font-family: var(--ssh-font-sans);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--ssh-type-body);
+  line-height: var(--ssh-leading-body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -1524,13 +1531,18 @@
 }
 .dsh-ssh-sftp-hostbar select {
   min-width: 0;
-  padding: 0;
+  min-height: 32px;
+  padding: 0 26px 0 8px;
   border: 0;
+  border-radius: 8px;
   outline: 0;
   color: var(--ssh-text);
   background: transparent;
-  font: 600 11px/1.25 var(--ssh-font-sans);
+  font: 600 var(--ssh-type-body)/1.25 var(--ssh-font-sans);
   cursor: pointer;
+}
+.dsh-ssh-sftp-hostbar select:hover {
+  background-color: var(--ssh-hover);
 }
 .dsh-ssh-sftp-hostbar small {
   overflow: hidden;
@@ -2392,38 +2404,40 @@
 .dsh-ssh-jump-row select {
   box-sizing: border-box;
   min-width: 0;
-  height: 30px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 32px 0 10px;
   border: 1px solid var(--ssh-border);
-  border-radius: 8px;
+  border-radius: 9px;
   color: var(--ssh-text);
-  background: var(--ssh-surface-raised);
-  font-size: 10px;
+  background-color: var(--ssh-surface-raised);
+  font-size: var(--ssh-type-body);
 }
 .dsh-ssh-field select,
 .dsh-ssh-sftp-hostbar select,
-.dsh-ssh-jump-row select {
+.dsh-ssh-jump-row select,
+.dsh-ssh-file-access-options select {
   appearance: none;
-  padding-right: 28px;
+  padding-right: 32px;
   background-image:
     linear-gradient(
       45deg,
       transparent 50%,
-      color-mix(in srgb, currentColor 56%, transparent) 50%
+      var(--ssh-text-subtle) 50%
     ),
     linear-gradient(
       135deg,
-      color-mix(in srgb, currentColor 56%, transparent) 50%,
+      var(--ssh-text-subtle) 50%,
       transparent 50%
     );
   background-position:
-    calc(100% - 12px) 50%,
-    calc(100% - 8px) 50%;
+    calc(100% - 14px) calc(50% - 1px),
+    calc(100% - 10px) calc(50% - 1px);
   background-repeat: no-repeat;
-  background-size: 4px 4px;
+  background-size: 5px 5px;
+  cursor: pointer;
 }
 .dsh-ssh-sftp-hostbar select {
-  padding-right: 22px;
+  padding-right: 26px;
 }
 .dsh-ssh-jump-row .dsh-ssh-icon-button:disabled {
   opacity: 0.3;
