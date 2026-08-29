@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs'
-import { lstat, open, readdir, realpath, stat } from 'node:fs/promises'
+import { lstat, open, readdir, realpath, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
 import { mimeTypeFor, previewKind, type SftpDirectoryView, type SftpFilePreview } from './sftp.js'
@@ -54,6 +54,28 @@ export async function openLocalWorkspaceFile(root: string, requestedPath: string
   const attributes = await stat(target)
   if (!attributes.isFile()) throw httpError(400, '工作区路径不是文件')
   return { path: target, size: attributes.size, mimeType: mimeTypeFor(target), stream: createReadStream(target) }
+}
+
+export async function deleteLocalWorkspaceEntries(root: string, directory: string, requestedPaths: string[]): Promise<void> {
+  const boundary = await realpath(root)
+  const currentDirectory = await resolveInside(boundary, directory || boundary)
+  if (!(await stat(currentDirectory)).isDirectory()) throw httpError(400, '当前路径不是目录')
+
+  const targets = await Promise.all(requestedPaths.map(async requestedPath => {
+    const candidate = path.resolve(currentDirectory, requestedPath)
+    const relativeToDirectory = path.relative(currentDirectory, candidate)
+    if (relativeToDirectory.length === 0 || path.isAbsolute(relativeToDirectory) || relativeToDirectory.startsWith(`..${path.sep}`) || relativeToDirectory.includes(path.sep)) {
+      throw httpError(400, '只能删除当前目录的直接子项')
+    }
+    const relativeToBoundary = path.relative(boundary, candidate)
+    if (path.isAbsolute(relativeToBoundary) || relativeToBoundary === '..' || relativeToBoundary.startsWith(`..${path.sep}`)) {
+      throw httpError(403, '不能删除当前会话工作区之外的内容')
+    }
+    const attributes = await lstat(candidate)
+    return { path: candidate, recursive: attributes.isDirectory() }
+  }))
+
+  for (const target of targets) await rm(target.path, { recursive: target.recursive, force: false })
 }
 
 async function resolveInside(boundary: string, requestedPath: string): Promise<string> {

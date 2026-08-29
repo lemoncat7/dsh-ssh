@@ -84,7 +84,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
           const children = projects[profile.id] ?? []
           const active = props.selected?.profileId === profile.id && props.selected.projectId === undefined
           return <div className="dsh-ssh-tree-host" key={profile.id} data-open={open}>
-            <div data-ssh-interactive="row" className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}`}>
+            <div data-ssh-interactive="row" data-ssh-context-row className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}`}>
               <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={active} aria-expanded={open} title={`选择并展开 ${profile.name}`} onClick={() => selectProfile(profile.id)}>
                 <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
                 <span><strong>{profile.name}</strong><small>{profile.username}@{profile.host}</small></span>
@@ -92,7 +92,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
               <button
                 type="button"
                 data-ssh-interactive="choice"
-                className={`dsh-ssh-tree-mount${enabled ? ' is-mounted' : ''}`}
+                className={`dsh-ssh-tree-mount dsh-ssh-context-action${enabled ? ' is-mounted' : ''}`}
                 aria-label={`${enabled ? '卸载' : '挂载'} ${profile.name}`}
                 aria-pressed={enabled}
                 title={props.access === null ? '打开一个 DSH 会话后才能挂载主机' : enabled ? '从当前会话卸载' : '挂载到当前会话'}

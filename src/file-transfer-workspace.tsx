@@ -7,9 +7,16 @@ import {
 import type { SessionAccessState } from './session-access.js'
 import { Dialog, errorMessage } from './ui-components.js'
 import { FtpConnectionsDialog } from './ftp-profile-editor.js'
+import {
+  REMOTE_FILES_DRAG_TYPE, canTransferIntoRemoteDirectory, isSameRemoteTransferLocation, parseRemoteFilesDragPayload,
+  type RemoteFilesDragPayload,
+} from './file-transfer-intent.js'
+import { executeRemoteFileDrop } from './remote-file-drop.js'
+import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
 
 interface PaneState { id: string; endpointId: string; path: string }
 interface TransferTab { id: string; name: string; panes: PaneState[] }
+type TransferDragSource = RemoteFilesDragPayload
 const STORAGE_KEY = 'dsh-ssh:file-transfer:tabs:v2'
 const FILE_ROW_HEIGHT = 38
 
@@ -21,6 +28,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   const [connectionsOpen, setConnectionsOpen] = useState(false)
   const [accessOpen, setAccessOpen] = useState(false)
   const [conflictJob, setConflictJob] = useState<TransferJobView>()
+  const [dragSource, setDragSource] = useState<TransferDragSource>()
   const [error, setError] = useState<string>()
   const [directoryRevisions, setDirectoryRevisions] = useState<Record<string, number>>({})
   const previousJobStatesRef = useRef(new Map<string, TransferJobView['state']>())
@@ -70,9 +78,26 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     setTabs(next); if (activeTabId === id) setActiveTabId(next[Math.max(0, index - 1)]!.id)
   }
   const setPaneCount = (count: number): void => updateActive(tab => ({ ...tab, panes: Array.from({ length: count }, (_, index) => tab.panes[index] ?? createPane(`${tab.id}-pane-${index}`)) }))
-  const transfer = async (sourceEndpointId: string, sourcePaths: string[], destinationEndpointId: string, destinationDirectory: string): Promise<void> => {
+  const transfer = async (sourceEndpointId: string, sourceDirectory: string, sourcePaths: string[], destinationEndpointId: string, destinationDirectory: string): Promise<void> => {
+    const source = { endpointId: sourceEndpointId, directory: sourceDirectory }
+    const destination = { endpointId: destinationEndpointId, directory: destinationDirectory }
+    if (isSameRemoteTransferLocation(source, destination) || !canTransferIntoRemoteDirectory(source, sourcePaths, destination)) return
     try { setError(undefined); const job = await startFileTransfer({ sourceEndpointId, sourcePaths, destinationEndpointId, destinationDirectory, conflictPolicy: 'fail' }); setJobs(current => [job, ...current.filter(item => item.id !== job.id)]) }
     catch (reason) { setError(errorMessage(reason)) }
+  }
+  const dropFiles = async (source: TransferDragSource, destination: PaneState, destinationDirectory: string): Promise<void> => {
+    try {
+      setError(undefined)
+      const result = await executeRemoteFileDrop(source, { paneId: destination.id, endpointId: destination.endpointId, directory: destinationDirectory })
+      if (result.job !== undefined) setJobs(current => [result.job!, ...current.filter(item => item.id !== result.job!.id)])
+      if (result.operation === 'move') {
+        setDirectoryRevisions(current => {
+          const next = { ...current }
+          for (const key of [directoryKey(source.endpointId, source.directory), directoryKey(destination.endpointId, destinationDirectory)]) next[key] = (next[key] ?? 0) + 1
+          return next
+        })
+      }
+    } catch (reason) { setError(errorMessage(reason)) }
   }
   return <div className="dsh-ssh-transfer-workspace">
     <header className="dsh-ssh-transfer-header">
@@ -87,7 +112,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>还没有可用文件连接</strong><p>新建 FTP/FTPS 连接，或先添加一台 SSH 主机使用 SFTP。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>新建 FTP 连接</button></div>
       : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map((pane, index) => {
         const destination = active.panes[(index + 1) % active.panes.length]
-        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, paths, target.endpointId, target.path) }} onExternalDrop={(sourceEndpointId, paths) => { void transfer(sourceEndpointId, paths, pane.endpointId, pane.path) }} />
+        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, pane.path, paths, target.endpointId, target.path) }} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />
       })}</div>}
     <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
@@ -96,13 +121,14 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   </div>
 }
 
-function FileTransferPane({ pane, endpoints, destination, refreshRevision, onChange, onTransfer, onExternalDrop, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(endpointId: string, paths: string[]): void; onManageConnections(): void }): JSX.Element {
+function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRevision, onChange, onTransfer, onExternalDrop, onDragSourceChange, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; dragSource?: TransferDragSource | undefined; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(source: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void; onManageConnections(): void }): JSX.Element {
   const [view, setView] = useState<SftpDirectoryView>()
   const [selected, setSelected] = useState<string[]>([])
   const [draftPath, setDraftPath] = useState(pane.path)
   const [loading, setLoading] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
   const [dragOver, setDragOver] = useState(false)
+  const [directoryDropTarget, setDirectoryDropTarget] = useState<string>()
   const [deleteTarget, setDeleteTarget] = useState<SftpEntryView[]>()
   const [error, setError] = useState<string>()
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -120,6 +146,7 @@ function FileTransferPane({ pane, endpoints, destination, refreshRevision, onCha
     catch (reason) { if (generation === loadGenerationRef.current) setError(errorMessage(reason)) } finally { if (generation === loadGenerationRef.current) setLoading(false) }
   }, [endpoint?.id, pane.path])
   useEffect(() => { if (endpoint !== undefined) void load(pane.path) }, [endpoint?.id, refreshRevision])
+  useEffect(() => { if (dragSource === undefined) { setDragOver(false); setDirectoryDropTarget(undefined) } }, [dragSource])
   const submitPath = (event: FormEvent): void => { event.preventDefault(); void load(draftPath) }
   const chooseEndpoint = (next: FileEndpointView): void => { loadGenerationRef.current += 1; onChange({ endpointId: next.id, path: next.initialPath }); setDraftPath(next.initialPath); setView(undefined); setError(undefined) }
   const showConnections = (): void => { loadGenerationRef.current += 1; onChange({ endpointId: '', path: '/' }); setView(undefined); setSelected([]); setError(undefined); setLoading(false) }
@@ -133,46 +160,56 @@ function FileTransferPane({ pane, endpoints, destination, refreshRevision, onCha
   }
   const drop = (event: DragEvent): void => {
     event.preventDefault(); setDragOver(false)
-    try { const payload = JSON.parse(event.dataTransfer.getData('application/x-dsh-remote-files')) as { endpointId: string; paths: string[] }; if (payload.endpointId && Array.isArray(payload.paths)) onExternalDrop(payload.endpointId, payload.paths) } catch {}
+    const payload = parseRemoteFilesDragPayload(event.dataTransfer.getData(REMOTE_FILES_DRAG_TYPE))
+    onDragSourceChange(undefined)
+    if (payload === undefined || payload.paneId === pane.id || isSameRemoteTransferLocation(payload, { endpointId: pane.endpointId, directory: pane.path })) return
+    onExternalDrop(payload, pane.path)
   }
   if (endpoint === undefined) return <section className="dsh-ssh-file-pane is-connections">
     <header><span className="dsh-ssh-pane-heading"><strong>连接列表</strong><small>单击连接后浏览远端文件</small></span><button type="button" data-ssh-interactive="control" className="dsh-ssh-pane-manage-button" onClick={onManageConnections}>FTP 管理</button></header>
     <div className="dsh-ssh-endpoint-list">{endpoints.map(item => <button type="button" data-ssh-interactive="row" key={item.id} className="dsh-ssh-endpoint-row" onClick={() => chooseEndpoint(item)}><span className={`dsh-ssh-protocol-badge is-${item.protocol}`}>{protocolShort(item.protocol)}</span><span><strong title={item.name}>{item.name}</strong><small title={item.address}>{item.address}</small></span><span><i className={`dsh-ssh-protocol-dot is-${item.protocol}`} aria-hidden="true" />{item.group ?? (item.kind === 'sftp' ? 'SSH 主机' : '文件连接')}</span></button>)}</div>
     <footer><span>{endpoints.length} 个可用连接</span><small>SFTP 复用 SSH 主机配置</small></footer>
   </section>
-  return <section className={`dsh-ssh-file-pane${dragOver ? ' is-drop-target' : ''}`} onDragOver={event => { if (event.dataTransfer.types.includes('application/x-dsh-remote-files')) { event.preventDefault(); setDragOver(true) } }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(false) }} onDrop={drop}>
+  return <section className={`dsh-ssh-file-pane${dragOver ? ' is-drop-target' : ''}`} onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && canDropIntoPane(dragSource, pane)) { event.preventDefault(); event.dataTransfer.dropEffect = dragSource?.endpointId === pane.endpointId ? 'move' : 'copy'; setDirectoryDropTarget(undefined); setDragOver(true) } else if (dragOver) setDragOver(false) }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { setDragOver(false); setDirectoryDropTarget(undefined) } }} onDrop={drop}>
     <header><button type="button" className="dsh-ssh-pane-back" aria-label="返回连接列表" onClick={showConnections}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-pane-endpoint"><strong>{endpoint.name}</strong><small title={endpoint.address}>{endpoint.address}</small></span><span className={`dsh-ssh-protocol-badge is-${endpoint.protocol}`}>{protocolShort(endpoint.protocol)}</span></header>
     <form className="dsh-ssh-file-pathbar" onSubmit={submitPath}><button type="button" aria-label="上一级目录" disabled={view?.parent === null || loading} onClick={() => { if (view?.parent) void load(view.parent) }}><UpGlyph /></button><button type="button" aria-label="刷新目录" disabled={loading} onClick={() => { void load() }}><RefreshGlyph /></button><input aria-label="远端路径" value={draftPath} onChange={event => setDraftPath(event.target.value)} /><button type="submit" disabled={loading}>前往</button></form>
     <div className="dsh-ssh-file-table" role="grid" aria-busy={loading}>
-      <div className="dsh-ssh-file-table-head" role="row"><span>名称</span><span>大小</span><span>修改时间</span></div>
-      <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">正在读取目录…</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>重试</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">这个目录是空的。</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * FILE_ROW_HEIGHT}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} endpointId={endpoint.id} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * FILE_ROW_HEIGHT}px)` } } : {}} onSelect={additive => select(entry, additive)} onOpen={() => { if (entry.kind === 'directory') void load(entry.path) }} />)}</div>}</div>
+      <div className="dsh-ssh-file-table-head" role="row"><span>名称</span><span>大小</span><span>修改时间</span><span aria-hidden="true" /></div>
+      <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">正在读取目录…</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>重试</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">这个目录是空的。</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * FILE_ROW_HEIGHT}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} paneId={pane.id} endpointId={endpoint.id} sourceDirectory={view?.path ?? pane.path} dragSource={dragSource} dropTarget={directoryDropTarget === entry.path} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * FILE_ROW_HEIGHT}px)` } } : {}} onDelete={() => setDeleteTarget([entry])} onDirectoryTarget={target => { setDragOver(false); setDirectoryDropTarget(target) }} onDropIntoDirectory={(payload, target) => { setDirectoryDropTarget(undefined); onDragSourceChange(undefined); onExternalDrop(payload, target) }} onDragSourceChange={onDragSourceChange} onSelect={additive => select(entry, additive)} onOpen={() => { if (entry.kind === 'directory') void load(entry.path) }} />)}</div>}</div>
     </div>
-    <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><span className="dsh-ssh-file-pane-actions"><button type="button" className="dsh-ssh-file-delete-button" disabled={selected.length === 0 || loading} onClick={() => setDeleteTarget(entries.filter(entry => selected.includes(entry.path)))}><IconTrashOutline16 size={14} />删除</button><button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></span></footer>
-    {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>传送到此目录</strong><span>{view?.path ?? pane.path}</span></div>}
-    {deleteTarget !== undefined && <DeleteRemoteEntriesDialog endpoint={endpoint} entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
+    <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><span className="dsh-ssh-file-pane-actions"><button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></span></footer>
+    {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>{dragSource?.endpointId === pane.endpointId ? '移动到此目录' : '复制到此目录'}</strong><span>{view?.path ?? pane.path}</span></div>}
+    {deleteTarget !== undefined && <FileEntryDeleteDialog locationName={endpoint.name} locationKind="remote" entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
   </section>
 }
 
-function DeleteRemoteEntriesDialog({ endpoint, entries, onClose, onDelete }: { endpoint: FileEndpointView; entries: SftpEntryView[]; onClose(): void; onDelete(): Promise<void> }): JSX.Element {
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string>()
-  const directories = entries.filter(entry => entry.kind === 'directory').length
-  const submit = async (): Promise<void> => {
-    setDeleting(true); setError(undefined)
-    try { await onDelete(); setDeleting(false); onClose() }
-    catch (reason) { setError(errorMessage(reason)); setDeleting(false) }
-  }
-  return <Dialog className="dsh-ssh-file-delete-dialog" title={`删除 ${entries.length} 项？`} subtitle={`${endpoint.name} · 此操作无法撤销`} onClose={() => { if (!deleting) onClose() }}>
-    <div className="dsh-ssh-file-delete-copy"><span><IconTrashOutline16 size={18} /></span><p>将直接从远端删除所选内容。{directories > 0 ? `其中 ${directories} 个目录及其全部内容会被递归删除。` : ''}</p></div>
-    <div className="dsh-ssh-file-delete-list">{entries.slice(0, 6).map(entry => <div key={entry.path}><FileGlyph directory={entry.kind === 'directory'} /><span><strong>{entry.name}</strong><small title={entry.path}>{entry.path}</small></span></div>)}{entries.length > 6 && <p>以及其他 {entries.length - 6} 项</p>}</div>
-    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-dialog-actions"><span /><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting} onClick={() => { void submit() }}>{deleting ? '正在删除…' : '确认删除'}</button></div>
-  </Dialog>
-}
-
-function FileEntryRow({ entry, endpointId, selected, selectedPaths, style, onSelect, onOpen }: { entry: SftpEntryView; endpointId: string; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void }): JSX.Element {
+function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, dropTarget, selected, selectedPaths, style, onSelect, onOpen, onDelete, onDirectoryTarget, onDropIntoDirectory, onDragSourceChange }: { entry: SftpEntryView; paneId: string; endpointId: string; sourceDirectory: string; dragSource?: TransferDragSource | undefined; dropTarget: boolean; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void; onDelete(): void; onDirectoryTarget(path?: string): void; onDropIntoDirectory(payload: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void }): JSX.Element {
   const directory = entry.kind === 'directory' || entry.navigable === true
-  return <div role="row" data-ssh-interactive="row" tabIndex={0} aria-selected={selected} aria-label={`${entry.name}${directory ? '，目录，单击进入' : ''}`} draggable={entry.kind === 'file' || entry.kind === 'directory'} className={`dsh-ssh-file-row is-${directory ? 'directory' : entry.kind}${selected ? ' is-selected' : ''}`} style={style} onClick={event => { if (directory && !event.ctrlKey && !event.metaKey && !event.shiftKey) onOpen(); else onSelect(event.ctrlKey || event.metaKey) }} onKeyDown={event => { if (event.key === 'Enter' && directory) onOpen(); if (event.key === ' ') { event.preventDefault(); onSelect(event.ctrlKey || event.metaKey) } }} onDragStart={event => { const paths = selected ? selectedPaths : [entry.path]; event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('application/x-dsh-remote-files', JSON.stringify({ endpointId, paths })) }}><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : '—'}</span></div>
+  const acceptsDrop = directory && (dragSource === undefined || canTransferIntoRemoteDirectory(dragSource, dragSource.paths, { endpointId, directory: entry.path }))
+  const dropIntoDirectory = (event: DragEvent): void => {
+    if (!directory) return
+    event.preventDefault(); event.stopPropagation(); onDirectoryTarget(undefined)
+    const payload = parseRemoteFilesDragPayload(event.dataTransfer.getData(REMOTE_FILES_DRAG_TYPE))
+    if (payload !== undefined && canTransferIntoRemoteDirectory(payload, payload.paths, { endpointId, directory: entry.path })) onDropIntoDirectory(payload, entry.path)
+  }
+  return <div
+    role="row"
+    data-ssh-interactive="row"
+    data-ssh-context-row
+    tabIndex={0}
+    aria-selected={selected}
+    aria-label={`${entry.name}${directory ? '，目录，单击进入；可接收拖放' : ''}`}
+    draggable={entry.kind === 'file' || entry.kind === 'directory'}
+    className={`dsh-ssh-file-row is-${directory ? 'directory' : entry.kind}${selected ? ' is-selected' : ''}${dropTarget ? ' is-drop-target' : ''}`}
+    style={style}
+    onClick={event => { if (directory && !event.ctrlKey && !event.metaKey && !event.shiftKey) onOpen(); else onSelect(event.ctrlKey || event.metaKey) }}
+    onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter' && directory) onOpen(); if (event.key === ' ') { event.preventDefault(); onSelect(event.ctrlKey || event.metaKey) } }}
+    onDragStart={event => { const paths = selected ? selectedPaths : [entry.path]; const source = { paneId, endpointId, directory: sourceDirectory, paths }; onDragSourceChange(source); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(REMOTE_FILES_DRAG_TYPE, JSON.stringify(source)) }}
+    onDragEnd={() => onDragSourceChange(undefined)}
+    onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && acceptsDrop) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = dragSource?.endpointId === endpointId ? 'move' : 'copy'; onDirectoryTarget(entry.path) } }}
+    onDragLeave={event => { if (dropTarget && !event.currentTarget.contains(event.relatedTarget as Node)) onDirectoryTarget(undefined) }}
+    onDrop={dropIntoDirectory}
+  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : '—'}</span><button type="button" className="dsh-ssh-file-row-delete dsh-ssh-context-action" draggable={false} aria-label={`删除 ${entry.name}`} title={`删除 ${entry.name}`} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></div>
 }
 
 function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; onCancel(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {
@@ -264,6 +301,7 @@ function endpointName(endpoints: FileEndpointView[], id: string): string { retur
 function remoteLabel(paths: string[]): string { const name = paths[0]?.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? '文件'; return paths.length > 1 ? `${name} 等 ${paths.length} 项` : name }
 function protocolShort(protocol: FileEndpointView['protocol']): string { return protocol === 'sftp' ? 'SFTP' : protocol === 'ftp' ? 'FTP' : protocol === 'ftps-explicit' ? 'FTPS' : 'FTPS-I' }
 function directoryKey(endpointId: string, value: string): string { return JSON.stringify([endpointId, value.replaceAll('\\', '/').replace(/\/+$/, '') || '/']) }
+function canDropIntoPane(source: TransferDragSource | undefined, pane: PaneState): boolean { return source === undefined || (source.paneId !== pane.id && !isSameRemoteTransferLocation(source, { endpointId: pane.endpointId, directory: pane.path })) }
 function isFinished(state: TransferJobView['state']): boolean { return state === 'completed' || state === 'failed' || state === 'cancelled' }
 function formatBytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`; if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`; return `${(value / 1024 ** 3).toFixed(2)} GB` }
 function jobLabel(job: TransferJobView, progress: number): string { if (job.state === 'queued') return '等待传输'; if (job.state === 'scanning') return '正在扫描目录'; if (job.state === 'transferring') { const seconds = Math.max(1, (Date.now() - (job.startedAt ?? Date.now())) / 1000); const speed = job.transferredBytes / seconds; const remaining = speed > 0 ? Math.max(0, (job.totalBytes - job.transferredBytes) / speed) : 0; return `${progress.toFixed(0)}% · ${formatBytes(speed)}/s${remaining > 1 ? ` · 约 ${formatDuration(remaining)}` : ''}` } if (job.state === 'completed') return `已完成 ${job.completedFiles} 个文件${job.skippedFiles ? `，跳过 ${job.skippedFiles}` : ''}`; if (job.state === 'cancelled') return '已取消'; return '传输失败' }

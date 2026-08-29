@@ -14,12 +14,13 @@ import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
 import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
 import { ActivityEventBus, streamActivityEvents } from './activity-events.js'
-import { listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview } from './local-workspace.js'
+import { deleteLocalWorkspaceEntries, listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview } from './local-workspace.js'
 import { connectFtpProfile } from './ftp-adapter.js'
 import { NetworkDialer } from './network-dialer.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager, type TransferConflictPolicy } from './file-transfer-manager.js'
 import { EndpointSessionManager } from './endpoint-session-manager.js'
+import { deleteRemoteEntries, moveRemoteEntries } from './remote-entry-operations.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -80,12 +81,13 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'POST' && segments[1] === 'delete' && segments.length === 2) {
       requireMutationHeader(req)
       const request = parseFileDeleteRequest(await readObject(req))
-      await runtime.fileSessions.run(request.paneId, request.endpointId, async session => {
-        const directory = await session.list(request.directory)
-        const available = new Set(directory.entries.map(entry => entry.path))
-        for (const path of request.paths) if (!available.has(path)) throw httpError(404, `remote path ${path} is not a direct child of ${directory.path}`)
-        for (const path of request.paths) await session.remove(path, true)
-      })
+      await runtime.fileSessions.run(request.paneId, request.endpointId, session => deleteRemoteEntries(session, request))
+      return sendJson(res, 204, undefined)
+    }
+    if (method === 'POST' && segments[1] === 'move' && segments.length === 2) {
+      requireMutationHeader(req)
+      const request = parseFileMoveRequest(await readObject(req))
+      await runtime.fileSessions.run(request.paneId, request.endpointId, session => moveRemoteEntries(session, { directory: request.sourceDirectory, destinationDirectory: request.destinationDirectory, paths: request.paths }))
       return sendJson(res, 204, undefined)
     }
     if (segments[1] === 'jobs') {
@@ -492,6 +494,14 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
       return sendJson(res, 200, await readLocalWorkspacePreview(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
     }
+    if (method === 'POST' && segments[1] === 'local-delete' && segments.length === 2) {
+      requireMutationHeader(req)
+      const request = parseLocalDeleteRequest(await readObject(req))
+      const cwd = runtime.sessionCwd(request.sessionId)
+      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      await deleteLocalWorkspaceEntries(cwd, request.directory, request.paths)
+      return sendJson(res, 204, undefined)
+    }
     if (method === 'GET' && segments[1] === 'local-download' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
@@ -827,6 +837,26 @@ function parseFileDeleteRequest(value: Record<string, unknown>) {
     endpointId: requireText(value.endpointId, 'endpointId', 110),
     directory: requireRawText(value.directory, 'directory', 4096),
     paths,
+  }
+}
+
+function parseLocalDeleteRequest(value: Record<string, unknown>) {
+  if (!Array.isArray(value.paths) || value.paths.length < 1 || value.paths.length > 100) throw httpError(400, 'paths must contain 1-100 entries')
+  return {
+    sessionId: requireText(value.sessionId, 'sessionId', 200),
+    directory: requireRawText(value.directory, 'directory', 4096),
+    paths: [...new Set(value.paths.map(path => requireRawText(path, 'local path', 4096)))],
+  }
+}
+
+function parseFileMoveRequest(value: Record<string, unknown>) {
+  if (!Array.isArray(value.paths) || value.paths.length < 1 || value.paths.length > 100) throw httpError(400, 'paths must contain 1-100 entries')
+  return {
+    paneId: requireText(value.paneId, 'paneId', 100),
+    endpointId: requireText(value.endpointId, 'endpointId', 110),
+    sourceDirectory: requireRawText(value.sourceDirectory, 'sourceDirectory', 4096),
+    destinationDirectory: requireRawText(value.destinationDirectory, 'destinationDirectory', 4096),
+    paths: [...new Set(value.paths.map(path => requireRawText(path, 'remote path', 4096)))],
   }
 }
 

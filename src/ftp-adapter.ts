@@ -116,6 +116,12 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
 
   async ensureDirectory(value: string, signal?: AbortSignal): Promise<void> { await this.run(this.client.ensureDir(value), signal) }
 
+  async move(sourcePath: string, destinationPath: string, signal?: AbortSignal): Promise<void> {
+    try { await this.stat(destinationPath, signal); throw Object.assign(new Error('destination already contains an entry with this name'), { status: 409 }) }
+    catch (error) { if ((error as { status?: number }).status !== 404) throw error }
+    await this.run(this.client.rename(sourcePath, destinationPath), signal)
+  }
+
   async remove(value: string, recursive: boolean, signal?: AbortSignal): Promise<void> {
     const entry = await this.stat(value, signal)
     if (entry.kind === 'directory') {

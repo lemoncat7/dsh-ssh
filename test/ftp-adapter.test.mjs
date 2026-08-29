@@ -29,14 +29,16 @@ test('FTP uses the routed dialer for both control and passive data connections',
   assert.equal(calls.length, 3)
   assert.equal(calls[0].port, server.port)
   assert.notEqual(calls[1].port, server.port)
-  await session.remove('/hello.txt', true)
+  await session.move('/hello.txt', '/docs/hello.txt')
   assert.deepEqual((await session.list('/')).entries.map(entry => [entry.name, entry.kind]), [['docs', 'directory'], ['shortcut', 'symlink']])
+  assert.deepEqual((await session.list('/docs')).entries.map(entry => [entry.name, entry.kind]), [['hello.txt', 'file'], ['readme.md', 'file']])
+  await session.remove('/docs/hello.txt', true)
 })
 
 async function createFtpServer() {
   const sockets = new Set()
   const passiveServers = new Set()
-  let helloExists = true
+  let helloLocation = 'root'
   const control = net.createServer(socket => {
     sockets.add(socket)
     socket.on('close', () => sockets.delete(socket))
@@ -73,11 +75,16 @@ async function createFtpServer() {
         } else if (verb === 'LIST') {
           socket.write('150 Opening data connection\r\n')
           const requested = command.slice(4).trim().split(/\s+/).filter(token => !token.startsWith('-')).at(-1) || cwd
-          const root = `${helloExists ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}drwxr-xr-x 1 test test 0 Jan 01 2026 docs\r\nlrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut -> docs\r\n`
-          passiveSocket?.end(requested === '/docs' ? '-rw-r--r-- 1 test test 7 Jan 01 2026 readme.md\r\n' : root)
+          const root = `${helloLocation === 'root' ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}drwxr-xr-x 1 test test 0 Jan 01 2026 docs\r\nlrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut -> docs\r\n`
+          const docs = `${helloLocation === 'docs' ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}-rw-r--r-- 1 test test 7 Jan 01 2026 readme.md\r\n`
+          passiveSocket?.end(requested === '/docs' ? docs : root)
           setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive); passiveSocket = undefined }, 20)
+        } else if (verb === 'RNFR') {
+          socket.write(command.slice(5).trim() === '/hello.txt' && helloLocation === 'root' ? '350 Ready for destination\r\n' : '550 Not found\r\n')
+        } else if (verb === 'RNTO') {
+          if (command.slice(5).trim() === '/docs/hello.txt' && helloLocation === 'root') { helloLocation = 'docs'; socket.write('250 Renamed\r\n') } else socket.write('550 Rename failed\r\n')
         } else if (verb === 'DELE') {
-          helloExists = false
+          helloLocation = 'deleted'
           socket.write('250 File deleted\r\n')
         } else if (verb === 'QUIT') socket.end('221 Bye\r\n')
         else socket.write('502 Not implemented\r\n')

@@ -131,6 +131,15 @@ class ReusableSftpSession implements RemoteFileSystemSession {
     }, signal)
   }
 
+  move(sourcePath: string, destinationPath: string, signal?: AbortSignal): Promise<void> {
+    return this.run(async () => {
+      const source = expandHome(sourcePath.trim(), this.home).replaceAll('\\', '/')
+      const destination = expandHome(destinationPath.trim(), this.home).replaceAll('\\', '/')
+      if (await sftpPathExists(this.sftp, destination)) throw Object.assign(new Error('destination already contains an entry with this name'), { status: 409 })
+      await renameSftp(this.sftp, source, destination)
+    }, signal)
+  }
+
   remove(requestedPath: string, recursive: boolean, signal?: AbortSignal): Promise<void> {
     return this.run(async () => {
       const target = expandHome(requestedPath.trim(), this.home).replaceAll('\\', '/')
@@ -422,6 +431,10 @@ function unlinkSftp(sftp: SFTPWrapper, value: string): Promise<void> {
 
 function rmdirSftp(sftp: SFTPWrapper, value: string): Promise<void> {
   return new Promise((resolve, reject) => sftp.rmdir(value, error => error ? reject(normalizeSftpPathError(error, value)) : resolve()))
+}
+
+function renameSftp(sftp: SFTPWrapper, source: string, destination: string): Promise<void> {
+  return new Promise((resolve, reject) => sftp.rename(source, destination, error => error ? reject(normalizeSftpPathError(error, source)) : resolve()))
 }
 
 async function sftpPathExists(sftp: SFTPWrapper, value: string): Promise<boolean> {

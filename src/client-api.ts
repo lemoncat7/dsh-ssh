@@ -88,6 +88,9 @@ export function loadFileEndpointDirectory(paneId: string, endpointId: string, pa
 export function deleteFileEndpointEntries(request: { paneId: string; endpointId: string; directory: string; paths: string[] }): Promise<void> {
   return api('/file-transfer/delete', { method: 'POST', body: JSON.stringify(request) })
 }
+export function moveFileEndpointEntries(request: { paneId: string; endpointId: string; sourceDirectory: string; destinationDirectory: string; paths: string[] }): Promise<void> {
+  return api('/file-transfer/move', { method: 'POST', body: JSON.stringify(request) })
+}
 export function loadTransferJobs(): Promise<TransferJobView[]> { return api('/file-transfer/jobs') }
 export function startFileTransfer(request: TransferJobView['request']): Promise<TransferJobView> { return api('/file-transfer/jobs', { method: 'POST', body: JSON.stringify(request) }) }
 export function cancelFileTransfer(jobId: string): Promise<void> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' }) }
@@ -125,6 +128,9 @@ export function loadLocalWorkspaceDirectory(sessionId: string, path?: string): P
 export function loadLocalWorkspaceFilePreview(sessionId: string, path: string): Promise<SftpFilePreviewView> {
   const query = new URLSearchParams({ sessionId, path })
   return api(`/activity/local-file?${query.toString()}`)
+}
+export function deleteLocalWorkspaceEntries(sessionId: string, directory: string, paths: string[]): Promise<void> {
+  return api('/activity/local-delete', { method: 'POST', body: JSON.stringify({ sessionId, directory, paths }) })
 }
 export function localWorkspaceFileUrl(sessionId: string, path: string, inline = false): string {
   const query = new URLSearchParams({ sessionId, path })

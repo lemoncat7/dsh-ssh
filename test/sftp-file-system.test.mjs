@@ -74,3 +74,23 @@ test('recursively removes SFTP directories without following symbolic links', as
   ])
   assert.equal(entries.size, 0)
 })
+
+test('moves SFTP entries with the native rename operation and refuses overwrite', async t => {
+  const entries = new Set(['/home/dev/source.txt', '/home/dev/existing.txt'])
+  const renamed = []
+  const missing = Object.assign(new Error('No such file'), { code: 2 })
+  const channel = {
+    realpath(value, callback) { callback(undefined, value === '.' ? '/home/dev' : value) },
+    stat(value, callback) { entries.has(value) ? callback(undefined, { mode: 0o100644, size: 1, mtime: 0 }) : callback(missing) },
+    rename(source, destination, callback) { renamed.push([source, destination]); entries.delete(source); entries.add(destination); callback() },
+    end() {},
+  }
+  const connector = { async connect() { return { client: { sftp(callback) { callback(undefined, channel) } }, close() {} } } }
+  const endpoint = { id: 'sftp:test', kind: 'sftp', protocol: 'sftp', name: 'test', address: 'test', initialPath: '~' }
+  const session = await openSftpFileSystemSession(connector, 'test', endpoint)
+  t.after(() => session.close())
+
+  await session.move('/home/dev/source.txt', '/home/dev/moved.txt')
+  assert.deepEqual(renamed, [['/home/dev/source.txt', '/home/dev/moved.txt']])
+  await assert.rejects(() => session.move('/home/dev/moved.txt', '/home/dev/existing.txt'), error => error.status === 409)
+})

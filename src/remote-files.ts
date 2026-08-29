@@ -36,6 +36,7 @@ export interface RemoteFileSystemSession {
   download(path: string, destination: Writable, signal?: AbortSignal): Promise<void>
   upload(path: string, source: Readable, overwrite: boolean, signal?: AbortSignal): Promise<void>
   ensureDirectory(path: string, signal?: AbortSignal): Promise<void>
+  move(sourcePath: string, destinationPath: string, signal?: AbortSignal): Promise<void>
   remove(path: string, recursive: boolean, signal?: AbortSignal): Promise<void>
   close(): void
 }

@@ -47,6 +47,7 @@
   --ssh-warning: #c93400;
   --ssh-surface: var(--ssh-canvas);
   --ssh-surface-raised: #ffffff;
+  --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
   /* Modal tasks need an opaque semantic plane even when the active theme uses
      translucent canvas and panel tokens over artwork. */
   --ssh-modal-surface: #ffffff;
@@ -130,6 +131,7 @@ body[data-ds-dark-theme] :is(
   --ssh-warning: #ff9f0a;
   --ssh-surface: #1c1c1e;
   --ssh-surface-raised: #2c2c2e;
+  --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
   --ssh-modal-surface: #2c2c2e;
   --ssh-modal-surface-raised: #3a3a3c;
   --ssh-activity-surface: #1c1c1e;
@@ -1468,7 +1470,7 @@ body[data-ds-dark-theme] :is(
   }
   .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns,
   .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row {
-    grid-template-columns: minmax(120px, 1fr) 64px;
+    grid-template-columns: minmax(120px, 1fr) 64px 28px;
   }
   .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns > :nth-child(3),
   .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row > :nth-child(3) {
@@ -1887,7 +1889,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp-columns,
 .dsh-ssh-sftp-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 58px 72px;
+  grid-template-columns: minmax(120px, 1fr) 58px 72px 28px;
   align-items: center;
   gap: 7px;
 }
@@ -1917,6 +1919,10 @@ body[data-ds-dark-theme] :is(
     background 120ms ease,
     transform 120ms ease;
 }
+.dsh-ssh-sftp-row.is-drop-target {
+  background: var(--ssh-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ssh-text-muted) 22%, transparent);
+}
 .dsh-ssh-sftp-row:last-child {
   border-bottom: 0;
 }
@@ -1935,11 +1941,11 @@ body[data-ds-dark-theme] :is(
   align-items: center;
   gap: 7px;
 }
-.dsh-ssh-sftp-row svg {
+.dsh-ssh-sftp-row > span:first-child svg {
   flex: none;
   color: var(--ssh-text-muted);
 }
-.dsh-ssh-sftp-row.is-directory svg {
+.dsh-ssh-sftp-row.is-directory > span:first-child svg {
   color: var(--ssh-accent);
 }
 .dsh-ssh-sftp-row strong {
@@ -1959,6 +1965,13 @@ body[data-ds-dark-theme] :is(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.dsh-ssh-sftp-row-delete { display: grid; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 7px; color: var(--ssh-text-subtle); background: transparent; cursor: pointer; }
+.dsh-ssh-sftp-row-delete:hover { color: var(--ssh-danger); background: color-mix(in srgb, var(--ssh-danger) 8%, transparent); }
+.dsh-ssh-sftp-row-delete:active { transform: scale(.94); }
+.dsh-ssh-sftp-row-delete:focus-visible { outline: 2px solid color-mix(in srgb, var(--ssh-danger) 42%, transparent); outline-offset: 1px; }
+.dsh-ssh-sftp-operation-status { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; padding: 0 8px 0 10px; border: 1px solid var(--ssh-activity-border); border-radius: 8px; color: var(--ssh-text-muted); background: var(--ssh-activity-surface-raised); font-size: 10px; }
+.dsh-ssh-sftp-operation-status button { display: grid; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: var(--ssh-text-subtle); background: transparent; cursor: pointer; }
+.dsh-ssh-sftp-operation-status button:hover { color: var(--ssh-text); background: var(--ssh-hover); }
 .dsh-ssh-sftp-state {
   display: grid;
   place-items: center;
@@ -2904,7 +2917,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns,
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row {
-  grid-template-columns: minmax(180px, 1fr) 90px 120px;
+  grid-template-columns: minmax(180px, 1fr) 90px 120px 28px;
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns {
   min-height: 34px;

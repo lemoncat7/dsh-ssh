@@ -6,6 +6,8 @@ const stylesheetUrl = new URL('../src/client.css', import.meta.url)
 const interactiveStylesheetUrl = new URL('../src/interactive-surfaces.css', import.meta.url)
 const clientSourceUrl = new URL('../src/client.tsx', import.meta.url)
 const transferSourceUrl = new URL('../src/file-transfer-workspace.tsx', import.meta.url)
+const sftpSourceUrl = new URL('../src/sftp-client.tsx', import.meta.url)
+const remoteTreeSourceUrl = new URL('../src/remote-workspace-tree.tsx', import.meta.url)
 
 test('button reset stays below component styles in the cascade', async () => {
   const css = await readFile(stylesheetUrl, 'utf8')
@@ -16,10 +18,12 @@ test('button reset stays below component styles in the cascade', async () => {
 })
 
 test('shared interactive surface contract owns themed hover and selection states', async () => {
-  const [css, clientSource, transferSource] = await Promise.all([
+  const [css, clientSource, transferSource, sftpSource, remoteTreeSource] = await Promise.all([
     readFile(interactiveStylesheetUrl, 'utf8'),
     readFile(clientSourceUrl, 'utf8'),
     readFile(transferSourceUrl, 'utf8'),
+    readFile(sftpSourceUrl, 'utf8'),
+    readFile(remoteTreeSourceUrl, 'utf8'),
   ])
 
   assert.match(css, /\[data-ssh-interactive="choice"\]:hover/)
@@ -27,4 +31,14 @@ test('shared interactive surface contract owns themed hover and selection states
   assert.match(css, /prefers-reduced-motion:\s*reduce/)
   assert.match(clientSource, /\$\{fileTransferCss\}\\n\$\{interactiveSurfacesCss\}/)
   assert.match(transferSource, /<span data-ssh-interactive="choice" className=\{`dsh-ssh-transfer-tab/)
+  assert.match(css, /\.dsh-ssh-workspace \.dsh-ssh-transfer-tab:hover:not\(:disabled\)\s*\{[\s\S]*?background:\s*transparent;/)
+  assert.match(css, /\.dsh-ssh-workspace \.dsh-ssh-transfer-tab:is\(\.is-active, \.is-active:hover\)\s*\{[\s\S]*?background:\s*var\(--ssh-tab-selected\);[\s\S]*?box-shadow:/)
+  assert.match(css, /\.dsh-ssh-workspace \.dsh-ssh-transfer-tab\.is-active > button:not\(\.is-close\)\s*\{[\s\S]*?font-weight:\s*600;/)
+  assert.match(css, /\.dsh-ssh-workspace \.dsh-ssh-transfer-tab > button:hover:not\(:disabled\)\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?background-image:\s*none;/)
+  assert.match(css, /\[data-ssh-context-row\]:is\(:hover, :focus-within\) \.dsh-ssh-context-action/)
+  assert.match(css, /transform:\s*translate3d\(8px, 0, 0\) scale\(\.78\)/)
+  assert.match(transferSource, /dsh-ssh-file-row-delete dsh-ssh-context-action/)
+  assert.match(sftpSource, /dsh-ssh-sftp-row-delete dsh-ssh-context-action/)
+  assert.match(sftpSource, /deletion=\{\{ locationName: '本地会话', locationKind: 'local', remove \}\}/)
+  assert.match(remoteTreeSource, /dsh-ssh-tree-mount dsh-ssh-context-action/)
 })
