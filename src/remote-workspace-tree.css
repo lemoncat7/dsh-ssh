@@ -89,7 +89,7 @@
 
 .dsh-ssh-tree-host-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto 26px;
+  grid-template-columns: minmax(0, 1fr) auto 26px;
   min-height: 46px;
   align-items: center;
   border: 1px solid transparent;
@@ -139,25 +139,6 @@
   border-radius: 8px;
 }
 
-.dsh-ssh-tree-disclosure {
-  display: grid;
-  width: 24px;
-  height: 44px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  color: var(--ssh-text-subtle);
-  background: transparent;
-  cursor: pointer;
-}
-
-.dsh-ssh-tree-disclosure:hover {
-  color: var(--ssh-text);
-  background: color-mix(in srgb, var(--ssh-text) 5%, transparent);
-}
-
-.dsh-ssh-tree-disclosure:focus-visible,
 .dsh-ssh-tree-host-main:focus-visible {
   outline: 2px solid var(--ssh-focus-ring);
   outline-offset: -2px;
@@ -168,20 +149,46 @@
   font-weight: 650;
 }
 
-.dsh-ssh-mount-state {
+.dsh-ssh-tree-mount {
   display: inline-flex;
-  height: 20px;
+  min-width: 40px;
+  height: 26px;
   align-items: center;
+  justify-content: center;
   padding: 0 6px;
-  border: 1px solid color-mix(in srgb, var(--ssh-accent) 20%, transparent);
-  border-radius: 6px;
-  color: var(--ssh-accent-strong);
-  background: color-mix(in srgb, var(--ssh-accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ssh-border) 78%, transparent);
+  border-radius: 7px;
+  color: var(--ssh-text-subtle);
+  background: color-mix(in srgb, var(--ssh-surface-raised) 64%, transparent);
   font-size: 9px;
-  font-weight: 650;
+  font-weight: 620;
   line-height: 1;
   white-space: nowrap;
-  pointer-events: none;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease, opacity 140ms ease;
+}
+
+.dsh-ssh-tree-mount:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ssh-accent) 28%, var(--ssh-border));
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+
+.dsh-ssh-tree-mount.is-mounted {
+  border-color: color-mix(in srgb, var(--ssh-accent) 24%, transparent);
+  color: var(--ssh-accent-strong);
+  background: color-mix(in srgb, var(--ssh-accent) 9%, transparent);
+}
+
+.dsh-ssh-tree-mount.is-mounted:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ssh-danger) 24%, var(--ssh-border));
+  color: var(--ssh-danger);
+  background: color-mix(in srgb, var(--ssh-danger) 7%, transparent);
+}
+
+.dsh-ssh-tree-mount:disabled {
+  opacity: .38;
+  cursor: not-allowed;
 }
 
 .dsh-ssh-tree-host-main > span:last-child,
@@ -210,17 +217,6 @@
   font: 9.5px/1.25 var(--ssh-font-mono);
 }
 
-.dsh-ssh-tree-chevron {
-  display: grid;
-  place-items: center;
-  color: var(--ssh-text-subtle);
-  transition: transform 170ms cubic-bezier(.2, .8, .2, 1);
-}
-
-.dsh-ssh-tree-host[data-open="false"] .dsh-ssh-tree-chevron {
-  transform: rotate(-90deg);
-}
-
 .dsh-ssh-tree-add,
 .dsh-ssh-tree-project-new,
 .dsh-ssh-tree-project-edit {
@@ -239,7 +235,7 @@
 }
 
 .dsh-ssh-tree-add {
-  grid-column: 4;
+  grid-column: 3;
 }
 
 .dsh-ssh-tree-host-row:hover .dsh-ssh-tree-add,
@@ -824,7 +820,6 @@
     animation: none;
   }
   .dsh-ssh-tree-host-row,
-  .dsh-ssh-tree-chevron,
   .dsh-ssh-tree-project-row,
   .dsh-ssh-access-approval > i,
   .dsh-ssh-access-approval > i::after,

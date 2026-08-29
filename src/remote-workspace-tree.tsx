@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  IconChevronDownOutline14, IconEditOutline16, IconFolderClose16,
+  IconEditOutline16, IconFolderClose16,
   IconFolderOpenOutline16, IconPlusOutline16, IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
@@ -55,14 +55,10 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
       setError(undefined)
     } catch (reason) { setError(message(reason)) } finally { setLoadingProfile(current => current === profileId ? undefined : current) }
   }
-  const toggleExpanded = (profileId: string): void => {
-    setExpanded(current => {
-      const next = new Set(current)
-      if (next.has(profileId)) next.delete(profileId)
-      else next.add(profileId)
-      return next
-    })
+  const selectProfile = (profileId: string): void => {
+    setExpanded(new Set([profileId]))
     if (projects[profileId] === undefined) void refreshProjects(profileId)
+    props.onSelect({ profileId, path: '~' })
   }
   const toggleProfile = (profileId: string): void => {
     const current = props.access?.profileIds ?? []
@@ -87,17 +83,19 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
           const active = props.selected?.profileId === profile.id && props.selected.projectId === undefined
           return <div className="dsh-ssh-tree-host" key={profile.id} data-open={open}>
             <div className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}`}>
-              <button type="button" className="dsh-ssh-tree-disclosure" aria-label={`${open ? '收起' : '展开'} ${profile.name} 的固定目录`} aria-expanded={open} onClick={() => toggleExpanded(profile.id)}>
-                <span className="dsh-ssh-tree-chevron"><IconChevronDownOutline14 size={12} /></span>
-              </button>
-              <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={props.access === null ? undefined : enabled} title={props.access === null ? '当前没有可授权的 DSH 会话' : enabled ? '撤销当前会话访问' : '允许当前会话访问'} onClick={() => {
-                if (props.access !== null && !props.accessLoading) toggleProfile(profile.id)
-                props.onSelect({ profileId: profile.id, path: '~' })
-              }}>
+              <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={active} aria-expanded={open} title={`选择并展开 ${profile.name}`} onClick={() => selectProfile(profile.id)}>
                 <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
                 <span><strong>{profile.name}</strong><small>{profile.username}@{profile.host}</small></span>
               </button>
-              {enabled && <span className="dsh-ssh-mount-state">已挂载</span>}
+              <button
+                type="button"
+                className={`dsh-ssh-tree-mount${enabled ? ' is-mounted' : ''}`}
+                aria-label={`${enabled ? '卸载' : '挂载'} ${profile.name}`}
+                aria-pressed={enabled}
+                title={props.access === null ? '打开一个 DSH 会话后才能挂载主机' : enabled ? '从当前会话卸载' : '挂载到当前会话'}
+                disabled={props.access === null || props.accessLoading || props.accessSaving}
+                onClick={() => toggleProfile(profile.id)}
+              >{enabled ? '卸载' : '挂载'}</button>
               <button type="button" className="dsh-ssh-tree-add" aria-label={`为 ${profile.name} 添加固定目录`} title="添加固定目录" onClick={() => setEditing({ profile })}><IconPlusOutline16 size={14} /></button>
             </div>
             {open && <div className="dsh-ssh-tree-branches">
