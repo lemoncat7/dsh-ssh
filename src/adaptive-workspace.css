@@ -47,7 +47,9 @@
     min-height: 46px;
     padding: 5px max(10px, env(safe-area-inset-left)) 5px max(10px, env(safe-area-inset-right));
     border-bottom: 1px solid var(--ssh-adaptive-border, color-mix(in srgb, currentColor 10%, transparent));
-    background: var(--ssh-adaptive-toolbar-surface, var(--ssh-surface-raised));
+    background: var(--ssh-adaptive-toolbar-surface, var(--ssh-glass-regular));
+    -webkit-backdrop-filter: var(--ssh-glass-filter);
+    backdrop-filter: var(--ssh-glass-filter);
     overflow-x: auto;
   }
   .dsh-ssh-mobile-actions button {
@@ -88,7 +90,9 @@
     width: min(88%, 360px);
     overflow: hidden;
     visibility: hidden;
-    background: var(--ssh-adaptive-drawer-surface, var(--ssh-surface-raised));
+    background: var(--ssh-adaptive-drawer-surface, var(--ssh-glass-thick));
+    -webkit-backdrop-filter: var(--ssh-glass-filter);
+    backdrop-filter: var(--ssh-glass-filter);
     box-shadow: 0 18px 48px color-mix(in srgb, var(--ssh-text) 18%, transparent);
     transition: transform 190ms cubic-bezier(.2, .8, .2, 1), visibility 190ms;
   }
@@ -113,7 +117,7 @@
     inset: 0;
     display: block;
     border: 0;
-    background: color-mix(in srgb, #0d1513 24%, transparent);
+    background: rgba(0, 0, 0, 0.24);
     opacity: 0;
     visibility: hidden;
     transition: opacity 170ms ease, visibility 170ms;
@@ -138,5 +142,13 @@
   .dsh-ssh-adaptive-inspector,
   .dsh-ssh-adaptive-backdrop {
     transition: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dsh-ssh-mobile-actions,
+  .dsh-ssh-adaptive-navigation,
+  .dsh-ssh-adaptive-inspector {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }

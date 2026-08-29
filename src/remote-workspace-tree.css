@@ -6,9 +6,15 @@
   display: flex;
   min-width: 0;
   min-height: 0;
+  height: calc(100% - 20px);
   flex-direction: column;
-  border-right: 1px solid color-mix(in srgb, var(--ssh-border) 72%, transparent);
-  background: color-mix(in srgb, var(--ssh-surface-raised) 94%, transparent);
+  margin: 10px 0 10px 10px;
+  border: 1px solid var(--ssh-glass-border);
+  border-radius: 18px;
+  background: var(--ssh-glass-regular);
+  -webkit-backdrop-filter: var(--ssh-glass-filter);
+  backdrop-filter: var(--ssh-glass-filter);
+  box-shadow: var(--ssh-glass-shadow);
 }
 
 .dsh-ssh-tree-header {
@@ -76,7 +82,7 @@
   place-items: center;
   border-radius: 6px;
   background: color-mix(in srgb, var(--ssh-text) 5%, transparent);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .dsh-ssh-tree-host {
@@ -102,17 +108,17 @@
 }
 
 .dsh-ssh-tree-host-row.is-authorized {
-  border-color: color-mix(in srgb, var(--ssh-accent) 17%, transparent);
-  background: color-mix(in srgb, var(--ssh-accent) 9%, transparent);
+  border-color: transparent;
+  background: var(--ssh-selected);
 }
 
 .dsh-ssh-tree-host-row.is-authorized:hover {
-  background: color-mix(in srgb, var(--ssh-accent) 12%, transparent);
+  background: color-mix(in srgb, var(--ssh-selected) 78%, var(--ssh-hover));
 }
 
 .dsh-ssh-tree-host-row.is-active {
-  border-color: color-mix(in srgb, var(--ssh-accent) 24%, transparent);
-  transform: translateX(1px);
+  border-color: transparent;
+  background: var(--ssh-selected);
 }
 
 .dsh-ssh-tree-host-row.is-active:not(.is-authorized) {
@@ -151,16 +157,16 @@
 
 .dsh-ssh-tree-mount {
   display: inline-flex;
-  min-width: 40px;
-  height: 26px;
+  min-width: 50px;
+  height: var(--ssh-control-height-compact);
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
+  padding: 0 var(--ssh-control-padding-compact);
   border: 1px solid color-mix(in srgb, var(--ssh-border) 78%, transparent);
   border-radius: 7px;
   color: var(--ssh-text-subtle);
   background: color-mix(in srgb, var(--ssh-surface-raised) 64%, transparent);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 620;
   line-height: 1;
   white-space: nowrap;
@@ -175,9 +181,9 @@
 }
 
 .dsh-ssh-tree-mount.is-mounted {
-  border-color: color-mix(in srgb, var(--ssh-accent) 24%, transparent);
-  color: var(--ssh-accent-strong);
-  background: color-mix(in srgb, var(--ssh-accent) 9%, transparent);
+  border-color: transparent;
+  color: var(--ssh-text);
+  background: var(--ssh-selected);
 }
 
 .dsh-ssh-tree-mount.is-mounted:hover:not(:disabled) {
@@ -214,7 +220,7 @@
 
 .dsh-ssh-tree-host-main small {
   color: var(--ssh-text-subtle);
-  font: 9.5px/1.25 var(--ssh-font-mono);
+  font: 10px/1.25 var(--ssh-font-mono);
 }
 
 .dsh-ssh-tree-add,
@@ -303,14 +309,14 @@
 }
 
 .dsh-ssh-tree-project-row.is-active {
-  border-color: color-mix(in srgb, var(--ssh-accent) 14%, transparent);
-  background: color-mix(in srgb, var(--ssh-accent) 7%, transparent);
+  border-color: transparent;
+  background: var(--ssh-selected);
 }
 
 .dsh-ssh-tree-project-row.is-bound {
   min-height: 52px;
-  border-color: color-mix(in srgb, var(--ssh-accent) 18%, transparent);
-  background: color-mix(in srgb, var(--ssh-accent) 8%, transparent);
+  border-color: transparent;
+  background: var(--ssh-selected);
 }
 
 .dsh-ssh-tree-project-main {
@@ -333,13 +339,13 @@
 
 .dsh-ssh-tree-project-main small {
   color: var(--ssh-text-subtle);
-  font: 9px/1.2 var(--ssh-font-mono);
+  font: 10px/1.2 var(--ssh-font-mono);
 }
 
 .dsh-ssh-tree-project-main em {
   overflow: hidden;
   color: var(--ssh-accent-strong);
-  font-size: 9px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 620;
   line-height: 1.2;
@@ -399,7 +405,7 @@
 
 .dsh-ssh-access-heading em {
   color: var(--ssh-text-subtle);
-  font-size: 9px;
+  font-size: 10px;
   font-style: normal;
 }
 
@@ -414,8 +420,8 @@
 }
 
 .dsh-ssh-access-segments button {
-  min-height: 29px;
-  padding: 0 8px;
+  min-height: var(--ssh-control-height-compact);
+  padding: 0 var(--ssh-control-padding-compact);
   border: 0;
   border-radius: 6px;
   color: var(--ssh-text-subtle);
@@ -427,8 +433,8 @@
 
 .dsh-ssh-access-segments button.is-active {
   color: var(--ssh-text);
-  background: var(--ssh-surface-raised);
-  box-shadow: 0 1px 4px color-mix(in srgb, var(--ssh-text) 8%, transparent);
+  background: var(--ssh-selected);
+  box-shadow: inset 0 1px 0 var(--ssh-glass-highlight);
 }
 
 .dsh-ssh-access-segments button:disabled {
@@ -456,7 +462,7 @@
 
 .dsh-ssh-access-approval small {
   color: var(--ssh-text-subtle);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .dsh-ssh-access-approval > i {
@@ -512,7 +518,7 @@
   border-radius: 16px;
   color: var(--ssh-text);
   background: var(--ssh-modal-surface);
-  box-shadow: 0 24px 70px color-mix(in srgb, #07100d 22%, transparent);
+  box-shadow: var(--ssh-shadow-lg);
 }
 
 .dsh-ssh-session-create-shell {
@@ -670,8 +676,8 @@
 }
 
 .dsh-ssh-workspace-option input:checked + span {
-  border-color: color-mix(in srgb, var(--ssh-accent) 36%, transparent);
-  background: color-mix(in srgb, var(--ssh-accent) 9%, var(--ssh-surface-raised));
+  border-color: transparent;
+  background: var(--ssh-selected);
 }
 
 .dsh-ssh-workspace-option-icon {
@@ -685,8 +691,8 @@
 }
 
 .dsh-ssh-workspace-option input:checked + span .dsh-ssh-workspace-option-icon {
-  color: var(--ssh-accent-strong);
-  background: color-mix(in srgb, var(--ssh-accent) 11%, transparent);
+  color: var(--ssh-text);
+  background: color-mix(in srgb, var(--ssh-text) 8%, transparent);
 }
 
 .dsh-ssh-workspace-option-copy {
@@ -717,7 +723,7 @@
   border-radius: 6px;
   color: var(--ssh-text-subtle);
   background: color-mix(in srgb, var(--ssh-text) 5%, transparent);
-  font-size: 9px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 560;
   white-space: nowrap;
@@ -826,5 +832,12 @@
   .dsh-ssh-workspace-option > span,
   .dsh-ssh-workspace-option i::after {
     transition: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dsh-ssh-remote-tree {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--ssh-panel);
   }
 }

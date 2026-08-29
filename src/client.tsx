@@ -40,6 +40,7 @@ import { Dialog, EmptyState, Field, Segment, ServerGlyph, errorMessage } from '.
 import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
 import { FileTransferWorkspace } from './file-transfer-workspace.js'
 import fileTransferCss from './file-transfer-workspace.css'
+import { installLiquidGlassInteraction } from './liquid-glass.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -60,6 +61,7 @@ export const inject = ['slots', 'layout', 'sessions', 'workspaces']
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(installStyles, 'dsh-ssh: styles')
+  ctx.effect(installLiquidGlassInteraction, 'dsh-ssh: liquid glass interaction')
   const activityController = createActivityController(ctx)
   const controller = createController(ctx, () => activityController.close())
   ctx.effect(() => observePluginWorkspace(PLUGIN_ID, () => { controller.close(); activityController.close() }), 'dsh-ssh: exclusive workspace')

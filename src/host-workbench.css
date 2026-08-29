@@ -15,9 +15,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin: 10px 12px 0;
   padding: 8px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ssh-border) 72%, transparent);
-  background: color-mix(in srgb, var(--ssh-surface-raised) 82%, transparent);
+  border: 1px solid var(--ssh-glass-border);
+  border-radius: 17px;
+  background: var(--ssh-glass-regular);
+  -webkit-backdrop-filter: var(--ssh-glass-filter);
+  backdrop-filter: var(--ssh-glass-filter);
+  box-shadow: var(--ssh-glass-shadow);
 }
 
 .dsh-ssh-workbench-heading > div:first-child {
@@ -155,7 +160,7 @@
   border-radius: 7px;
   color: var(--ssh-text-muted);
   background: color-mix(in srgb, var(--ssh-surface-raised) 68%, transparent);
-  font: 600 9px/1 var(--ssh-font-mono);
+  font: 600 10px/1 var(--ssh-font-mono);
   letter-spacing: .08em;
 }
 
@@ -200,7 +205,7 @@
 .dsh-ssh-terminal-pane.is-embedded .dsh-ssh-terminal-frame {
   min-height: 0;
   border-radius: 10px;
-  box-shadow: 0 8px 22px color-mix(in srgb, #0d1513 10%, transparent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
 }
 
 .dsh-ssh-profile-sftp-pane.is-embedded .dsh-ssh-sftp.is-workspace {
@@ -248,5 +253,13 @@
   .dsh-ssh-terminal-pane.is-embedded,
   .dsh-ssh-profile-sftp-pane.is-embedded {
     padding-inline: 10px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .dsh-ssh-workbench-heading {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--ssh-surface-raised);
   }
 }
