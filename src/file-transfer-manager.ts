@@ -189,13 +189,26 @@ async function transferFile(source: RemoteFileSystemSession, destination: Remote
   const abort = (): void => { meter.destroy(signal.reason instanceof Error ? signal.reason : new Error('transfer was aborted')) }
   signal.addEventListener('abort', abort, { once: true })
   try {
-    const sourceTask = source.download(sourcePath, meter, signal).catch(error => { meter.destroy(error as Error); throw error })
-    const destinationTask = destination.upload(destinationPath, meter, true, signal).catch(error => { meter.destroy(error as Error); throw error })
+    const sourceTask = source.download(sourcePath, meter, signal).catch(error => {
+      const contextual = transferEndpointError('read', sourcePath, error)
+      meter.destroy(contextual)
+      throw contextual
+    })
+    const destinationTask = destination.upload(destinationPath, meter, true, signal).catch(error => {
+      const contextual = transferEndpointError('write', destinationPath, error)
+      meter.destroy(contextual)
+      throw contextual
+    })
     const results = await Promise.allSettled([sourceTask, destinationTask])
     const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
     if (failed !== undefined) throw failed.reason
   }
   finally { signal.removeEventListener('abort', abort) }
+}
+
+function transferEndpointError(operation: 'read' | 'write', value: string, cause: unknown): Error {
+  const message = cause instanceof Error ? cause.message : String(cause)
+  return new Error(`could not ${operation} remote path ${value}: ${message}`, { cause })
 }
 
 async function resolveConflict(destination: RemoteFileSystemSession, value: string, policy: TransferConflictPolicy, signal: AbortSignal): Promise<string | undefined> {

@@ -7,10 +7,8 @@ test('normalizes a missing SFTP leaf path as a standard not-found result', async
   let connectionClosed = false
   const missing = Object.assign(new Error('No such file'), { code: 2 })
   const channel = {
-    realpath(value, callback) {
-      if (value === '.') callback(undefined, '/home/dev')
-      else callback(missing)
-    },
+    realpath(value, callback) { callback(undefined, value === '.' ? '/home/dev' : value) },
+    stat(_value, callback) { callback(missing) },
     end() { channelClosed = true },
   }
   const connector = {

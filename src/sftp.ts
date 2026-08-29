@@ -406,7 +406,7 @@ function readdir(sftp: SFTPWrapper, value: string): Promise<FileEntry[]> {
 
 function stat(sftp: SFTPWrapper, value: string): Promise<import('ssh2').Stats> {
   return new Promise((resolve, reject) => {
-    sftp.stat(value, (error, attributes) => error ? reject(error) : resolve(attributes))
+    sftp.stat(value, (error, attributes) => error ? reject(normalizeSftpPathError(error, value)) : resolve(attributes))
   })
 }
 
