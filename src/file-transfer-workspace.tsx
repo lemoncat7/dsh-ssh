@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent } from 'react'
-import { IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   cancelFileTransfer, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
   type FileEndpointView, type FtpProfileView, type ProxyEntryView, type SftpDirectoryView, type SftpEntryView, type TransferJobView, type VaultEntryView,
@@ -10,7 +10,7 @@ import { FtpConnectionsDialog } from './ftp-profile-editor.js'
 
 interface PaneState { id: string; endpointId: string; path: string }
 interface TransferTab { id: string; name: string; panes: PaneState[] }
-const STORAGE_KEY = 'dsh-ssh:file-transfer:tabs:v1'
+const STORAGE_KEY = 'dsh-ssh:file-transfer:tabs:v2'
 
 export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries, access, onProfilesChanged }: { ftpProfiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; access: SessionAccessState; onProfilesChanged(): void }): JSX.Element {
   const [endpoints, setEndpoints] = useState<FileEndpointView[]>([])
@@ -43,7 +43,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   const updateActive = (mutator: (tab: TransferTab) => TransferTab): void => setTabs(current => current.map(tab => tab.id === active?.id ? mutator(tab) : tab))
   const addTab = (): void => {
     const id = `transfer-${Date.now().toString(36)}`
-    const tab = createTab(id, tabs.length + 1, endpoints)
+    const tab = createTab(id, tabs.length + 1)
     setTabs(current => [...current, tab]); setActiveTabId(id)
   }
   const closeTab = (id: string): void => {
@@ -52,7 +52,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     const next = tabs.filter(tab => tab.id !== id)
     setTabs(next); if (activeTabId === id) setActiveTabId(next[Math.max(0, index - 1)]!.id)
   }
-  const setPaneCount = (count: number): void => updateActive(tab => ({ ...tab, panes: Array.from({ length: count }, (_, index) => tab.panes[index] ?? createPane(`${tab.id}-pane-${index}`, endpoints[index % Math.max(1, endpoints.length)])) }))
+  const setPaneCount = (count: number): void => updateActive(tab => ({ ...tab, panes: Array.from({ length: count }, (_, index) => tab.panes[index] ?? createPane(`${tab.id}-pane-${index}`)) }))
   const transfer = async (sourceEndpointId: string, sourcePaths: string[], destinationEndpointId: string, destinationDirectory: string): Promise<void> => {
     try { setError(undefined); const job = await startFileTransfer({ sourceEndpointId, sourcePaths, destinationEndpointId, destinationDirectory, conflictPolicy: 'fail' }); setJobs(current => [job, ...current.filter(item => item.id !== job.id)]) }
     catch (reason) { setError(errorMessage(reason)) }
@@ -60,7 +60,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   return <div className="dsh-ssh-transfer-workspace">
     <header className="dsh-ssh-transfer-header">
       <div><h1>文件传输</h1><p>FTP、FTPS 与 SFTP 之间直接流式互传</p></div>
-      <div className="dsh-ssh-transfer-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setAccessOpen(true)}>会话访问 · {access.value?.fileEndpointIds.length ?? 0}</button><button type="button" className="dsh-ssh-secondary-button" onClick={() => setConnectionsOpen(true)}>管理 FTP</button></div>
+      <div className="dsh-ssh-transfer-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setAccessOpen(true)}>会话访问 · {access.value?.fileEndpointIds.length ?? 0}</button><button type="button" className="dsh-ssh-secondary-button" onClick={() => setConnectionsOpen(true)}>FTP 管理</button></div>
     </header>
     {error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="关闭"><IconCloseOutline16 size={16} /></button></div>}
     <div className="dsh-ssh-transfer-tabbar" role="tablist" aria-label="文件传输任务页">
@@ -70,7 +70,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>还没有可用文件连接</strong><p>新建 FTP/FTPS 连接，或先添加一台 SSH 主机使用 SFTP。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>新建 FTP 连接</button></div>
       : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map((pane, index) => {
         const destination = active.panes[(index + 1) % active.panes.length]
-        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} {...destination === undefined ? {} : { destination }} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, paths, target.endpointId, target.path) }} onExternalDrop={(sourceEndpointId, paths) => { void transfer(sourceEndpointId, paths, pane.endpointId, pane.path) }} />
+        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, paths, target.endpointId, target.path) }} onExternalDrop={(sourceEndpointId, paths) => { void transfer(sourceEndpointId, paths, pane.endpointId, pane.path) }} />
       })}</div>}
     <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
@@ -79,7 +79,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   </div>
 }
 
-function FileTransferPane({ pane, endpoints, destination, onChange, onTransfer, onExternalDrop }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(endpointId: string, paths: string[]): void }): JSX.Element {
+function FileTransferPane({ pane, endpoints, destination, onChange, onTransfer, onExternalDrop, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(endpointId: string, paths: string[]): void; onManageConnections(): void }): JSX.Element {
   const [view, setView] = useState<SftpDirectoryView>()
   const [selected, setSelected] = useState<string[]>([])
   const [draftPath, setDraftPath] = useState(pane.path)
@@ -88,32 +88,41 @@ function FileTransferPane({ pane, endpoints, destination, onChange, onTransfer, 
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string>()
   const bodyRef = useRef<HTMLDivElement>(null)
-  const endpoint = endpoints.find(item => item.id === pane.endpointId) ?? endpoints[0]!
+  const loadGenerationRef = useRef(0)
+  const endpoint = endpoints.find(item => item.id === pane.endpointId)
   const entries = view?.entries ?? []
   const virtualized = entries.length > 200
   const virtualStart = virtualized ? Math.max(0, Math.floor(scrollTop / 34) - 8) : 0
   const visibleEntries = useMemo(() => virtualized ? entries.slice(virtualStart, Math.min(entries.length, virtualStart + 56)) : entries, [entries, virtualStart, virtualized])
   const load = useCallback(async (path = pane.path): Promise<void> => {
+    if (endpoint === undefined) return
+    const generation = ++loadGenerationRef.current
     setLoading(true); setError(undefined)
-    try { const next = await loadFileEndpointDirectory(pane.id, endpoint.id, path); setView(next); setDraftPath(next.path); setSelected([]); setScrollTop(0); if (bodyRef.current) bodyRef.current.scrollTop = 0; onChange({ endpointId: endpoint.id, path: next.path }) }
-    catch (reason) { setError(errorMessage(reason)) } finally { setLoading(false) }
-  }, [endpoint.id, pane.path])
-  useEffect(() => { void load(pane.path) }, [endpoint.id])
+    try { const next = await loadFileEndpointDirectory(pane.id, endpoint.id, path); if (generation !== loadGenerationRef.current) return; setView(next); setDraftPath(next.path); setSelected([]); setScrollTop(0); if (bodyRef.current) bodyRef.current.scrollTop = 0; onChange({ endpointId: endpoint.id, path: next.path }) }
+    catch (reason) { if (generation === loadGenerationRef.current) setError(errorMessage(reason)) } finally { if (generation === loadGenerationRef.current) setLoading(false) }
+  }, [endpoint?.id, pane.path])
+  useEffect(() => { if (endpoint !== undefined) void load(pane.path) }, [endpoint?.id])
   const submitPath = (event: FormEvent): void => { event.preventDefault(); void load(draftPath) }
-  const chooseEndpoint = (endpointId: string): void => { const next = endpoints.find(item => item.id === endpointId)!; onChange({ endpointId, path: next.initialPath }); setDraftPath(next.initialPath); setView(undefined) }
+  const chooseEndpoint = (next: FileEndpointView): void => { loadGenerationRef.current += 1; onChange({ endpointId: next.id, path: next.initialPath }); setDraftPath(next.initialPath); setView(undefined); setError(undefined) }
+  const showConnections = (): void => { loadGenerationRef.current += 1; onChange({ endpointId: '', path: '/' }); setView(undefined); setSelected([]); setError(undefined); setLoading(false) }
   const select = (entry: SftpEntryView, additive: boolean): void => setSelected(current => additive ? current.includes(entry.path) ? current.filter(path => path !== entry.path) : [...current, entry.path] : [entry.path])
   const drop = (event: DragEvent): void => {
     event.preventDefault(); setDragOver(false)
     try { const payload = JSON.parse(event.dataTransfer.getData('application/x-dsh-remote-files')) as { endpointId: string; paths: string[] }; if (payload.endpointId && Array.isArray(payload.paths)) onExternalDrop(payload.endpointId, payload.paths) } catch {}
   }
+  if (endpoint === undefined) return <section className="dsh-ssh-file-pane is-connections">
+    <header><span className="dsh-ssh-pane-heading"><strong>连接列表</strong><small>单击连接后浏览远端文件</small></span><button type="button" className="dsh-ssh-pane-manage-button" onClick={onManageConnections}>FTP 管理</button></header>
+    <div className="dsh-ssh-endpoint-list">{endpoints.map(item => <button type="button" key={item.id} className="dsh-ssh-endpoint-row" onClick={() => chooseEndpoint(item)}><span className={`dsh-ssh-protocol-badge is-${item.protocol}`}>{protocolShort(item.protocol)}</span><span><strong title={item.name}>{item.name}</strong><small title={item.address}>{item.address}</small></span><span><i className={`dsh-ssh-protocol-dot is-${item.protocol}`} aria-hidden="true" />{item.group ?? (item.kind === 'sftp' ? 'SSH 主机' : '文件连接')}</span></button>)}</div>
+    <footer><span>{endpoints.length} 个可用连接</span><small>SFTP 复用 SSH 主机配置</small></footer>
+  </section>
   return <section className={`dsh-ssh-file-pane${dragOver ? ' is-drop-target' : ''}`} onDragOver={event => { if (event.dataTransfer.types.includes('application/x-dsh-remote-files')) { event.preventDefault(); setDragOver(true) } }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragOver(false) }} onDrop={drop}>
-    <header><label><span className={`dsh-ssh-protocol-dot is-${endpoint.protocol}`} aria-hidden="true" /><select aria-label="文件连接" value={endpoint.id} onChange={event => chooseEndpoint(event.target.value)}>{endpoints.map(item => <option key={item.id} value={item.id}>{item.name} · {protocolShort(item.protocol)}</option>)}</select></label><small title={endpoint.address}>{endpoint.address}</small></header>
+    <header><button type="button" className="dsh-ssh-pane-back" aria-label="返回连接列表" onClick={showConnections}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-pane-endpoint"><strong>{endpoint.name}</strong><small title={endpoint.address}>{endpoint.address}</small></span><span className={`dsh-ssh-protocol-badge is-${endpoint.protocol}`}>{protocolShort(endpoint.protocol)}</span></header>
     <form className="dsh-ssh-file-pathbar" onSubmit={submitPath}><button type="button" aria-label="上一级目录" disabled={view?.parent === null || loading} onClick={() => { if (view?.parent) void load(view.parent) }}><UpGlyph /></button><button type="button" aria-label="刷新目录" disabled={loading} onClick={() => { void load() }}><RefreshGlyph /></button><input aria-label="远端路径" value={draftPath} onChange={event => setDraftPath(event.target.value)} /><button type="submit" disabled={loading}>前往</button></form>
     <div className="dsh-ssh-file-table" role="grid" aria-busy={loading}>
       <div className="dsh-ssh-file-table-head" role="row"><span>名称</span><span>大小</span><span>修改时间</span></div>
       <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">正在读取目录…</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>重试</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">这个目录是空的。</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * 34}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} endpointId={endpoint.id} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * 34}px)` } } : {}} onSelect={additive => select(entry, additive)} onOpen={() => { if (entry.kind === 'directory') void load(entry.path) }} />)}</div>}</div>
     </div>
-    <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><button type="button" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || loading} onClick={() => { if (destination) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></footer>
+    <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><button type="button" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>传送到此目录</strong><span>{view?.path ?? pane.path}</span></div>}
   </section>
 }
@@ -154,7 +163,7 @@ function FileAccessDialog({ endpoints, access, onClose }: { endpoints: FileEndpo
 function restoreTabs(): TransferTab[] {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') as unknown
-    if (!Array.isArray(value)) return [createTab('transfer-1', 1, [])]
+    if (!Array.isArray(value)) return [createTab('transfer-1', 1)]
     const tabs = value.slice(0, 8).flatMap((candidate): TransferTab[] => {
       if (typeof candidate !== 'object' || candidate === null) return []
       const tab = candidate as Partial<TransferTab>
@@ -163,18 +172,18 @@ function restoreTabs(): TransferTab[] {
         if (typeof pane !== 'object' || pane === null) return []
         const state = pane as Partial<PaneState>
         return typeof state.id === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(state.id) && typeof state.endpointId === 'string' && typeof state.path === 'string'
-          ? [{ id: state.id, endpointId: state.endpointId, path: state.path }]
+          ? [{ id: state.id, endpointId: '', path: '/' }]
           : []
       })
       return panes.length >= 2 ? [{ id: tab.id, name: tab.name.slice(0, 40), panes }] : []
     })
     if (tabs.length > 0) return tabs
   } catch {}
-  return [createTab('transfer-1', 1, [])]
+  return [createTab('transfer-1', 1)]
 }
-function createTab(id: string, index: number, endpoints: FileEndpointView[]): TransferTab { return { id, name: `任务 ${index}`, panes: [createPane(`${id}-a`, endpoints[0]), createPane(`${id}-b`, endpoints[1] ?? endpoints[0])] } }
-function createPane(id: string, endpoint?: FileEndpointView): PaneState { return { id, endpointId: endpoint?.id ?? '', path: endpoint?.initialPath ?? '/' } }
-function normalizeTabs(tabs: TransferTab[], endpoints: FileEndpointView[]): TransferTab[] { if (endpoints.length === 0) return tabs; return tabs.map(tab => ({ ...tab, panes: tab.panes.map((pane, index) => endpoints.some(item => item.id === pane.endpointId) ? pane : createPane(pane.id, endpoints[index % endpoints.length])) })) }
+function createTab(id: string, index: number): TransferTab { return { id, name: `任务 ${index}`, panes: [createPane(`${id}-a`), createPane(`${id}-b`)] } }
+function createPane(id: string): PaneState { return { id, endpointId: '', path: '/' } }
+function normalizeTabs(tabs: TransferTab[], endpoints: FileEndpointView[]): TransferTab[] { return tabs.map(tab => ({ ...tab, panes: tab.panes.map(pane => !pane.endpointId || endpoints.some(item => item.id === pane.endpointId) ? pane : createPane(pane.id)) })) }
 function endpointName(endpoints: FileEndpointView[], id: string): string { return endpoints.find(endpoint => endpoint.id === id)?.name ?? id }
 function remoteLabel(paths: string[]): string { const name = paths[0]?.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? '文件'; return paths.length > 1 ? `${name} 等 ${paths.length} 项` : name }
 function protocolShort(protocol: FileEndpointView['protocol']): string { return protocol === 'sftp' ? 'SFTP' : protocol === 'ftp' ? 'FTP' : protocol === 'ftps-explicit' ? 'FTPS' : 'FTPS-I' }
