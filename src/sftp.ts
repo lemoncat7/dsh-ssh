@@ -372,7 +372,7 @@ function openSftp(client: import('ssh2').Client, signal?: AbortSignal): Promise<
 
 function realpath(sftp: SFTPWrapper, value: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    sftp.realpath(value, (error, resolved) => error ? reject(error) : resolve(resolved))
+    sftp.realpath(value, (error, resolved) => error ? reject(normalizeSftpPathError(error, value)) : resolve(resolved))
   })
 }
 
@@ -391,10 +391,20 @@ function stat(sftp: SFTPWrapper, value: string): Promise<import('ssh2').Stats> {
 async function sftpPathExists(sftp: SFTPWrapper, value: string): Promise<boolean> {
   try { await stat(sftp, value); return true }
   catch (error) {
-    const code = (error as { code?: string | number }).code
-    if (code === 2 || code === 'ENOENT') return false
+    if (isSftpPathMissing(error)) return false
     throw error
   }
+}
+
+function normalizeSftpPathError(error: unknown, value: string): unknown {
+  if (!isSftpPathMissing(error)) return error
+  return Object.assign(new Error(`remote path ${value} was not found`, { cause: error }), { status: 404, code: 'ENOENT' })
+}
+
+function isSftpPathMissing(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const value = error as { code?: unknown; status?: unknown }
+  return value.status === 404 || value.code === 2 || value.code === '2' || value.code === 'ENOENT'
 }
 
 function createSftpReadStream(sftp: SFTPWrapper, value: string): ReturnType<SFTPWrapper['createReadStream']> {

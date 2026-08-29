@@ -21,6 +21,8 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   const [accessOpen, setAccessOpen] = useState(false)
   const [conflictJob, setConflictJob] = useState<TransferJobView>()
   const [error, setError] = useState<string>()
+  const [directoryRevisions, setDirectoryRevisions] = useState<Record<string, number>>({})
+  const previousJobStatesRef = useRef(new Map<string, TransferJobView['state']>())
 
   const refreshEndpoints = useCallback(async () => {
     try {
@@ -30,6 +32,20 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   }, [])
   useEffect(() => { void refreshEndpoints() }, [refreshEndpoints, ftpProfiles])
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs)) } catch {} }, [tabs])
+  useEffect(() => {
+    const previous = previousJobStatesRef.current
+    const changed = jobs.filter(job => isFinished(job.state) && previous.has(job.id) && !isFinished(previous.get(job.id)!))
+    previousJobStatesRef.current = new Map(jobs.map(job => [job.id, job.state]))
+    if (changed.length === 0) return
+    setDirectoryRevisions(current => {
+      const next = { ...current }
+      for (const job of changed) {
+        const key = directoryKey(job.request.destinationEndpointId, job.request.destinationDirectory)
+        next[key] = (next[key] ?? 0) + 1
+      }
+      return next
+    })
+  }, [jobs])
   useEffect(() => {
     let stopped = false; let timer: number | undefined
     const poll = async (): Promise<void> => {
@@ -70,7 +86,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>还没有可用文件连接</strong><p>新建 FTP/FTPS 连接，或先添加一台 SSH 主机使用 SFTP。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>新建 FTP 连接</button></div>
       : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map((pane, index) => {
         const destination = active.panes[(index + 1) % active.panes.length]
-        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, paths, target.endpointId, target.path) }} onExternalDrop={(sourceEndpointId, paths) => { void transfer(sourceEndpointId, paths, pane.endpointId, pane.path) }} />
+        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, paths, target.endpointId, target.path) }} onExternalDrop={(sourceEndpointId, paths) => { void transfer(sourceEndpointId, paths, pane.endpointId, pane.path) }} />
       })}</div>}
     <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
@@ -79,7 +95,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   </div>
 }
 
-function FileTransferPane({ pane, endpoints, destination, onChange, onTransfer, onExternalDrop, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(endpointId: string, paths: string[]): void; onManageConnections(): void }): JSX.Element {
+function FileTransferPane({ pane, endpoints, destination, refreshRevision, onChange, onTransfer, onExternalDrop, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(endpointId: string, paths: string[]): void; onManageConnections(): void }): JSX.Element {
   const [view, setView] = useState<SftpDirectoryView>()
   const [selected, setSelected] = useState<string[]>([])
   const [draftPath, setDraftPath] = useState(pane.path)
@@ -101,7 +117,7 @@ function FileTransferPane({ pane, endpoints, destination, onChange, onTransfer, 
     try { const next = await loadFileEndpointDirectory(pane.id, endpoint.id, path); if (generation !== loadGenerationRef.current) return; setView(next); setDraftPath(next.path); setSelected([]); setScrollTop(0); if (bodyRef.current) bodyRef.current.scrollTop = 0; onChange({ endpointId: endpoint.id, path: next.path }) }
     catch (reason) { if (generation === loadGenerationRef.current) setError(errorMessage(reason)) } finally { if (generation === loadGenerationRef.current) setLoading(false) }
   }, [endpoint?.id, pane.path])
-  useEffect(() => { if (endpoint !== undefined) void load(pane.path) }, [endpoint?.id])
+  useEffect(() => { if (endpoint !== undefined) void load(pane.path) }, [endpoint?.id, refreshRevision])
   const submitPath = (event: FormEvent): void => { event.preventDefault(); void load(draftPath) }
   const chooseEndpoint = (next: FileEndpointView): void => { loadGenerationRef.current += 1; onChange({ endpointId: next.id, path: next.initialPath }); setDraftPath(next.initialPath); setView(undefined); setError(undefined) }
   const showConnections = (): void => { loadGenerationRef.current += 1; onChange({ endpointId: '', path: '/' }); setView(undefined); setSelected([]); setError(undefined); setLoading(false) }
@@ -187,6 +203,8 @@ function normalizeTabs(tabs: TransferTab[], endpoints: FileEndpointView[]): Tran
 function endpointName(endpoints: FileEndpointView[], id: string): string { return endpoints.find(endpoint => endpoint.id === id)?.name ?? id }
 function remoteLabel(paths: string[]): string { const name = paths[0]?.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? '文件'; return paths.length > 1 ? `${name} 等 ${paths.length} 项` : name }
 function protocolShort(protocol: FileEndpointView['protocol']): string { return protocol === 'sftp' ? 'SFTP' : protocol === 'ftp' ? 'FTP' : protocol === 'ftps-explicit' ? 'FTPS' : 'FTPS-I' }
+function directoryKey(endpointId: string, value: string): string { return JSON.stringify([endpointId, value.replaceAll('\\', '/').replace(/\/+$/, '') || '/']) }
+function isFinished(state: TransferJobView['state']): boolean { return state === 'completed' || state === 'failed' || state === 'cancelled' }
 function formatBytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`; if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`; return `${(value / 1024 ** 3).toFixed(2)} GB` }
 function jobLabel(job: TransferJobView, progress: number): string { if (job.state === 'queued') return '等待传输'; if (job.state === 'scanning') return '正在扫描目录'; if (job.state === 'transferring') { const seconds = Math.max(1, (Date.now() - (job.startedAt ?? Date.now())) / 1000); const speed = job.transferredBytes / seconds; const remaining = speed > 0 ? Math.max(0, (job.totalBytes - job.transferredBytes) / speed) : 0; return `${progress.toFixed(0)}% · ${formatBytes(speed)}/s${remaining > 1 ? ` · 约 ${formatDuration(remaining)}` : ''}` } if (job.state === 'completed') return `已完成 ${job.completedFiles} 个文件${job.skippedFiles ? `，跳过 ${job.skippedFiles}` : ''}`; if (job.state === 'cancelled') return '已取消'; return '传输失败' }
 function formatDuration(seconds: number): string { if (seconds < 60) return `${Math.ceil(seconds)} 秒`; const minutes = Math.ceil(seconds / 60); return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟` }
