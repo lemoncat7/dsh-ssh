@@ -127,6 +127,7 @@
 
 .dsh-ssh-tree-host-main,
 .dsh-ssh-tree-project-main {
+  appearance: none;
   display: grid;
   min-width: 0;
   align-items: center;
@@ -134,8 +135,21 @@
   border: 0;
   color: inherit;
   background: transparent;
+  background-image: none;
+  box-shadow: none;
   text-align: left;
   cursor: pointer;
+}
+
+.dsh-ssh-tree-host-main:hover,
+.dsh-ssh-tree-host-main:active,
+.dsh-ssh-tree-project-main:hover,
+.dsh-ssh-tree-project-main:active {
+  color: inherit;
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+  transform: none;
 }
 
 .dsh-ssh-tree-host-main {
@@ -527,6 +541,7 @@
   min-height: 0;
   width: 100%;
   flex-direction: column;
+  animation: dsh-ssh-dialog-enter var(--ssh-motion-slow) var(--ssh-ease-out) both;
 }
 
 .dsh-ssh-session-create-shell > header {
@@ -822,6 +837,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .dsh-ssh-session-create-shell,
   .dsh-ssh-tree-branches {
     animation: none;
   }

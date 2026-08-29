@@ -9,7 +9,7 @@
     radial-gradient(circle at 8% 0%, var(--ssh-ambient-light), transparent 34%),
     radial-gradient(circle at 96% 6%, var(--ssh-ambient-shadow), transparent 31%),
     linear-gradient(145deg, color-mix(in srgb, var(--ssh-surface-raised) 32%, transparent), transparent 58%),
-    color-mix(in srgb, var(--ssh-surface) 54%, transparent);
+    color-mix(in srgb, var(--ssh-surface) 28%, transparent);
 }
 .dsh-ssh-transfer-header {
   display: flex;
@@ -43,6 +43,7 @@
   background: var(--ssh-glass-clear);
   -webkit-backdrop-filter: saturate(1.25) blur(20px);
   backdrop-filter: saturate(1.25) blur(20px);
+  box-shadow: var(--ssh-glass-shadow);
 }
 .dsh-ssh-transfer-tabs { display: flex; align-items: center; min-width: 0; gap: 3px; overflow-x: auto; scrollbar-width: thin; }
 .dsh-ssh-transfer-tabs button,
@@ -290,7 +291,7 @@
 .dsh-ssh-file-access-dialog-modal {
   --ssh-access-edge: rgba(60, 60, 67, 0.18);
   --ssh-access-divider: rgba(60, 60, 67, 0.14);
-  --ssh-access-surface: rgba(248, 248, 250, 0.6);
+  --ssh-access-surface: rgba(248, 248, 250, 0.44);
   --ssh-access-subtle: rgba(255, 255, 255, 0.58);
   --ssh-access-hover: rgba(118, 118, 128, 0.1);
   --ssh-access-selected: rgba(60, 60, 67, 0.085);
@@ -325,7 +326,7 @@
 body[data-ds-dark-theme] .dsh-ssh-file-access-dialog-modal {
   --ssh-access-edge: rgba(84, 84, 88, 0.65);
   --ssh-access-divider: rgba(84, 84, 88, 0.52);
-  --ssh-access-surface: rgba(36, 36, 38, 0.62);
+  --ssh-access-surface: rgba(36, 36, 38, 0.48);
   --ssh-access-subtle: rgba(58, 58, 60, 0.68);
   --ssh-access-hover: rgba(255, 255, 255, 0.08);
   --ssh-access-selected: rgba(255, 255, 255, 0.09);
@@ -916,7 +917,7 @@ body[data-ds-dark-theme] .dsh-ssh-file-access-dialog-modal {
   .dsh-ssh-file-access-footer > span { max-width: calc(100% - 100px); }
 }
 @keyframes dsh-ssh-file-access-enter {
-  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  from { opacity: 0; transform: translateY(9px) scale(.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes dsh-ssh-file-access-skeleton {
