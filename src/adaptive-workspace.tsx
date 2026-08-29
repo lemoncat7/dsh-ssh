@@ -51,8 +51,8 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
     {toolbar}
     {notice}
     <nav className="dsh-ssh-mobile-actions" aria-label="工作区面板">
-      <button type="button" aria-controls="dsh-ssh-adaptive-navigation" aria-expanded={panel === 'navigation'} onClick={() => panel === 'navigation' ? closePanel() : setPanel('navigation')}>{navigationIcon}<span>{navigationLabel}</span></button>
-      {inspector !== undefined && <button type="button" aria-controls="dsh-ssh-adaptive-inspector" aria-expanded={panel === 'inspector'} onClick={() => panel === 'inspector' ? closePanel() : setPanel('inspector')}>{inspectorIcon}<span>{inspectorLabel}</span></button>}
+      <button type="button" data-ssh-interactive="choice" aria-pressed={panel === 'navigation'} aria-controls="dsh-ssh-adaptive-navigation" aria-expanded={panel === 'navigation'} onClick={() => panel === 'navigation' ? closePanel() : setPanel('navigation')}>{navigationIcon}<span>{navigationLabel}</span></button>
+      {inspector !== undefined && <button type="button" data-ssh-interactive="choice" aria-pressed={panel === 'inspector'} aria-controls="dsh-ssh-adaptive-inspector" aria-expanded={panel === 'inspector'} onClick={() => panel === 'inspector' ? closePanel() : setPanel('inspector')}>{inspectorIcon}<span>{inspectorLabel}</span></button>}
     </nav>
     <div className="dsh-ssh-adaptive-shell">
       <aside ref={navigationRef} id="dsh-ssh-adaptive-navigation" className="dsh-ssh-adaptive-navigation" aria-label={navigationLabel}>{renderSlot(navigation, controls)}</aside>

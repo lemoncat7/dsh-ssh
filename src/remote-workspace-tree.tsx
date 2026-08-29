@@ -9,6 +9,7 @@ import {
   type InjectionView, type ProfileView, type RemoteProjectView,
 } from './client-api.js'
 import { ProjectSessionDialog } from './project-session-dialog.js'
+import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
 
 export interface RemoteTarget {
@@ -37,6 +38,7 @@ interface RemoteWorkspaceTreeProps {
 }
 
 export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Element {
+  const panelGlow = useBorderGlowSurface<HTMLElement>()
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [projects, setProjects] = useState<Record<string, RemoteProjectView[]>>({})
@@ -67,7 +69,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     if (enabled) props.onDirectory(profileId, undefined)
   }
 
-  return <aside className="dsh-ssh-remote-tree">
+  return <aside ref={panelGlow.ref} onPointerMove={panelGlow.onPointerMove} onPointerLeave={panelGlow.onPointerLeave} className="dsh-ssh-remote-tree dsh-ssh-border-surface">
     <header className="dsh-ssh-tree-header">
       <span><strong>主机与项目</strong><small>{props.profiles.length} 台主机</small></span>
       <button type="button" className="dsh-ssh-icon-button" onClick={props.onNewProfile} aria-label="新建连接" title="新建连接"><IconPlusOutline16 size={16} /></button>
@@ -82,13 +84,14 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
           const children = projects[profile.id] ?? []
           const active = props.selected?.profileId === profile.id && props.selected.projectId === undefined
           return <div className="dsh-ssh-tree-host" key={profile.id} data-open={open}>
-            <div className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}`}>
+            <div data-ssh-interactive="row" className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}`}>
               <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={active} aria-expanded={open} title={`选择并展开 ${profile.name}`} onClick={() => selectProfile(profile.id)}>
                 <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
                 <span><strong>{profile.name}</strong><small>{profile.username}@{profile.host}</small></span>
               </button>
               <button
                 type="button"
+                data-ssh-interactive="choice"
                 className={`dsh-ssh-tree-mount${enabled ? ' is-mounted' : ''}`}
                 aria-label={`${enabled ? '卸载' : '挂载'} ${profile.name}`}
                 aria-pressed={enabled}
@@ -105,7 +108,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                     const projectActive = props.selected?.projectId === project.id
                     const bound = props.access?.workingProjectIds[profile.id] === project.id
                     return <div className="dsh-ssh-tree-project" key={project.id}>
-                      <div className={`dsh-ssh-tree-project-row${projectActive ? ' is-active' : ''}${bound ? ' is-bound' : ''}`}>
+                      <div data-ssh-interactive="row" className={`dsh-ssh-tree-project-row${projectActive ? ' is-active' : ''}${bound ? ' is-bound' : ''}`}>
                         <button type="button" className="dsh-ssh-tree-project-main" aria-pressed={props.access === null ? undefined : bound} title={props.access === null ? '当前没有可固定目录的 DSH 会话' : !enabled ? '请先挂载该主机' : bound ? '取消当前会话的固定目录' : '固定为当前会话目录'} onClick={() => {
                           if (enabled && !props.accessLoading && !props.accessSaving) {
                             props.onDirectory(profile.id, bound ? undefined : project.path, bound ? undefined : project.id)
@@ -133,8 +136,8 @@ function SessionAccessFooter({ access, loading, saving, error, onPermission, onA
   return <footer className="dsh-ssh-access-footer">
     <div className="dsh-ssh-access-heading"><span><strong>当前会话权限</strong><small>{access?.profileIds.length ?? 0} 台主机可用</small></span><em>{loading ? '读取中' : saving ? '保存中' : '已同步'}</em></div>
     <div className="dsh-ssh-access-segments" aria-label="SSH 权限">
-      <button type="button" className={access?.permission === 'exec' ? 'is-active' : ''} aria-pressed={access?.permission === 'exec'} disabled={access === null} onClick={() => onPermission('exec')}>仅命令</button>
-      <button type="button" className={access?.permission === 'terminal' ? 'is-active' : ''} aria-pressed={access?.permission === 'terminal'} disabled={access === null} onClick={() => onPermission('terminal')}>终端控制</button>
+      <button type="button" data-ssh-interactive="choice" className={access?.permission === 'exec' ? 'is-active' : ''} aria-pressed={access?.permission === 'exec'} disabled={access === null} onClick={() => onPermission('exec')}>仅命令</button>
+      <button type="button" data-ssh-interactive="choice" className={access?.permission === 'terminal' ? 'is-active' : ''} aria-pressed={access?.permission === 'terminal'} disabled={access === null} onClick={() => onPermission('terminal')}>终端控制</button>
     </div>
     <label className="dsh-ssh-access-approval"><span><strong>执行前确认</strong><small>{access?.requireCommandApproval === false ? '关闭后按当前会话权限直接执行' : '需 DSH 使用 Ask；Full Access 会直接拒绝'}</small></span><input type="checkbox" checked={access?.requireCommandApproval ?? true} disabled={access === null} onChange={event => onApproval(event.target.checked)} /><i aria-hidden="true" /></label>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
@@ -164,7 +167,7 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
         <label className="dsh-ssh-field"><span>名称</span><input required maxLength={80} value={name} placeholder="网站项目" onChange={event => setName(event.target.value)} /></label>
         <label className="dsh-ssh-field"><span>远端路径</span><input required maxLength={4096} value={path} spellCheck={false} placeholder="/var/www/example" onChange={event => setPath(event.target.value)} /><small>保存前会在右侧 SFTP 中验证路径是否可访问。</small></label>
         {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-        <div className="dsh-ssh-dialog-actions">{project !== undefined && <button type="button" className="dsh-ssh-danger-button" disabled={saving} onClick={() => { void remove() }}><IconTrashOutline16 size={15} />删除</button>}<span className="dsh-ssh-dialog-spacer" /><button type="button" className="dsh-ssh-secondary-button" disabled={saving} onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '保存中…' : '保存目录'}</button></div>
+        <div className="dsh-ssh-dialog-actions">{project !== undefined && <button type="button" className="dsh-ssh-danger-button" disabled={saving} onClick={() => { void remove() }}><IconTrashOutline16 size={15} />删除</button>}<span className="dsh-ssh-dialog-spacer" /><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={saving} onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '保存中…' : '保存目录'}</button></div>
     </form>
   </Dialog>
 }

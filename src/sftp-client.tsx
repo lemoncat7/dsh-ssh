@@ -147,7 +147,7 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
         <div className="dsh-ssh-sftp-columns"><span>名称</span><span>大小</span><span>修改时间</span></div>
         {loading && directory === undefined ? <p className="dsh-ssh-sftp-state">正在读取远端目录…</p>
           : directory?.entries.length === 0 ? <p className="dsh-ssh-sftp-state">此目录为空</p>
-            : directory?.entries.map(entry => <button type="button" className={`dsh-ssh-sftp-row is-${entry.kind}`} key={entry.path} onClick={() => { if (entry.kind === 'directory') void browse(entry.path, true); else setOpenedFile(entry) }}>
+            : directory?.entries.map(entry => <button type="button" data-ssh-interactive="row" className={`dsh-ssh-sftp-row is-${entry.kind}`} key={entry.path} onClick={() => { if (entry.kind === 'directory') void browse(entry.path, true); else setOpenedFile(entry) }}>
               <span>{entry.kind === 'directory' ? <IconFolderClose16 size={16} /> : <IconDataOutline16 size={16} />}<strong title={entry.name}>{entry.name}</strong></span>
               <small>{entry.kind === 'directory' ? '-' : formatBytes(entry.size)}</small>
               <small>{formatFileTime(entry.modifiedAt)}</small>

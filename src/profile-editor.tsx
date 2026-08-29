@@ -41,7 +41,7 @@ export function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }:
       <div><strong>这个操作无法撤销</strong><p>连接配置、该主机的独立凭据和关联端口转发会一并删除；它也会从所有会话授权中移除。密钥库中的共享凭据不会删除。</p></div>
       {dependents.length > 0 && <div className="dsh-ssh-delete-profile-block" role="alert"><strong>暂时不能删除</strong><p>以下连接仍将它作为 SSH 跳板：{dependents.map(item => item.name).join('、')}。请先修改这些连接的跳板链。</p></div>}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting || dependents.length > 0} onClick={() => { void remove() }}>{deleting ? '正在删除…' : '删除主机'}</button></div>
+      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting || dependents.length > 0} onClick={() => { void remove() }}>{deleting ? '正在删除…' : '删除主机'}</button></div>
     </div>
   </Dialog>
 }
@@ -163,7 +163,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
       {pendingFingerprint && <div className="dsh-ssh-test-result is-warning" role="alert"><span><strong>首次连接，请核对主机指纹</strong><code>{pendingFingerprint}</code></span><button type="button" className="dsh-ssh-small-primary" disabled={testing} onClick={() => { void testConnection(pendingFingerprint) }}>确认并重试</button></div>}
       {testState === 'success' && <p className="dsh-ssh-test-result is-success" role="status"><IconCheckOutline14 size={14} />连接测试成功</p>}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button dsh-ssh-test-button" disabled={saving || testing} onClick={event => { if (event.currentTarget.form?.reportValidity()) void testConnection() }}>{testing ? '正在测试…' : '测试连接'}</button><button type="button" className="dsh-ssh-secondary-button" disabled={saving || testing} onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving || testing}>{saving ? '正在保存…' : '保存连接'}</button></div>
+      <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button dsh-ssh-test-button" disabled={saving || testing} onClick={event => { if (event.currentTarget.form?.reportValidity()) void testConnection() }}>{testing ? '正在测试…' : '测试连接'}</button><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={saving || testing} onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving || testing}>{saving ? '正在保存…' : '保存连接'}</button></div>
     </form>
   </Dialog>
 }

@@ -9,6 +9,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import { SshActivityPanel, type ActivityController, type ActivityViewMode } from './activity-panel.js'
 import { AdaptiveWorkspace } from './adaptive-workspace.js'
 import adaptiveUiCss from './adaptive-workspace.css'
+import borderGlowCss from './border-glow.css'
+import { useBorderGlowSurface } from './border-glow.js'
+import glareHoverCss from './glare-hover.css'
+import interactiveSurfacesCss from './interactive-surfaces.css'
 import { activatePluginWorkspace, observePluginWorkspace } from './workspace-ownership.js'
 import {
   IconChevronDownOutline14, IconCloseOutline16, IconDataOutline16,
@@ -213,7 +217,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
 
   if (!props.wide) {
     return <section ref={ref} className="dsh-ssh-sidebar is-rail">
-      <button type="button" className={`dsh-ssh-rail-button${activityOpen ? ' is-active' : ''}`} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><ServerGlyph /></button>
+      <button type="button" data-ssh-interactive="choice" className={`dsh-ssh-rail-button${activityOpen ? ' is-active' : ''}`} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><ServerGlyph /></button>
     </section>
   }
   return <section ref={ref} className="dsh-ssh-sidebar">
@@ -221,13 +225,13 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
       <button type="button" className="dsh-ssh-sidebar-title" aria-expanded={open} onClick={() => setOpen(value => !value)}>
         <span className="dsh-ssh-disclosure" data-open={open}><IconChevronDownOutline14 size={14} /></span><span>远端</span>
       </button>
-      <button type="button" className={`dsh-ssh-icon-button${activityOpen ? ' is-active' : ''}`} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><IconPanelLeftOutline16 size={16} className="dsh-ssh-panel-right-icon" /></button>
+      <button type="button" data-ssh-interactive="choice" className={`dsh-ssh-icon-button${activityOpen ? ' is-active' : ''}`} aria-label={activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} title={currentSessionId === undefined ? '打开会话后可查看 SSH 侧栏' : activityOpen ? '收起 SSH 侧栏' : '展开 SSH 侧栏'} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><IconPanelLeftOutline16 size={16} className="dsh-ssh-panel-right-icon" /></button>
     </div>
     {open && <div className="dsh-ssh-sidebar-list">
       <button type="button" className="dsh-ssh-sidebar-panel" onClick={openWorkspace}><ServerGlyph /><span>SSH 面板</span></button>
       {currentSessionId === undefined ? <p className="dsh-ssh-sidebar-note">打开会话后显示可用远端</p>
         : availableProfiles.length === 0 ? <p className="dsh-ssh-sidebar-note">当前会话未授权远端</p>
-          : availableProfiles.slice(0, 6).map(profile => <button type="button" className={`dsh-ssh-sidebar-row${activityOpen && props.activityController.selected(currentSessionId) === profile.id ? ' is-active' : ''}`} key={profile.id} onClick={() => openActivity(profile.id)}>
+          : availableProfiles.slice(0, 6).map(profile => <button type="button" data-ssh-interactive="choice" aria-pressed={activityOpen && props.activityController.selected(currentSessionId) === profile.id} className={`dsh-ssh-sidebar-row${activityOpen && props.activityController.selected(currentSessionId) === profile.id ? ' is-active' : ''}`} key={profile.id} onClick={() => openActivity(profile.id)}>
             <span className="dsh-ssh-status-dot is-injected" aria-hidden="true" />
             <span className="dsh-ssh-sidebar-copy"><strong>{profile.name}</strong><small>{profile.host}</small></span>
             <span className="dsh-ssh-injected-mark">已挂载</span>
@@ -238,6 +242,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
 }
 
 function RemoteWorkspace(props: ConversationProps & { controller: RemoteController }): JSX.Element {
+  const toolbarGlow = useBorderGlowSurface<HTMLElement>()
   const sessionId = props.useSessions(state => state.current)
   const workspaceList = props.useWorkspaces(state => state)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
@@ -277,7 +282,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === target?.profileId)
   const currentWorkspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
-  const toolbar = <header className="dsh-ssh-toolbar">
+  const toolbar = <header ref={toolbarGlow.ref} onPointerMove={toolbarGlow.onPointerMove} onPointerLeave={toolbarGlow.onPointerLeave} className="dsh-ssh-toolbar dsh-ssh-border-surface">
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>SSH 工作台</strong><small>{view === 'transfer' ? 'FTP · FTPS · SFTP' : selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" role="tablist" aria-label="SSH 工作台视图">
         <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>终端与文件</Segment>
@@ -338,8 +343,9 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
 
 function HostWorkbench({ profile, initialPath, onEdit, onDelete }: { profile: ProfileView; initialPath: string; onEdit(): void; onDelete(): void }): JSX.Element {
   const [sftpReady, setSftpReady] = useState(false)
+  const headingGlow = useBorderGlowSurface<HTMLElement>()
   return <div className="dsh-ssh-host-workbench">
-    <header className="dsh-ssh-workbench-heading">
+    <header ref={headingGlow.ref} onPointerMove={headingGlow.onPointerMove} onPointerLeave={headingGlow.onPointerLeave} className="dsh-ssh-workbench-heading dsh-ssh-border-surface">
       <div><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
       <div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button></div>
     </header>
@@ -509,7 +515,7 @@ function VaultEditor({ value, onClose, onSaved }: { value?: VaultEntryView | und
     <Field label="认证方式"><select value={form.authType} onChange={event => setForm({ ...form, authType: event.target.value as 'password' | 'private-key' })}><option value="password">密码</option><option value="private-key">私钥</option></select></Field>
     {form.authType === 'password' ? <Field label="密码" hint={value?.credential.fields.includes('password') ? '已保存；留空保持不变' : '必填，保存后不可读回'}><input required={value === undefined || !value.credential.fields.includes('password')} type="password" autoComplete="new-password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} /></Field>
       : <><Field label="私钥" hint={value?.credential.fields.includes('privateKey') ? '已保存；留空保持不变' : '粘贴 OpenSSH 或 PEM 私钥'}><textarea required={value === undefined || !value.credential.fields.includes('privateKey')} rows={7} spellCheck={false} value={form.privateKey} onChange={event => setForm({ ...form, privateKey: event.target.value })} /></Field><Field label="私钥口令"><input type="password" autoComplete="new-password" value={form.passphrase} onChange={event => setForm({ ...form, passphrase: event.target.value })} /></Field></>}
-    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}<div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '正在保存…' : '保存凭据'}</button></div>
+    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}<div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '正在保存…' : '保存凭据'}</button></div>
   </form></Dialog>
 }
 
@@ -558,7 +564,7 @@ function ProxyEditor({ value, onClose, onSaved }: { value?: ProxyEntryView | und
     <div className="dsh-ssh-form-grid is-host"><Field label="代理主机"><input required maxLength={253} value={form.host} onChange={event => setForm({ ...form, host: event.target.value })} placeholder="127.0.0.1" /></Field><Field label="代理端口"><input required type="number" min="1" max="65535" value={form.port} onChange={event => setForm({ ...form, port: event.target.value })} /></Field></div>
     <div className="dsh-ssh-form-grid"><Field label="代理用户名"><input maxLength={128} value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} autoComplete="username" /></Field><Field label="代理密码" hint={value?.credential.fields.includes('proxyPassword') ? '已保存；留空保持不变' : '可选，保存后不可读回'}><input type="password" autoComplete="new-password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} /></Field></div>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '正在保存…' : '保存代理'}</button></div>
+    <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '正在保存…' : '保存代理'}</button></div>
   </form></Dialog>
 }
 
@@ -592,7 +598,7 @@ function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileV
     <div className="dsh-ssh-form-grid is-host"><Field label="监听地址"><input required value={form.bindHost} onChange={event => setForm({ ...form, bindHost: event.target.value })} /></Field><Field label="监听端口" hint="0 表示自动选择"><input required type="number" min="0" max="65535" value={form.bindPort} onChange={event => setForm({ ...form, bindPort: event.target.value })} /></Field></div>
     {form.kind !== 'dynamic' && <div className="dsh-ssh-form-grid is-host"><Field label="目标主机"><input required value={form.targetHost} onChange={event => setForm({ ...form, targetHost: event.target.value })} /></Field><Field label="目标端口"><input required type="number" min="1" max="65535" value={form.targetPort} onChange={event => setForm({ ...form, targetPort: event.target.value })} /></Field></div>}
     <label className="dsh-ssh-switch-row"><span><strong>自动启动</strong><small>DSH 启动时恢复此转发</small></span><input type="checkbox" checked={form.autoStart} onChange={event => setForm({ ...form, autoStart: event.target.checked })} /></label>
-    {error && <p className="dsh-ssh-inline-error">{error}</p>}<div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={onClose}>取消</button><button className="dsh-ssh-primary-button">保存规则</button></div>
+    {error && <p className="dsh-ssh-inline-error">{error}</p>}<div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>取消</button><button className="dsh-ssh-primary-button">保存规则</button></div>
   </form></Dialog>
 }
 
@@ -623,7 +629,7 @@ function installStyles(): () => void {
   if (previous !== null) return () => {}
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${fileTransferCss}`
+  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${glareHoverCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${fileTransferCss}\n${interactiveSurfacesCss}`
   document.head.append(style)
   return () => style.remove()
 }

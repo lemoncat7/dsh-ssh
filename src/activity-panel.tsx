@@ -98,9 +98,9 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
       <button type="button" className="dsh-ssh-icon-button" aria-label="关闭 SSH 活动" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
     </header>
     {activity && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
-      <button type="button" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => setView('local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
-      {activity.profiles.length > 0 && <button type="button" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => setView('remote-directory')}><ServerGlyph />远端目录</button>}
-      {activity.injection?.permission === 'terminal' && <button type="button" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => setView('terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
+      <button type="button" data-ssh-interactive="choice" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => setView('local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
+      {activity.profiles.length > 0 && <button type="button" data-ssh-interactive="choice" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => setView('remote-directory')}><ServerGlyph />远端目录</button>}
+      {activity.injection?.permission === 'terminal' && <button type="button" data-ssh-interactive="choice" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => setView('terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
     </nav>}
     <div className="dsh-ssh-activity-body">
       {activity === undefined ? <p className="dsh-ssh-activity-state" role="status">正在读取 SSH 会话…</p>
@@ -151,7 +151,7 @@ function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: strin
   return <div className="dsh-ssh-terminal-workbench">
     {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher dsh-ssh-scroll-surface" aria-label="SSH 终端">{terminals.map((item, index) => {
       const label = item.name || `终端 ${index + 1}`
-      return <button type="button" title={label} className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} /><span className="dsh-ssh-terminal-switcher-label">{label}</span></button>
+      return <button type="button" data-ssh-interactive="choice" title={label} className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} /><span className="dsh-ssh-terminal-switcher-label">{label}</span></button>
     })}</nav>}
     <div className="dsh-ssh-terminal-observer">
       <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><div className="dsh-ssh-terminal-observer-actions"><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? '运行中' : '已退出'}</span><button type="button" className="dsh-ssh-terminal-close" disabled={closingId !== undefined} aria-label={`${closeLabel}终端 ${terminal.name}`} title={terminal.status.kind === 'running' ? '结束并关闭这个终端' : '从活动面板移除这个终端'} onClick={() => { void closeSelectedTerminal() }}><IconCloseOutline16 size={14} /><span>{closingId === terminal.terminalId ? '处理中' : closeLabel}</span></button></div></div>
