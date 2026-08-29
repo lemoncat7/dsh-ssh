@@ -82,7 +82,14 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
   async list(value: string, signal?: AbortSignal): Promise<RemoteDirectoryView> {
     const requested = value.trim() || this.profile.initialPath
     const resolved = await this.resolveDirectory(requested, signal)
-    const entries = (await this.run(this.client.list(resolved), signal)).map(entry => ftpEntry(resolved, entry))
+    const entries: RemoteFileEntry[] = []
+    for (const entry of await this.run(this.client.list(resolved), signal)) {
+      const mapped = ftpEntry(resolved, entry)
+      if (mapped.kind === 'symlink' || mapped.kind === 'other') {
+        mapped.navigable = await this.isDirectory(mapped.path, signal)
+      }
+      entries.push(mapped)
+    }
     return { path: resolved, parent: remoteParent(resolved), entries: sortRemoteEntries(entries) }
   }
 
@@ -125,6 +132,11 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
     const previous = await this.run(this.client.pwd(), signal)
     try { await this.run(this.client.cd(value), signal); return await this.run(this.client.pwd(), signal) }
     finally { await this.run(this.client.cd(previous), signal).catch(() => {}) }
+  }
+
+  private async isDirectory(value: string, signal?: AbortSignal): Promise<boolean> {
+    try { await this.resolveDirectory(value, signal); return true }
+    catch { signal?.throwIfAborted(); return false }
   }
 
   private async run<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {

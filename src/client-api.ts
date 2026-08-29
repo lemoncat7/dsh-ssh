@@ -54,7 +54,7 @@ export interface ActivityTerminalView {
 }
 export interface ActivityView { injection: InjectionView | null; profiles: ActivityProfileView[]; terminals: ActivityTerminalView[] }
 export interface TerminalOpenedEvent { type: 'terminal-opened'; sessionId: string; terminalId: string; profileId: string; createdAt: number }
-export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; size: number; modifiedAt: number }
+export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; navigable?: boolean; size: number; modifiedAt: number }
 export interface SftpDirectoryView { path: string; parent: string | null; entries: SftpEntryView[] }
 export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean }
 

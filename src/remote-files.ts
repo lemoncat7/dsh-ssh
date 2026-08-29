@@ -18,6 +18,7 @@ export interface RemoteFileEntry {
   name: string
   path: string
   kind: RemoteFileKind
+  navigable?: boolean
   size: number
   modifiedAt: number
 }

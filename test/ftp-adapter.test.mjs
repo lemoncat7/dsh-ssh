@@ -24,12 +24,13 @@ test('FTP uses the routed dialer for both control and passive data connections',
   t.after(() => session.close())
   const directory = await session.list('/')
   assert.equal(directory.path, '/')
-  assert.deepEqual(directory.entries.map(entry => [entry.name, entry.kind, entry.size]), [['hello.txt', 'file', 5]])
-  assert.equal(calls.length, 2)
+  assert.deepEqual(directory.entries.map(entry => [entry.name, entry.kind, entry.navigable ?? false, entry.size]), [['docs', 'directory', false, 0], ['hello.txt', 'file', false, 5], ['shortcut', 'symlink', true, 4]])
+  assert.deepEqual((await session.list('/docs')).entries.map(entry => [entry.name, entry.kind, entry.size]), [['readme.md', 'file', 7]])
+  assert.equal(calls.length, 3)
   assert.equal(calls[0].port, server.port)
   assert.notEqual(calls[1].port, server.port)
   await session.remove('/hello.txt', true)
-  assert.deepEqual((await session.list('/')).entries, [])
+  assert.deepEqual((await session.list('/')).entries.map(entry => [entry.name, entry.kind]), [['docs', 'directory'], ['shortcut', 'symlink']])
 })
 
 async function createFtpServer() {
@@ -43,6 +44,8 @@ async function createFtpServer() {
     socket.write('220 Test FTP ready\r\n')
     let input = ''
     let passive
+    let passiveSocket
+    let cwd = '/'
     socket.on('data', chunk => {
       input += chunk
       while (input.includes('\r\n')) {
@@ -54,12 +57,14 @@ async function createFtpServer() {
         else if (verb === 'PASS') socket.write('230 Logged in\r\n')
         else if (verb === 'FEAT') socket.write('211 No features\r\n')
         else if (verb === 'TYPE' || verb === 'STRU' || verb === 'OPTS') socket.write('200 OK\r\n')
-        else if (verb === 'PWD') socket.write('257 "/" is current directory\r\n')
-        else if (verb === 'CWD') socket.write('250 Directory changed\r\n')
+        else if (verb === 'PWD') socket.write(`257 "${cwd}" is current directory\r\n`)
+        else if (verb === 'CWD') {
+          const target = command.slice(4).trim()
+          if (target === '/' || target === '/docs' || target === '/shortcut') { cwd = target === '/shortcut' ? '/docs' : target; socket.write('250 Directory changed\r\n') }
+          else socket.write('550 Not a directory\r\n')
+        }
         else if (verb === 'EPSV') {
-          passive = net.createServer(data => {
-            data.end(helloExists ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : '')
-          })
+          passive = net.createServer(data => { passiveSocket = data })
           passiveServers.add(passive)
           passive.listen(0, '127.0.0.1', () => {
             const address = passive.address()
@@ -67,7 +72,10 @@ async function createFtpServer() {
           })
         } else if (verb === 'LIST') {
           socket.write('150 Opening data connection\r\n')
-          setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive) }, 20)
+          const requested = command.slice(4).trim().split(/\s+/).filter(token => !token.startsWith('-')).at(-1) || cwd
+          const root = `${helloExists ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}drwxr-xr-x 1 test test 0 Jan 01 2026 docs\r\nlrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut -> docs\r\n`
+          passiveSocket?.end(requested === '/docs' ? '-rw-r--r-- 1 test test 7 Jan 01 2026 readme.md\r\n' : root)
+          setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive); passiveSocket = undefined }, 20)
         } else if (verb === 'DELE') {
           helloExists = false
           socket.write('250 File deleted\r\n')

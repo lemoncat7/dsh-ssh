@@ -171,7 +171,8 @@ function DeleteRemoteEntriesDialog({ endpoint, entries, onClose, onDelete }: { e
 }
 
 function FileEntryRow({ entry, endpointId, selected, selectedPaths, style, onSelect, onOpen }: { entry: SftpEntryView; endpointId: string; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void }): JSX.Element {
-  return <div role="row" tabIndex={0} aria-selected={selected} draggable={entry.kind === 'file' || entry.kind === 'directory'} className={`dsh-ssh-file-row is-${entry.kind}${selected ? ' is-selected' : ''}`} style={style} onClick={event => onSelect(event.ctrlKey || event.metaKey)} onDoubleClick={onOpen} onKeyDown={event => { if (event.key === 'Enter') onOpen(); if (event.key === ' ') { event.preventDefault(); onSelect(event.ctrlKey || event.metaKey) } }} onDragStart={event => { const paths = selected ? selectedPaths : [entry.path]; event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('application/x-dsh-remote-files', JSON.stringify({ endpointId, paths })) }}><span><FileGlyph directory={entry.kind === 'directory'} /><i title={entry.name}>{entry.name}</i></span><span>{entry.kind === 'directory' ? '—' : formatBytes(entry.size)}</span><span>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : '—'}</span></div>
+  const directory = entry.kind === 'directory' || entry.navigable === true
+  return <div role="row" tabIndex={0} aria-selected={selected} aria-label={`${entry.name}${directory ? '，目录，单击进入' : ''}`} draggable={entry.kind === 'file' || entry.kind === 'directory'} className={`dsh-ssh-file-row is-${directory ? 'directory' : entry.kind}${selected ? ' is-selected' : ''}`} style={style} onClick={event => { if (directory && !event.ctrlKey && !event.metaKey && !event.shiftKey) onOpen(); else onSelect(event.ctrlKey || event.metaKey) }} onKeyDown={event => { if (event.key === 'Enter' && directory) onOpen(); if (event.key === ' ') { event.preventDefault(); onSelect(event.ctrlKey || event.metaKey) } }} onDragStart={event => { const paths = selected ? selectedPaths : [entry.path]; event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData('application/x-dsh-remote-files', JSON.stringify({ endpointId, paths })) }}><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : '—'}</span></div>
 }
 
 function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; onCancel(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {
@@ -194,12 +195,24 @@ function ConflictDialog({ job, onClose, onRetry }: { job: TransferJobView; onClo
 
 function FileAccessDialog({ endpoints, access, onClose }: { endpoints: FileEndpointView[]; access: SessionAccessState; onClose(): void }): JSX.Element {
   const value = access.value
+  const mounted = value?.fileEndpointIds.length ?? 0
   const toggle = (id: string): void => access.setFileEndpoints(value?.fileEndpointIds.includes(id) ? value.fileEndpointIds.filter(item => item !== id) : [...(value?.fileEndpointIds ?? []), id])
-  return <Dialog className="dsh-ssh-file-access-dialog" title="当前会话的文件权限" subtitle="文件权限与 SSH 命令、终端权限相互独立" onClose={onClose}>
-    {access.error && <p className="dsh-ssh-inline-error" role="alert">{access.error}</p>}
-    <div className="dsh-ssh-file-access-list">{endpoints.length === 0 ? <div className="dsh-ssh-table-empty">还没有可授权的文件连接。</div> : endpoints.map(endpoint => <button type="button" key={endpoint.id} className={value?.fileEndpointIds.includes(endpoint.id) ? 'is-mounted' : ''} aria-pressed={value?.fileEndpointIds.includes(endpoint.id)} onClick={() => toggle(endpoint.id)}><span className={`dsh-ssh-protocol-badge is-${endpoint.protocol}`}>{protocolShort(endpoint.protocol)}</span><span><strong>{endpoint.name}</strong><small>{endpoint.address}</small></span><i>{value?.fileEndpointIds.includes(endpoint.id) ? '已授权' : '未授权'}</i></button>)}</div>
-    <div className="dsh-ssh-file-access-options"><label><span><strong>文件操作权限</strong><small>浏览模式不会向 AI 暴露传输工具</small></span><select value={value?.filePermission ?? 'browse'} onChange={event => access.setFilePermission(event.target.value as 'browse' | 'transfer')}><option value="browse">仅浏览目录</option><option value="transfer">允许跨端传输</option></select></label><label className="dsh-ssh-switch-row"><span><strong>传输前确认</strong><small>AI 发起传输时请求 DSH 授权</small></span><input type="checkbox" checked={value?.requireFileApproval ?? true} onChange={event => access.setRequireFileApproval(event.target.checked)} /></label></div>
-    <div className="dsh-ssh-dialog-actions"><span /><button type="button" className="dsh-ssh-primary-button" onClick={onClose}>完成</button></div>
+  return <Dialog className="dsh-ssh-file-access-dialog" title="会话访问" subtitle="单独管理当前会话可使用的远端文件连接" onClose={onClose}>
+    <div className="dsh-ssh-file-access-body dsh-ssh-scroll-surface">
+      {access.error && <p className="dsh-ssh-inline-error" role="alert">{access.error}</p>}
+      <section className="dsh-ssh-file-access-section" aria-labelledby="dsh-ssh-file-access-connections">
+        <header><span><strong id="dsh-ssh-file-access-connections">文件连接</strong><small>选择允许当前会话浏览的 FTP、FTPS 或 SFTP</small></span><i>{mounted} / {endpoints.length}</i></header>
+        <div className="dsh-ssh-file-access-list">{access.loading ? <div className="dsh-ssh-file-access-loading"><i /><span>正在读取会话权限…</span></div> : endpoints.length === 0 ? <div className="dsh-ssh-table-empty">还没有可授权的文件连接。</div> : endpoints.map(endpoint => {
+          const enabled = value?.fileEndpointIds.includes(endpoint.id) ?? false
+          return <button type="button" key={endpoint.id} className={enabled ? 'is-mounted' : ''} aria-pressed={enabled} onClick={() => toggle(endpoint.id)}><span className={`dsh-ssh-protocol-badge is-${endpoint.protocol}`}>{protocolShort(endpoint.protocol)}</span><span><strong title={endpoint.name}>{endpoint.name}</strong><small title={endpoint.address}>{endpoint.address}</small></span><i><span aria-hidden="true" />{enabled ? '已授权' : '未授权'}</i></button>
+        })}</div>
+      </section>
+      <section className="dsh-ssh-file-access-section is-options" aria-labelledby="dsh-ssh-file-access-policy">
+        <header><span><strong id="dsh-ssh-file-access-policy">访问策略</strong><small>文件权限与 SSH 命令、终端权限相互独立</small></span></header>
+        <div className="dsh-ssh-file-access-options"><label><span><strong>文件操作权限</strong><small>浏览模式不会向 AI 暴露跨端传输工具</small></span><select value={value?.filePermission ?? 'browse'} onChange={event => access.setFilePermission(event.target.value as 'browse' | 'transfer')}><option value="browse">仅浏览目录</option><option value="transfer">允许跨端传输</option></select></label><label className="dsh-ssh-switch-row"><span><strong>传输前确认</strong><small>AI 发起传输时请求 DSH 授权</small></span><input type="checkbox" checked={value?.requireFileApproval ?? true} onChange={event => access.setRequireFileApproval(event.target.checked)} /></label></div>
+      </section>
+    </div>
+    <footer className="dsh-ssh-file-access-footer"><span>{access.saving ? '正在保存会话权限…' : mounted > 0 ? `已授权 ${mounted} 个文件连接` : '当前会话未授权文件连接'}</span><button type="button" className="dsh-ssh-primary-button" disabled={access.saving} onClick={onClose}>{access.saving ? '保存中…' : '完成'}</button></footer>
   </Dialog>
 }
 
