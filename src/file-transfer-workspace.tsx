@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent } from 'react'
 import { IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  cancelFileTransfer, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
+  cancelFileTransfer, deleteFileEndpointEntries, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
   type FileEndpointView, type FtpProfileView, type ProxyEntryView, type SftpDirectoryView, type SftpEntryView, type TransferJobView, type VaultEntryView,
 } from './client-api.js'
 import type { SessionAccessState } from './session-access.js'
@@ -102,6 +102,7 @@ function FileTransferPane({ pane, endpoints, destination, refreshRevision, onCha
   const [loading, setLoading] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
   const [dragOver, setDragOver] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<SftpEntryView[]>()
   const [error, setError] = useState<string>()
   const bodyRef = useRef<HTMLDivElement>(null)
   const loadGenerationRef = useRef(0)
@@ -122,6 +123,13 @@ function FileTransferPane({ pane, endpoints, destination, refreshRevision, onCha
   const chooseEndpoint = (next: FileEndpointView): void => { loadGenerationRef.current += 1; onChange({ endpointId: next.id, path: next.initialPath }); setDraftPath(next.initialPath); setView(undefined); setError(undefined) }
   const showConnections = (): void => { loadGenerationRef.current += 1; onChange({ endpointId: '', path: '/' }); setView(undefined); setSelected([]); setError(undefined); setLoading(false) }
   const select = (entry: SftpEntryView, additive: boolean): void => setSelected(current => additive ? current.includes(entry.path) ? current.filter(path => path !== entry.path) : [...current, entry.path] : [entry.path])
+  const removeSelected = async (): Promise<void> => {
+    if (deleteTarget === undefined || view === undefined || endpoint === undefined) return
+    try {
+      await deleteFileEndpointEntries({ paneId: pane.id, endpointId: endpoint.id, directory: view.path, paths: deleteTarget.map(entry => entry.path) })
+      setSelected([])
+    } finally { await load(view.path) }
+  }
   const drop = (event: DragEvent): void => {
     event.preventDefault(); setDragOver(false)
     try { const payload = JSON.parse(event.dataTransfer.getData('application/x-dsh-remote-files')) as { endpointId: string; paths: string[] }; if (payload.endpointId && Array.isArray(payload.paths)) onExternalDrop(payload.endpointId, payload.paths) } catch {}
@@ -138,9 +146,27 @@ function FileTransferPane({ pane, endpoints, destination, refreshRevision, onCha
       <div className="dsh-ssh-file-table-head" role="row"><span>名称</span><span>大小</span><span>修改时间</span></div>
       <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">正在读取目录…</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>重试</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">这个目录是空的。</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * 34}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} endpointId={endpoint.id} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * 34}px)` } } : {}} onSelect={additive => select(entry, additive)} onOpen={() => { if (entry.kind === 'directory') void load(entry.path) }} />)}</div>}</div>
     </div>
-    <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><button type="button" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></footer>
+    <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><span className="dsh-ssh-file-pane-actions"><button type="button" className="dsh-ssh-file-delete-button" disabled={selected.length === 0 || loading} onClick={() => setDeleteTarget(entries.filter(entry => selected.includes(entry.path)))}><IconTrashOutline16 size={14} />删除</button><button type="button" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></span></footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>传送到此目录</strong><span>{view?.path ?? pane.path}</span></div>}
+    {deleteTarget !== undefined && <DeleteRemoteEntriesDialog endpoint={endpoint} entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
   </section>
+}
+
+function DeleteRemoteEntriesDialog({ endpoint, entries, onClose, onDelete }: { endpoint: FileEndpointView; entries: SftpEntryView[]; onClose(): void; onDelete(): Promise<void> }): JSX.Element {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string>()
+  const directories = entries.filter(entry => entry.kind === 'directory').length
+  const submit = async (): Promise<void> => {
+    setDeleting(true); setError(undefined)
+    try { await onDelete(); setDeleting(false); onClose() }
+    catch (reason) { setError(errorMessage(reason)); setDeleting(false) }
+  }
+  return <Dialog className="dsh-ssh-file-delete-dialog" title={`删除 ${entries.length} 项？`} subtitle={`${endpoint.name} · 此操作无法撤销`} onClose={() => { if (!deleting) onClose() }}>
+    <div className="dsh-ssh-file-delete-copy"><span><IconTrashOutline16 size={18} /></span><p>将直接从远端删除所选内容。{directories > 0 ? `其中 ${directories} 个目录及其全部内容会被递归删除。` : ''}</p></div>
+    <div className="dsh-ssh-file-delete-list">{entries.slice(0, 6).map(entry => <div key={entry.path}><FileGlyph directory={entry.kind === 'directory'} /><span><strong>{entry.name}</strong><small title={entry.path}>{entry.path}</small></span></div>)}{entries.length > 6 && <p>以及其他 {entries.length - 6} 项</p>}</div>
+    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    <div className="dsh-ssh-dialog-actions"><span /><button type="button" className="dsh-ssh-secondary-button" disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting} onClick={() => { void submit() }}>{deleting ? '正在删除…' : '确认删除'}</button></div>
+  </Dialog>
 }
 
 function FileEntryRow({ entry, endpointId, selected, selectedPaths, style, onSelect, onOpen }: { entry: SftpEntryView; endpointId: string; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void }): JSX.Element {

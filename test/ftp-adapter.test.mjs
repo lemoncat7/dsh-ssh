@@ -28,11 +28,14 @@ test('FTP uses the routed dialer for both control and passive data connections',
   assert.equal(calls.length, 2)
   assert.equal(calls[0].port, server.port)
   assert.notEqual(calls[1].port, server.port)
+  await session.remove('/hello.txt', true)
+  assert.deepEqual((await session.list('/')).entries, [])
 })
 
 async function createFtpServer() {
   const sockets = new Set()
   const passiveServers = new Set()
+  let helloExists = true
   const control = net.createServer(socket => {
     sockets.add(socket)
     socket.on('close', () => sockets.delete(socket))
@@ -55,7 +58,7 @@ async function createFtpServer() {
         else if (verb === 'CWD') socket.write('250 Directory changed\r\n')
         else if (verb === 'EPSV') {
           passive = net.createServer(data => {
-            data.end('-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n')
+            data.end(helloExists ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : '')
           })
           passiveServers.add(passive)
           passive.listen(0, '127.0.0.1', () => {
@@ -65,6 +68,9 @@ async function createFtpServer() {
         } else if (verb === 'LIST') {
           socket.write('150 Opening data connection\r\n')
           setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive) }, 20)
+        } else if (verb === 'DELE') {
+          helloExists = false
+          socket.write('250 File deleted\r\n')
         } else if (verb === 'QUIT') socket.end('221 Bye\r\n')
         else socket.write('502 Not implemented\r\n')
       }

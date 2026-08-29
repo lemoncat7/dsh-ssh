@@ -109,6 +109,16 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
 
   async ensureDirectory(value: string, signal?: AbortSignal): Promise<void> { await this.run(this.client.ensureDir(value), signal) }
 
+  async remove(value: string, recursive: boolean, signal?: AbortSignal): Promise<void> {
+    const entry = await this.stat(value, signal)
+    if (entry.kind === 'directory') {
+      if (!recursive) throw Object.assign(new Error('remote path is a directory'), { status: 409 })
+      await this.run(this.client.removeDir(value), signal)
+      return
+    }
+    await this.run(this.client.remove(value), signal)
+  }
+
   close(): void { if (!this.closed) { this.closed = true; this.client.close() } }
 
   private async resolveDirectory(value: string, signal?: AbortSignal): Promise<string> {

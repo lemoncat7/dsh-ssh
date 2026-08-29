@@ -77,6 +77,17 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const paneId = requireText(url.searchParams.get('paneId'), 'paneId', 100)
       return sendJson(res, 200, await runtime.fileSessions.run(paneId, endpointId, session => session.list(url.searchParams.get('path') ?? session.endpoint.initialPath)))
     }
+    if (method === 'POST' && segments[1] === 'delete' && segments.length === 2) {
+      requireMutationHeader(req)
+      const request = parseFileDeleteRequest(await readObject(req))
+      await runtime.fileSessions.run(request.paneId, request.endpointId, async session => {
+        const directory = await session.list(request.directory)
+        const available = new Set(directory.entries.map(entry => entry.path))
+        for (const path of request.paths) if (!available.has(path)) throw httpError(404, `remote path ${path} is not a direct child of ${directory.path}`)
+        for (const path of request.paths) await session.remove(path, true)
+      })
+      return sendJson(res, 204, undefined)
+    }
     if (segments[1] === 'jobs') {
       if (method === 'GET' && segments.length === 2) return sendJson(res, 200, runtime.transfers.list())
       if (method === 'POST' && segments.length === 2) {
@@ -805,6 +816,23 @@ function parseTransferRequest(value: Record<string, unknown>) {
     destinationDirectory: requireRawText(value.destinationDirectory, 'destinationDirectory', 4096),
     conflictPolicy: conflict as TransferConflictPolicy,
   }
+}
+
+function parseFileDeleteRequest(value: Record<string, unknown>) {
+  if (!Array.isArray(value.paths) || value.paths.length < 1 || value.paths.length > 100) throw httpError(400, 'paths must contain 1-100 entries')
+  const paths = [...new Set(value.paths.map(path => requireRawText(path, 'remote path', 4096)))]
+  for (const path of paths) assertDeletableRemotePath(path)
+  return {
+    paneId: requireText(value.paneId, 'paneId', 100),
+    endpointId: requireText(value.endpointId, 'endpointId', 110),
+    directory: requireRawText(value.directory, 'directory', 4096),
+    paths,
+  }
+}
+
+function assertDeletableRemotePath(value: string): void {
+  const normalized = value.trim().replaceAll('\\', '/').replace(/\/+$/, '') || '/'
+  if (normalized === '/' || normalized === '.' || normalized === '~' || /^[A-Za-z]:$/.test(normalized)) throw httpError(400, 'refusing to delete a remote filesystem root')
 }
 
 function defaultFtpPort(protocol: FtpProfile['protocol']): number { return protocol === 'ftps-implicit' ? 990 : 21 }

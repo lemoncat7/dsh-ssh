@@ -131,6 +131,13 @@ class ReusableSftpSession implements RemoteFileSystemSession {
     }, signal)
   }
 
+  remove(requestedPath: string, recursive: boolean, signal?: AbortSignal): Promise<void> {
+    return this.run(async () => {
+      const target = expandHome(requestedPath.trim(), this.home).replaceAll('\\', '/')
+      await removeSftpEntry(this.sftp, target, recursive, signal, { entries: 0 })
+    }, signal)
+  }
+
   close(): void {
     if (this.closed) return
     this.closed = true
@@ -358,6 +365,21 @@ function mkdirSftp(sftp: SFTPWrapper, value: string): Promise<void> {
   return new Promise((resolve, reject) => sftp.mkdir(value, { mode: 0o755 }, error => error ? reject(error) : resolve()))
 }
 
+async function removeSftpEntry(sftp: SFTPWrapper, value: string, recursive: boolean, signal: AbortSignal | undefined, counter: { entries: number }, depth = 0): Promise<void> {
+  signal?.throwIfAborted()
+  counter.entries += 1
+  if (depth > 64 || counter.entries > 20_000) throw Object.assign(new Error('directory deletion exceeds the safety limit'), { status: 413 })
+  const attributes = await lstat(sftp, value)
+  if ((attributes.mode & 0o170000) !== 0o040000) { await unlinkSftp(sftp, value); return }
+  if (!recursive) throw Object.assign(new Error('remote path is a directory'), { status: 409 })
+  const entries = await readdir(sftp, value)
+  for (const entry of entries) {
+    if (entry.filename === '.' || entry.filename === '..') continue
+    await removeSftpEntry(sftp, remoteJoin(value, entry.filename), true, signal, counter, depth + 1)
+  }
+  await rmdirSftp(sftp, value)
+}
+
 function openSftp(client: import('ssh2').Client, signal?: AbortSignal): Promise<SFTPWrapper> {
   return new Promise((resolve, reject) => {
     const abort = (): void => reject(signal?.reason instanceof Error ? signal.reason : new Error('SFTP request was aborted'))
@@ -386,6 +408,20 @@ function stat(sftp: SFTPWrapper, value: string): Promise<import('ssh2').Stats> {
   return new Promise((resolve, reject) => {
     sftp.stat(value, (error, attributes) => error ? reject(error) : resolve(attributes))
   })
+}
+
+function lstat(sftp: SFTPWrapper, value: string): Promise<import('ssh2').Stats> {
+  return new Promise((resolve, reject) => {
+    sftp.lstat(value, (error, attributes) => error ? reject(normalizeSftpPathError(error, value)) : resolve(attributes))
+  })
+}
+
+function unlinkSftp(sftp: SFTPWrapper, value: string): Promise<void> {
+  return new Promise((resolve, reject) => sftp.unlink(value, error => error ? reject(normalizeSftpPathError(error, value)) : resolve()))
+}
+
+function rmdirSftp(sftp: SFTPWrapper, value: string): Promise<void> {
+  return new Promise((resolve, reject) => sftp.rmdir(value, error => error ? reject(normalizeSftpPathError(error, value)) : resolve()))
 }
 
 async function sftpPathExists(sftp: SFTPWrapper, value: string): Promise<boolean> {
