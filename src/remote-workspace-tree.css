@@ -11,7 +11,7 @@
   margin: 10px 0 10px 10px;
   border: 1px solid var(--ssh-glass-border);
   border-radius: 18px;
-  background: var(--ssh-glass-regular);
+  background: var(--ssh-chrome-surface);
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: var(--ssh-glass-shadow);
@@ -43,7 +43,7 @@
 .dsh-ssh-tree-header small,
 .dsh-ssh-access-heading small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-remote-tree > .dsh-ssh-search {
@@ -71,7 +71,7 @@
   margin: 0;
   padding: 0 8px;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-weight: 600;
 }
 
@@ -82,7 +82,7 @@
   place-items: center;
   border-radius: 6px;
   background: color-mix(in srgb, var(--ssh-text) 5%, transparent);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-tree-host {
@@ -185,7 +185,7 @@
   border-radius: 7px;
   color: var(--ssh-text-subtle);
   background: color-mix(in srgb, var(--ssh-surface-raised) 64%, transparent);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   font-weight: 620;
   line-height: 1;
   white-space: nowrap;
@@ -240,7 +240,7 @@
 
 .dsh-ssh-tree-host-main small {
   color: var(--ssh-text-subtle);
-  font: 10px/1.25 var(--ssh-font-mono);
+  font: var(--ssh-type-caption)/1.25 var(--ssh-font-mono);
 }
 
 .dsh-ssh-tree-add,
@@ -356,19 +356,19 @@
 }
 
 .dsh-ssh-tree-project-main strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   font-weight: 570;
 }
 
 .dsh-ssh-tree-project-main small {
   color: var(--ssh-text-subtle);
-  font: 10px/1.2 var(--ssh-font-mono);
+  font: var(--ssh-type-caption)/1.2 var(--ssh-font-mono);
 }
 
 .dsh-ssh-tree-project-main em {
   overflow: hidden;
   color: var(--ssh-accent-strong);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-style: normal;
   font-weight: 620;
   line-height: 1.2;
@@ -380,7 +380,7 @@
 .dsh-ssh-tree-state,
 .dsh-ssh-tree-no-results {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-tree-empty {
@@ -422,13 +422,13 @@
 }
 
 .dsh-ssh-access-heading strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   font-weight: 620;
 }
 
 .dsh-ssh-access-heading em {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-style: normal;
 }
 
@@ -451,7 +451,7 @@
   color: var(--ssh-text-subtle);
   background: transparent;
   background-image: none;
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-weight: 550;
   cursor: pointer;
   transition:
@@ -497,13 +497,13 @@
 }
 
 .dsh-ssh-access-approval strong {
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-weight: 560;
 }
 
 .dsh-ssh-access-approval small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-access-approval > i {
@@ -601,7 +601,7 @@
 
 .dsh-ssh-session-create-shell header p {
   color: var(--ssh-text-subtle);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-session-create-shell > form {
@@ -639,7 +639,7 @@
 
 .dsh-ssh-session-create-target dt {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-weight: 560;
 }
 
@@ -654,7 +654,7 @@
 .dsh-ssh-session-create-target dd small {
   overflow: hidden;
   color: var(--ssh-text-subtle);
-  font: 10px/1.35 var(--ssh-font-mono);
+  font: var(--ssh-type-caption)/1.35 var(--ssh-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -677,7 +677,7 @@
 .dsh-ssh-workspace-picker > p {
   margin: 4px 0 10px;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.5;
 }
 
@@ -757,7 +757,7 @@
 
 .dsh-ssh-workspace-option-copy small {
   color: var(--ssh-text-subtle);
-  font: 10px/1.3 var(--ssh-font-mono);
+  font: var(--ssh-type-caption)/1.3 var(--ssh-font-mono);
 }
 
 .dsh-ssh-workspace-option em {
@@ -765,7 +765,7 @@
   border-radius: 6px;
   color: var(--ssh-text-subtle);
   background: color-mix(in srgb, var(--ssh-text) 5%, transparent);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-style: normal;
   font-weight: 560;
   white-space: nowrap;
@@ -818,11 +818,11 @@
 
 .dsh-ssh-workspace-picker-empty strong {
   color: var(--ssh-text-muted);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-workspace-picker-empty small {
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.4;
 }
 

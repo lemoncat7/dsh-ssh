@@ -8,6 +8,10 @@ const clientSourceUrl = new URL('../src/client.tsx', import.meta.url)
 const transferSourceUrl = new URL('../src/file-transfer-workspace.tsx', import.meta.url)
 const sftpSourceUrl = new URL('../src/sftp-client.tsx', import.meta.url)
 const remoteTreeSourceUrl = new URL('../src/remote-workspace-tree.tsx', import.meta.url)
+const adaptiveStylesheetUrl = new URL('../src/adaptive-workspace.css', import.meta.url)
+const transferStylesheetUrl = new URL('../src/file-transfer-workspace.css', import.meta.url)
+const workbenchStylesheetUrl = new URL('../src/host-workbench.css', import.meta.url)
+const remoteTreeStylesheetUrl = new URL('../src/remote-workspace-tree.css', import.meta.url)
 
 test('button reset stays below component styles in the cascade', async () => {
   const css = await readFile(stylesheetUrl, 'utf8')
@@ -43,4 +47,31 @@ test('shared interactive surface contract owns themed hover and selection states
   assert.match(sftpSource, /dsh-ssh-sftp-row-delete dsh-ssh-context-action/)
   assert.match(sftpSource, /deletion=\{\{ locationName: '本地会话', locationKind: 'local', remove \}\}/)
   assert.match(remoteTreeSource, /dsh-ssh-tree-mount dsh-ssh-context-action/)
+})
+
+test('all SSH workspaces share one neutral material and typography contract', async () => {
+  const [css, adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss] = await Promise.all([
+    readFile(stylesheetUrl, 'utf8'),
+    readFile(adaptiveStylesheetUrl, 'utf8'),
+    readFile(transferStylesheetUrl, 'utf8'),
+    readFile(workbenchStylesheetUrl, 'utf8'),
+    readFile(remoteTreeStylesheetUrl, 'utf8'),
+    readFile(interactiveStylesheetUrl, 'utf8'),
+  ])
+  const featureCss = [adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss].join('\n')
+  const readableCss = [css, featureCss].join('\n')
+
+  assert.match(css, /--ssh-canvas:\s*transparent;/)
+  assert.match(css, /--ssh-chrome-surface:\s*var\(--ssh-panel\);/)
+  assert.match(css, /--ssh-card-surface:/)
+  assert.match(css, /--ssh-activity-surface:/)
+  assert.match(css, /--ssh-modal-surface:/)
+  assert.match(css, /--ssh-content-filter:[^;]*blur\(18px\);/)
+  assert.match(css, /prefers-reduced-transparency:[\s\S]*?--ssh-canvas:\s*#e9e9ed;[\s\S]*?--ssh-canvas:\s*#1c1c1e;/)
+  assert.match(css, /\.dsh-ssh-workspace\s*\{[\s\S]*?background:\s*var\(--ssh-canvas\);/)
+  assert.match(adaptiveCss, /\.dsh-ssh-adaptive-content\s*\{[\s\S]*?background:\s*var\(--ssh-surface\);[\s\S]*?backdrop-filter:\s*var\(--ssh-content-filter\);/)
+  assert.match(adaptiveCss, /prefers-reduced-transparency:\s*reduce[\s\S]*?\.dsh-ssh-adaptive-content,[\s\S]*?backdrop-filter:\s*none;/)
+  assert.match(transferCss, /\.dsh-ssh-transfer-workspace\s*\{[\s\S]*?background:\s*var\(--ssh-canvas\);/)
+  assert.doesNotMatch(featureCss, /#[\da-f]{3,8}\b|rgba?\(/i)
+  assert.doesNotMatch(readableCss, /font-size:\s*(?:10|11)px|font:[^;\n]*(?:10|11)px\//)
 })

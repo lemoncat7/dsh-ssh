@@ -20,63 +20,65 @@
     "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
   --ssh-font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono",
     "Noto Sans Mono CJK SC", monospace;
-  --ssh-type-caption: 11px;
-  --ssh-type-label: 12px;
+  --ssh-type-caption: 12px;
+  --ssh-type-label: 13px;
   --ssh-type-body: 13px;
-  --ssh-type-title: 17px;
+  --ssh-type-title: 18px;
   --ssh-leading-compact: 1.35;
   --ssh-leading-body: 1.5;
-  --ssh-control-height: 34px;
-  --ssh-control-height-compact: 30px;
+  --ssh-control-height: 36px;
+  --ssh-control-height-compact: 32px;
   --ssh-control-padding: 15px;
-  --ssh-control-padding-compact: 11px;
-  --ssh-canvas: #e9e9ed;
-  --ssh-panel: rgba(233, 233, 237, 0.72);
+  --ssh-control-padding-compact: 12px;
+  --ssh-canvas: transparent;
+  --ssh-panel: rgba(255, 255, 255, 0.16);
   --ssh-text: #1d1d1f;
   --ssh-text-muted: #515154;
-  --ssh-text-subtle: #6e6e73;
-  --ssh-host-border: rgba(60, 60, 67, 0.18);
-  --ssh-hover: rgba(118, 118, 128, 0.1);
+  --ssh-text-subtle: #747478;
+  --ssh-hover: rgba(118, 118, 128, 0.09);
   --ssh-selected: rgba(60, 60, 67, 0.085);
-  --ssh-control: rgba(255, 255, 255, 0.96);
-  --ssh-accent: #3a3a3c;
-  --ssh-accent-strong: #1d1d1f;
+  --ssh-control: rgba(255, 255, 255, 0.27);
+  --ssh-accent: #6e6e73;
+  --ssh-accent-strong: #2c2c2e;
   --ssh-on-accent: #ffffff;
   --ssh-success: #248a3d;
   --ssh-danger: #d70015;
   --ssh-warning: #c93400;
-  --ssh-surface: var(--ssh-canvas);
-  --ssh-surface-raised: #ffffff;
+  --ssh-surface: rgba(246, 247, 250, 0.17);
+  --ssh-surface-raised: rgba(255, 255, 255, 0.38);
+  --ssh-chrome-surface: var(--ssh-panel);
+  --ssh-card-surface: rgba(255, 255, 255, 0.24);
+  --ssh-card-highlight: rgba(255, 255, 255, 0.58);
+  --ssh-control-surface: var(--ssh-control);
   --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
-  /* Modal tasks need an opaque semantic plane even when the active theme uses
-     translucent canvas and panel tokens over artwork. */
-  --ssh-modal-surface: #ffffff;
-  --ssh-modal-surface-raised: #f5f5f7;
-  --ssh-activity-surface: var(--ssh-surface);
-  --ssh-activity-surface-raised: var(--ssh-surface-raised);
-  --ssh-border: rgba(60, 60, 67, 0.18);
-  --ssh-focus-ring: rgba(60, 60, 67, 0.5);
+  --ssh-modal-surface: rgba(246, 247, 250, 0.88);
+  --ssh-modal-surface-raised: rgba(255, 255, 255, 0.54);
+  --ssh-activity-surface: rgba(246, 247, 250, 0.82);
+  --ssh-activity-surface-raised: rgba(255, 255, 255, 0.72);
+  --ssh-border: rgba(60, 60, 67, 0.14);
+  --ssh-host-border: var(--ssh-border);
+  --ssh-separator: rgba(60, 60, 67, 0.11);
+  --ssh-focus-ring: rgba(60, 60, 67, 0.46);
   --ssh-scrollbar-thumb: rgba(60, 60, 67, 0.32);
   --ssh-scrollbar-hover: rgba(60, 60, 67, 0.5);
-  --ssh-glass-clear: rgba(255, 255, 255, 0.035);
-  --ssh-glass-regular: rgba(255, 255, 255, 0.075);
-  --ssh-glass-thick: rgba(255, 255, 255, 0.16);
-  --ssh-glass-border: rgba(60, 60, 67, 0.065);
-  --ssh-glass-separator: rgba(60, 60, 67, 0.14);
-  --ssh-glass-highlight: rgba(255, 255, 255, 0.32);
-  --ssh-glass-rim-light: rgba(255, 255, 255, 0.52);
-  --ssh-glass-rim-shadow: rgba(60, 60, 67, 0.12);
+  --ssh-glass-clear: rgba(255, 255, 255, 0.11);
+  --ssh-glass-regular: rgba(255, 255, 255, 0.24);
+  --ssh-glass-thick: rgba(255, 255, 255, 0.42);
+  --ssh-glass-border: var(--ssh-border);
+  --ssh-glass-separator: var(--ssh-separator);
+  --ssh-glass-highlight: var(--ssh-card-highlight);
+  --ssh-glass-rim-light: rgba(255, 255, 255, 0.7);
+  --ssh-glass-rim-shadow: rgba(60, 60, 67, 0.11);
   --ssh-border-glow-core: rgba(255, 255, 255, 1);
   --ssh-border-glow-soft: rgba(142, 142, 147, 0.5);
   --ssh-border-glow-shadow: rgba(44, 44, 46, 0.64);
   --ssh-border-glow-haze: rgba(255, 255, 255, 0.72);
-  --ssh-glass-filter: saturate(1.2) contrast(1.035) blur(20px);
-  --ssh-ambient-light: rgba(255, 255, 255, 0.28);
-  --ssh-ambient-shadow: rgba(60, 60, 67, 0.09);
+  --ssh-content-filter: saturate(1.08) contrast(1.015) blur(18px);
+  --ssh-glass-filter: saturate(1.22) contrast(1.03) blur(32px);
   --ssh-glass-shadow:
     inset 0 1px 0 var(--ssh-glass-rim-light),
     inset 0 -1px 0 var(--ssh-glass-rim-shadow),
-    0 10px 28px rgba(0, 0, 0, 0.085);
+    0 10px 28px rgba(31, 31, 35, 0.085);
   --ssh-control-shadow:
     0 1px 2px rgba(0, 0, 0, 0.08),
     0 4px 12px rgba(0, 0, 0, 0.055);
@@ -84,7 +86,8 @@
     0 2px 4px rgba(0, 0, 0, 0.09),
     0 8px 18px rgba(0, 0, 0, 0.075);
   --ssh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --ssh-shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.2);
+  --ssh-shadow-md: 0 10px 28px rgba(31, 31, 35, 0.085);
+  --ssh-shadow-lg: 0 24px 64px rgba(31, 31, 35, 0.14);
   --ssh-terminal-surface: #1c1c1e;
   --ssh-terminal-raised: #242426;
   --ssh-terminal-border: rgba(255, 255, 255, 0.12);
@@ -114,47 +117,51 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-preview-modal,
   .dsh-ssh-session-create-modal
 ) {
-  --ssh-canvas: #1c1c1e;
-  --ssh-panel: rgba(44, 44, 46, 0.94);
+  --ssh-canvas: transparent;
+  --ssh-panel: rgba(8, 10, 12, 0.18);
   --ssh-text: #f5f5f7;
   --ssh-text-muted: #d1d1d6;
   --ssh-text-subtle: #98989d;
-  --ssh-host-border: rgba(84, 84, 88, 0.65);
-  --ssh-hover: rgba(255, 255, 255, 0.08);
+  --ssh-hover: rgba(255, 255, 255, 0.075);
   --ssh-selected: rgba(255, 255, 255, 0.09);
-  --ssh-control: #3a3a3c;
-  --ssh-accent: #e5e5ea;
-  --ssh-accent-strong: #ffffff;
+  --ssh-control: rgba(8, 10, 12, 0.3);
+  --ssh-accent: #aeaeb2;
+  --ssh-accent-strong: #f5f5f7;
   --ssh-on-accent: #1d1d1f;
   --ssh-success: #30d158;
   --ssh-danger: #ff453a;
   --ssh-warning: #ff9f0a;
-  --ssh-surface: #1c1c1e;
-  --ssh-surface-raised: #2c2c2e;
+  --ssh-surface: rgba(8, 10, 12, 0.19);
+  --ssh-surface-raised: rgba(8, 10, 12, 0.42);
+  --ssh-chrome-surface: var(--ssh-panel);
+  --ssh-card-surface: rgba(7, 9, 11, 0.22);
+  --ssh-card-highlight: rgba(255, 255, 255, 0.11);
+  --ssh-control-surface: var(--ssh-control);
   --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
-  --ssh-modal-surface: #2c2c2e;
-  --ssh-modal-surface-raised: #3a3a3c;
-  --ssh-activity-surface: #1c1c1e;
-  --ssh-activity-surface-raised: #2c2c2e;
-  --ssh-border: rgba(84, 84, 88, 0.65);
-  --ssh-focus-ring: rgba(255, 255, 255, 0.58);
+  --ssh-modal-surface: rgba(18, 20, 22, 0.92);
+  --ssh-modal-surface-raised: rgba(28, 30, 32, 0.88);
+  --ssh-activity-surface: rgba(8, 10, 12, 0.88);
+  --ssh-activity-surface-raised: rgba(20, 22, 24, 0.84);
+  --ssh-border: rgba(255, 255, 255, 0.105);
+  --ssh-host-border: var(--ssh-border);
+  --ssh-separator: rgba(255, 255, 255, 0.08);
+  --ssh-focus-ring: rgba(255, 255, 255, 0.52);
   --ssh-scrollbar-thumb: rgba(235, 235, 245, 0.28);
   --ssh-scrollbar-hover: rgba(235, 235, 245, 0.46);
-  --ssh-glass-clear: rgba(28, 28, 30, 0.1);
-  --ssh-glass-regular: rgba(36, 36, 38, 0.22);
-  --ssh-glass-thick: rgba(44, 44, 46, 0.36);
-  --ssh-glass-border: rgba(255, 255, 255, 0.1);
-  --ssh-glass-separator: rgba(255, 255, 255, 0.1);
-  --ssh-glass-highlight: rgba(255, 255, 255, 0.14);
-  --ssh-glass-rim-light: rgba(255, 255, 255, 0.18);
+  --ssh-glass-clear: rgba(0, 0, 0, 0.1);
+  --ssh-glass-regular: rgba(0, 0, 0, 0.16);
+  --ssh-glass-thick: rgba(0, 0, 0, 0.26);
+  --ssh-glass-border: var(--ssh-border);
+  --ssh-glass-separator: var(--ssh-separator);
+  --ssh-glass-highlight: var(--ssh-card-highlight);
+  --ssh-glass-rim-light: rgba(255, 255, 255, 0.16);
   --ssh-glass-rim-shadow: rgba(0, 0, 0, 0.3);
   --ssh-border-glow-core: rgba(255, 255, 255, 0.6);
   --ssh-border-glow-soft: rgba(209, 209, 214, 0.24);
   --ssh-border-glow-shadow: rgba(0, 0, 0, 0.46);
   --ssh-border-glow-haze: rgba(235, 235, 245, 0.22);
-  --ssh-glass-filter: saturate(1.22) contrast(1.04) blur(22px);
-  --ssh-ambient-light: rgba(255, 255, 255, 0.055);
-  --ssh-ambient-shadow: rgba(0, 0, 0, 0.3);
+  --ssh-content-filter: saturate(1.04) contrast(1.02) blur(18px);
+  --ssh-glass-filter: saturate(1.22) contrast(1.03) blur(32px);
   --ssh-glass-shadow:
     inset 0 1px 0 var(--ssh-glass-rim-light),
     inset 0 -1px 0 var(--ssh-glass-rim-shadow),
@@ -166,6 +173,7 @@ body[data-ds-dark-theme] :is(
     0 2px 5px rgba(0, 0, 0, 0.28),
     0 9px 20px rgba(0, 0, 0, 0.24);
   --ssh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --ssh-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.34);
   --ssh-shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.48);
   color-scheme: dark;
 }
@@ -347,7 +355,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-sidebar-copy small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-injected-mark {
   display: inline-flex;
@@ -358,7 +366,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 6px;
   color: var(--ssh-success);
   background: color-mix(in srgb, var(--ssh-success) 8%, transparent);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
@@ -404,9 +412,9 @@ body[data-ds-dark-theme] :is(
   --ssh-adaptive-border: var(--ssh-border);
   --ssh-adaptive-accent: var(--ssh-accent);
   --ssh-adaptive-accent-strong: var(--ssh-accent-strong);
-  --ssh-adaptive-raised-surface: var(--ssh-surface-raised);
-  --ssh-adaptive-toolbar-surface: var(--ssh-glass-regular);
-  --ssh-adaptive-drawer-surface: var(--ssh-glass-thick);
+  --ssh-adaptive-raised-surface: var(--ssh-card-surface);
+  --ssh-adaptive-toolbar-surface: var(--ssh-chrome-surface);
+  --ssh-adaptive-drawer-surface: var(--ssh-activity-surface);
 }
 .dsh-ssh-workspace *,
 .dsh-ssh-workspace *::before,
@@ -615,11 +623,7 @@ body[data-ds-dark-theme] :is(
   min-width: 0;
   min-height: 0;
   color: var(--ssh-text);
-  background:
-    radial-gradient(circle at 8% 0%, var(--ssh-ambient-light), transparent 34%),
-    radial-gradient(circle at 96% 6%, var(--ssh-ambient-shadow), transparent 31%),
-    linear-gradient(145deg, color-mix(in srgb, var(--ssh-surface-raised) 32%, transparent), transparent 58%),
-    var(--ssh-canvas);
+  background: var(--ssh-canvas);
   font-family: var(--ssh-font-sans);
 }
 .dsh-ssh-toolbar {
@@ -632,7 +636,7 @@ body[data-ds-dark-theme] :is(
   padding: 0 20px;
   border: 1px solid var(--ssh-glass-border);
   border-radius: 18px;
-  background: var(--ssh-glass-regular);
+  background: var(--ssh-chrome-surface);
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: var(--ssh-glass-shadow);
@@ -663,7 +667,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-brand small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-segments {
   display: flex;
@@ -837,7 +841,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 8px;
   outline: 0;
   color: var(--ssh-text);
-  background: color-mix(in srgb, var(--ssh-surface-raised) 92%, transparent);
+  background: var(--ssh-control-surface);
   font: 400 12px/1.35 var(--ssh-font-sans);
 }
 .dsh-ssh-search input {
@@ -860,8 +864,8 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-border);
   border-radius: 8px;
   color: var(--ssh-text-muted);
-  background: var(--ssh-surface-raised);
-  font-size: 11px;
+  background: var(--ssh-card-surface);
+  font-size: var(--ssh-type-caption);
   font-weight: 650;
 }
 .dsh-ssh-terminal-pane,
@@ -890,7 +894,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-content-heading p {
   margin: 4px 0 0;
   color: var(--ssh-text-subtle);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-heading-actions {
   display: flex;
@@ -930,7 +934,7 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-terminal-border);
   border-radius: 12px;
   background: var(--ssh-terminal-surface);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--ssh-shadow-md);
 }
 .dsh-ssh-xterm {
   box-sizing: border-box;
@@ -983,8 +987,7 @@ body[data-ds-dark-theme] :is(
   border-top: 1px solid var(--ssh-terminal-border);
   color: var(--ssh-terminal-muted);
   background: var(--ssh-terminal-raised);
-  font:
-    10px/1 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1 var(--ssh-font-mono),
     monospace;
 }
 .dsh-ssh-banner {
@@ -994,7 +997,7 @@ body[data-ds-dark-theme] :is(
   gap: 16px;
   padding: 8px 18px;
   border-bottom: 1px solid transparent;
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-banner > span {
   display: flex;
@@ -1031,7 +1034,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 7px;
   color: var(--ssh-danger);
   background: color-mix(in srgb, var(--ssh-danger) 7%, transparent);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-empty-state {
   display: grid;
@@ -1050,7 +1053,7 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-border);
   border-radius: 14px;
   color: var(--ssh-accent);
-  background: var(--ssh-surface-raised);
+  background: var(--ssh-card-surface);
 }
 .dsh-ssh-empty-state h1 {
   margin: 0;
@@ -1073,18 +1076,19 @@ body[data-ds-dark-theme] :is(
   padding: 7px 10px;
   border: 1px solid var(--ssh-border);
   border-radius: 10px;
+  background: var(--ssh-card-surface);
 }
 .dsh-ssh-switch-row > span {
   display: grid;
   gap: 3px;
 }
 .dsh-ssh-switch-row strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   font-weight: 550;
 }
 .dsh-ssh-switch-row small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.35;
 }
 .dsh-ssh-switch-row input {
@@ -1105,7 +1109,7 @@ body[data-ds-dark-theme] :is(
   padding: 6px 10px;
   border: 1px solid var(--ssh-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--ssh-surface-raised) 88%, transparent);
+  background: var(--ssh-card-surface);
 }
 .dsh-ssh-forward-kind {
   display: grid;
@@ -1115,8 +1119,7 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-border);
   border-radius: 8px;
   color: var(--ssh-accent-strong);
-  font:
-    600 11px/1 var(--ssh-font-mono),
+  font: 600 var(--ssh-type-caption)/1 var(--ssh-font-mono),
     monospace;
 }
 .dsh-ssh-forward-copy {
@@ -1130,8 +1133,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-forward-copy small {
   overflow: hidden;
   color: var(--ssh-text-subtle);
-  font:
-    10px/1 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1 var(--ssh-font-mono),
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1145,7 +1147,7 @@ body[data-ds-dark-theme] :is(
     var(--ssh-text) 5%,
     transparent
   );
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-state-label.is-running {
   color: var(--ssh-success);
@@ -1181,18 +1183,18 @@ body[data-ds-dark-theme] :is(
   padding: 6px 10px;
   border: 1px solid var(--ssh-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--ssh-surface-raised) 80%, transparent);
+  background: var(--ssh-card-surface);
 }
 .dsh-ssh-number-row > span {
   display: grid;
   gap: 3px;
 }
 .dsh-ssh-number-row strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-number-row small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-number-row input {
   height: 30px;
@@ -1200,7 +1202,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-number-row em {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-style: normal;
 }
 .dsh-ssh-dialog-modal {
@@ -1228,7 +1230,7 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-glass-border);
   border-radius: 14px;
   color: var(--ssh-text);
-  background: var(--ssh-glass-thick);
+  background: var(--ssh-modal-surface);
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: var(--ssh-glass-shadow), var(--ssh-shadow-lg);
@@ -1252,7 +1254,7 @@ body[data-ds-dark-theme] :is(
       --ssh-border,
       color-mix(in srgb, var(--ssh-text) 10%, transparent)
     );
-  background: color-mix(in srgb, var(--ssh-glass-regular) 88%, transparent);
+  background: color-mix(in srgb, var(--ssh-modal-surface-raised) 88%, transparent);
   -webkit-backdrop-filter: saturate(1.25) blur(20px);
   backdrop-filter: saturate(1.25) blur(20px);
 }
@@ -1265,7 +1267,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-dialog header p {
   margin: 3px 0 0;
   color: var(--ssh-text-subtle);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-form {
   --ssh-border: color-mix(
@@ -1283,7 +1285,7 @@ body[data-ds-dark-theme] :is(
   padding: 14px;
   border: 1px solid color-mix(in srgb, var(--ssh-border) 78%, transparent);
   border-radius: var(--ssh-radius-surface);
-  background: var(--ssh-modal-surface-raised);
+  background: color-mix(in srgb, var(--ssh-modal-surface-raised) 74%, transparent);
 }
 .dsh-ssh-form-section-heading {
   display: grid;
@@ -1297,7 +1299,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-form-section-heading small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.4;
 }
 .dsh-ssh-form-grid {
@@ -1331,7 +1333,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-field small {
   color: var(--ssh-text-subtle);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.4;
   font-weight: 400;
 }
@@ -1341,7 +1343,7 @@ body[data-ds-dark-theme] :is(
   gap: 10px;
   margin-top: 2px;
   color: var(--ssh-text-subtle);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   font-weight: 600;
 }
 .dsh-ssh-form-divider:after {
@@ -1381,7 +1383,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-delete-profile > div:nth-child(2) { min-width: 0; }
 .dsh-ssh-delete-profile > div:nth-child(2) strong { font-size: 13px; }
 .dsh-ssh-delete-profile > div:nth-child(2) p,
-.dsh-ssh-delete-profile-block p { margin: 4px 0 0; color: var(--ssh-text-subtle); font-size: 11px; line-height: 1.55; }
+.dsh-ssh-delete-profile-block p { margin: 4px 0 0; color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); line-height: 1.55; }
 .dsh-ssh-delete-profile-block,
 .dsh-ssh-delete-profile > .dsh-ssh-inline-error,
 .dsh-ssh-delete-profile > .dsh-ssh-dialog-actions { grid-column: 1 / -1; }
@@ -1391,7 +1393,7 @@ body[data-ds-dark-theme] :is(
   padding: 10px 11px;
   background: color-mix(in srgb, var(--ssh-warning) 7%, transparent);
 }
-.dsh-ssh-delete-profile-block strong { color: color-mix(in srgb, var(--ssh-warning) 82%, var(--ssh-text)); font-size: 11px; }
+.dsh-ssh-delete-profile-block strong { color: color-mix(in srgb, var(--ssh-warning) 82%, var(--ssh-text)); font-size: var(--ssh-type-caption); }
 .dsh-ssh-form .dsh-ssh-switch-row {
   margin: 0;
 }
@@ -1553,7 +1555,18 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-dialog-modal,
   .dsh-ssh-preview-modal,
   .dsh-ssh-session-create-modal {
-    --ssh-panel: #ffffff;
+    --ssh-canvas: #e9e9ed;
+    --ssh-panel: #f2f3f7;
+    --ssh-surface: #f2f3f7;
+    --ssh-surface-raised: #f8f8fa;
+    --ssh-card-surface: #f8f8fa;
+    --ssh-control: #ffffff;
+    --ssh-control-surface: #ffffff;
+    --ssh-chrome-surface: #f2f3f7;
+    --ssh-modal-surface: #f8f8fa;
+    --ssh-modal-surface-raised: #ffffff;
+    --ssh-activity-surface: #f2f3f7;
+    --ssh-activity-surface-raised: #ffffff;
   }
   body[data-ds-dark-theme] :is(
     .dsh-ssh-sidebar,
@@ -1563,7 +1576,18 @@ body[data-ds-dark-theme] :is(
     .dsh-ssh-preview-modal,
     .dsh-ssh-session-create-modal
   ) {
+    --ssh-canvas: #1c1c1e;
     --ssh-panel: #2c2c2e;
+    --ssh-surface: #2c2c2e;
+    --ssh-surface-raised: #323235;
+    --ssh-card-surface: #323235;
+    --ssh-control: #3a3a3c;
+    --ssh-control-surface: #3a3a3c;
+    --ssh-chrome-surface: #2c2c2e;
+    --ssh-modal-surface: #2c2c2e;
+    --ssh-modal-surface-raised: #3a3a3c;
+    --ssh-activity-surface: #1c1c1e;
+    --ssh-activity-surface-raised: #2c2c2e;
   }
   .dsh-ssh-dialog > header,
   .dsh-ssh-toolbar,
@@ -1627,7 +1651,7 @@ body[data-ds-dark-theme] :is(
   min-height: 0;
   flex-direction: column;
   color: var(--ssh-text);
-  background: var(--ssh-glass-thick);
+  background: var(--ssh-activity-surface);
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: inset 1px 0 0 var(--ssh-glass-border);
@@ -1643,7 +1667,7 @@ body[data-ds-dark-theme] :is(
   padding: 0 14px 0 16px;
   border: 1px solid var(--ssh-glass-border);
   border-radius: 17px;
-  background: var(--ssh-glass-regular);
+  background: var(--ssh-chrome-surface);
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: var(--ssh-glass-shadow);
@@ -1677,8 +1701,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-activity-header small {
   overflow: hidden;
   color: var(--ssh-text-subtle);
-  font:
-    10px/1.25 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1.25 var(--ssh-font-mono),
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1710,7 +1733,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 7px;
   color: var(--ssh-text-muted);
   background: transparent;
-  font: 550 11px/1 var(--ssh-font-sans);
+  font: 550 var(--ssh-type-caption)/1 var(--ssh-font-sans);
   cursor: pointer;
 }
 .dsh-ssh-activity-tabs button:hover {
@@ -1738,7 +1761,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-activity-state {
   margin: 20px 4px;
   color: var(--ssh-text-subtle);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-sftp {
   position: relative;
@@ -1779,7 +1802,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp-dropzone small {
   overflow: hidden;
   color: var(--ssh-text-subtle);
-  font: 10px/1.4 var(--ssh-font-mono), monospace;
+  font: var(--ssh-type-caption)/1.4 var(--ssh-font-mono), monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1817,8 +1840,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp-hostbar small {
   overflow: hidden;
   color: var(--ssh-text-subtle);
-  font:
-    10px/1.2 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1.2 var(--ssh-font-mono),
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1855,8 +1877,7 @@ body[data-ds-dark-theme] :is(
   min-width: 0;
   padding: 0 10px;
   outline: 0;
-  font:
-    10px/1 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1 var(--ssh-font-mono),
     monospace;
 }
 .dsh-ssh-sftp-pathbar .dsh-ssh-sftp-upload-button {
@@ -1866,7 +1887,7 @@ body[data-ds-dark-theme] :is(
   padding: 0 10px;
   color: var(--ssh-on-accent);
   background: var(--ssh-accent);
-  font: 550 10px/1 var(--ssh-font-sans);
+  font: 550 var(--ssh-type-caption)/1 var(--ssh-font-sans);
 }
 .dsh-ssh-directory-error {
   margin: 0 0 8px;
@@ -1874,7 +1895,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 7px;
   color: var(--ssh-danger);
   background: color-mix(in srgb, var(--ssh-danger) 7%, transparent);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.4;
 }
 .dsh-ssh-sftp-table {
@@ -1902,7 +1923,7 @@ body[data-ds-dark-theme] :is(
   border-bottom: 1px solid var(--ssh-activity-border);
   color: var(--ssh-text-subtle);
   background: var(--ssh-activity-surface);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-sftp-row {
   box-sizing: border-box;
@@ -1950,7 +1971,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-sftp-row strong {
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   font-weight: 500;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -1959,8 +1980,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp-row small {
   overflow: hidden;
   color: var(--ssh-text-subtle);
-  font:
-    10px/1.25 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1.25 var(--ssh-font-mono),
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1969,7 +1989,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp-row-delete:hover { color: var(--ssh-danger); background: color-mix(in srgb, var(--ssh-danger) 8%, transparent); }
 .dsh-ssh-sftp-row-delete:active { transform: scale(.94); }
 .dsh-ssh-sftp-row-delete:focus-visible { outline: 2px solid color-mix(in srgb, var(--ssh-danger) 42%, transparent); outline-offset: 1px; }
-.dsh-ssh-sftp-operation-status { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; padding: 0 8px 0 10px; border: 1px solid var(--ssh-activity-border); border-radius: 8px; color: var(--ssh-text-muted); background: var(--ssh-activity-surface-raised); font-size: 10px; }
+.dsh-ssh-sftp-operation-status { display: flex; min-height: 30px; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; padding: 0 8px 0 10px; border: 1px solid var(--ssh-activity-border); border-radius: 8px; color: var(--ssh-text-muted); background: var(--ssh-activity-surface-raised); font-size: var(--ssh-type-caption); }
 .dsh-ssh-sftp-operation-status button { display: grid; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 6px; color: var(--ssh-text-subtle); background: transparent; cursor: pointer; }
 .dsh-ssh-sftp-operation-status button:hover { color: var(--ssh-text); background: var(--ssh-hover); }
 .dsh-ssh-sftp-state {
@@ -1978,7 +1998,7 @@ body[data-ds-dark-theme] :is(
   min-height: 160px;
   margin: 0;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-activity-empty {
   display: grid;
@@ -1999,7 +2019,7 @@ body[data-ds-dark-theme] :is(
   max-width: 260px;
   margin: 7px 0 0;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.5;
 }
 .dsh-ssh-terminal-observer {
@@ -2011,7 +2031,7 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-terminal-border);
   border-radius: 12px;
   background: var(--ssh-terminal-surface);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--ssh-shadow-md);
 }
 .dsh-ssh-terminal-observer-heading {
   display: flex;
@@ -2040,14 +2060,13 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-terminal-observer-heading small {
   color: var(--ssh-terminal-muted);
-  font:
-    10px/1.2 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1.2 var(--ssh-font-mono),
     monospace;
 }
 .dsh-ssh-terminal-state {
   flex: none;
   color: var(--ssh-terminal-muted);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-terminal-state.is-running {
   color: var(--ssh-success);
@@ -2069,14 +2088,14 @@ body[data-ds-dark-theme] :is(
   border: 1px solid var(--ssh-terminal-border);
   border-radius: 7px;
   color: var(--ssh-terminal-muted);
-  background: rgba(255, 255, 255, 0.03);
-  font: 550 10px/1 var(--ssh-font-sans);
+  background: color-mix(in srgb, var(--ssh-terminal-text) 3%, transparent);
+  font: 550 var(--ssh-type-caption)/1 var(--ssh-font-sans);
   cursor: pointer;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 .dsh-ssh-terminal-close:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--ssh-danger) 34%, transparent);
-  color: #ff6961;
+  color: var(--ssh-danger);
   background: color-mix(in srgb, var(--ssh-danger) 10%, transparent);
 }
 .dsh-ssh-terminal-close:active:not(:disabled) { transform: scale(.97); }
@@ -2126,11 +2145,11 @@ body[data-ds-dark-theme] :is(
   white-space: nowrap;
 }
 .dsh-ssh-file-preview-title strong {
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-file-preview-title small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-file-preview-actions {
   display: flex;
@@ -2170,8 +2189,7 @@ body[data-ds-dark-theme] :is(
   padding: 12px;
   color: var(--ssh-text);
   background: transparent;
-  font:
-    10px/1.55 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1.55 var(--ssh-font-mono),
     monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2247,7 +2265,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-markdown-preview pre code {
   padding: 0;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-markdown-preview a {
   color: var(--ssh-accent-strong);
@@ -2288,7 +2306,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-file-preview-body > small {
   padding: 8px 12px;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-file-preview-body > img {
   display: block;
@@ -2302,7 +2320,7 @@ body[data-ds-dark-theme] :is(
   height: 100%;
   min-height: 420px;
   border: 0;
-  background: #fff;
+  background: var(--ssh-modal-surface-raised);
 }
 .dsh-ssh-preview-modal {
   --ssh-surface: var(--ssh-modal-surface);
@@ -2315,7 +2333,7 @@ body[data-ds-dark-theme] :is(
   border-color: var(--ssh-glass-border);
   border-radius: 16px;
   color: var(--ssh-text);
-  background: var(--ssh-glass-thick);
+  background: var(--ssh-modal-surface);
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: var(--ssh-glass-shadow), var(--ssh-shadow-lg);
@@ -2339,7 +2357,7 @@ body[data-ds-dark-theme] :is(
   gap: 16px;
   padding: 0 14px 0 18px;
   border-bottom: 1px solid var(--ssh-glass-separator);
-  background: var(--ssh-glass-regular);
+  background: var(--ssh-modal-surface-raised);
 }
 .dsh-ssh-preview-modal-shell > header > span:first-child {
   display: grid;
@@ -2352,7 +2370,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-preview-modal-shell > header small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-file-preview-body.is-modal > pre {
   padding: 22px 24px 40px;
@@ -2378,12 +2396,12 @@ body[data-ds-dark-theme] :is(
   color: var(--ssh-text-subtle);
 }
 .dsh-ssh-file-binary strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-file-binary p {
   margin: 5px 0 12px;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-file-binary a {
   display: inline-flex;
@@ -2395,7 +2413,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 8px;
   color: var(--ssh-text);
   background: var(--ssh-control);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   text-decoration: none;
 }
 .dsh-ssh-terminal-workbench {
@@ -2426,7 +2444,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 7px;
   color: var(--ssh-text-muted);
   background: transparent;
-  font: 500 10px/1 var(--ssh-font-sans);
+  font: 500 var(--ssh-type-caption)/1 var(--ssh-font-sans);
   white-space: nowrap;
   cursor: pointer;
   flex: 0 0 min(120px, 42%);
@@ -2475,9 +2493,9 @@ body[data-ds-dark-theme] :is(
   margin: 0;
   padding: 6px 8px;
   border-radius: 6px;
-  color: #ff6961;
-  background: rgba(255, 69, 58, 0.14);
-  font-size: 10px;
+  color: var(--ssh-danger);
+  background: color-mix(in srgb, var(--ssh-danger) 14%, transparent);
+  font-size: var(--ssh-type-caption);
 }
 
 .dsh-ssh-sftp-row:active,
@@ -2511,7 +2529,7 @@ body[data-ds-dark-theme] :is(
   padding: 5px 8px;
   border: 1px solid var(--ssh-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--ssh-surface-raised) 82%, transparent);
+  background: var(--ssh-card-surface);
   transition:
     background 140ms ease,
     border-color 140ms ease;
@@ -2553,21 +2571,21 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-vault-row small,
 .dsh-ssh-proxy-row small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-proxy-kind {
   padding: 3px 7px;
   border-radius: 6px;
   color: var(--ssh-accent-strong);
   background: color-mix(in srgb, var(--ssh-accent) 9%, transparent);
-  font: 600 10px/1 var(--ssh-font-mono), monospace;
+  font: 600 var(--ssh-type-caption)/1 var(--ssh-font-mono), monospace;
 }
 .dsh-ssh-vault-state {
   padding: 3px 7px;
   border-radius: 6px;
   color: var(--ssh-danger);
   background: color-mix(in srgb, var(--ssh-danger) 7%, transparent);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-vault-state.is-ready {
   color: var(--ssh-accent-strong);
@@ -2600,7 +2618,7 @@ body[data-ds-dark-theme] :is(
   max-width: 360px;
   margin: 7px 0 16px;
   color: var(--ssh-text-muted);
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
   line-height: 1.55;
 }
 .dsh-ssh-credential-reference {
@@ -2632,15 +2650,15 @@ body[data-ds-dark-theme] :is(
   gap: 3px;
 }
 .dsh-ssh-credential-reference strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-credential-reference small {
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-credential-reference em {
   color: var(--ssh-accent-strong);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-style: normal;
 }
 .dsh-ssh-jump-chain {
@@ -2650,18 +2668,18 @@ body[data-ds-dark-theme] :is(
   padding: 10px;
   border: 1px solid var(--ssh-border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--ssh-surface-raised) 72%, transparent);
+  background: var(--ssh-card-surface);
 }
 .dsh-ssh-jump-chain legend {
   padding: 0 5px;
   color: var(--ssh-text-muted);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   font-weight: 600;
 }
 .dsh-ssh-jump-chain > p {
   margin: 0;
   color: var(--ssh-text-subtle);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-jump-chain > div {
   display: grid;
@@ -2681,8 +2699,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 6px;
   color: var(--ssh-accent-strong);
   background: color-mix(in srgb, var(--ssh-accent) 9%, transparent);
-  font:
-    600 10px/1 var(--ssh-font-mono),
+  font: 600 var(--ssh-type-caption)/1 var(--ssh-font-mono),
     monospace;
   font-style: normal;
 }
@@ -2815,7 +2832,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 8px;
   color: var(--ssh-text-muted);
   background: transparent;
-  font: 550 11px/1 var(--ssh-font-sans);
+  font: 550 var(--ssh-type-caption)/1 var(--ssh-font-sans);
   text-align: left;
   cursor: pointer;
 }
@@ -2851,7 +2868,7 @@ body[data-ds-dark-theme] :is(
   box-sizing: border-box;
   margin: 0;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-test-result.is-warning {
   display: flex;
@@ -2874,8 +2891,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-test-result.is-warning code {
   overflow: hidden;
-  font:
-    10px/1.3 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1.3 var(--ssh-font-mono),
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2894,7 +2910,7 @@ body[data-ds-dark-theme] :is(
   margin: 0;
   padding: 8px 10px;
   color: var(--ssh-text-subtle);
-  font: 10px/1.4 var(--ssh-font-sans);
+  font: var(--ssh-type-caption)/1.4 var(--ssh-font-sans);
 }
 .dsh-ssh-profile-sftp-pane {
   box-sizing: border-box;
@@ -2922,7 +2938,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns {
   min-height: 34px;
   padding: 0 12px;
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row {
   min-height: 40px;
@@ -2933,10 +2949,10 @@ body[data-ds-dark-theme] :is(
   background: var(--ssh-hover);
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row strong {
-  font-size: 11px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row small {
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-upload-conflict {
   display: flex;
@@ -2960,14 +2976,13 @@ body[data-ds-dark-theme] :is(
   min-width: 0;
 }
 .dsh-ssh-upload-conflict strong {
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
 }
 .dsh-ssh-upload-conflict small {
   overflow: hidden;
   max-width: 240px;
   color: var(--ssh-text-subtle);
-  font:
-    10px/1 var(--ssh-font-mono),
+  font: var(--ssh-type-caption)/1 var(--ssh-font-mono),
     monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2979,7 +2994,7 @@ body[data-ds-dark-theme] :is(
   border-radius: 7px;
   color: var(--ssh-text-muted);
   background: var(--ssh-surface-raised);
-  font-size: 10px;
+  font-size: var(--ssh-type-caption);
   cursor: pointer;
 }
 .dsh-ssh-upload-conflict button.is-primary {

@@ -34,6 +34,11 @@
 .dsh-ssh-adaptive-content {
   position: relative;
   z-index: 0;
+  overflow: hidden;
+  background: var(--ssh-surface);
+  -webkit-backdrop-filter: var(--ssh-content-filter);
+  backdrop-filter: var(--ssh-content-filter);
+  box-shadow: inset 0 1px 0 var(--ssh-card-highlight);
 }
 .dsh-ssh-mobile-actions,
 .dsh-ssh-adaptive-backdrop {
@@ -47,7 +52,7 @@
     min-height: 46px;
     padding: 5px max(10px, env(safe-area-inset-left)) 5px max(10px, env(safe-area-inset-right));
     border-bottom: 1px solid var(--ssh-adaptive-border, color-mix(in srgb, currentColor 10%, transparent));
-    background: var(--ssh-adaptive-toolbar-surface, var(--ssh-glass-regular));
+    background: var(--ssh-adaptive-toolbar-surface, var(--ssh-chrome-surface));
     -webkit-backdrop-filter: var(--ssh-glass-filter);
     backdrop-filter: var(--ssh-glass-filter);
     overflow-x: auto;
@@ -117,7 +122,7 @@
     inset: 0;
     display: block;
     border: 0;
-    background: rgba(0, 0, 0, 0.24);
+    background: color-mix(in srgb, black 24%, transparent);
     opacity: 0;
     visibility: hidden;
     transition: opacity 170ms ease, visibility 170ms;
@@ -145,6 +150,7 @@
   }
 }
 @media (prefers-reduced-transparency: reduce) {
+  .dsh-ssh-adaptive-content,
   .dsh-ssh-mobile-actions,
   .dsh-ssh-adaptive-navigation,
   .dsh-ssh-adaptive-inspector {
