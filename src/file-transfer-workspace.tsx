@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent } from 'react'
 import { IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  cancelFileTransfer, deleteFileEndpointEntries, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
+  cancelFileTransfer, deleteFileEndpointEntries, fileEndpointDownloadUrl, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
   type FileEndpointView, type FtpProfileView, type ProxyEntryView, type SftpDirectoryView, type SftpEntryView, type TransferJobView, type VaultEntryView,
 } from './client-api.js'
 import type { SessionAccessState } from './session-access.js'
@@ -13,6 +13,7 @@ import {
 } from './file-transfer-intent.js'
 import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
+import { sortFileEntries, type FileEntrySortDirection, type FileEntrySortKey } from './file-entry-sort.js'
 
 interface PaneState { id: string; endpointId: string; path: string }
 interface TransferTab { id: string; name: string; panes: PaneState[] }
@@ -127,6 +128,7 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
   const [draftPath, setDraftPath] = useState(pane.path)
   const [loading, setLoading] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
+  const [sort, setSort] = useState<{ key: FileEntrySortKey; direction: FileEntrySortDirection }>({ key: 'name', direction: 'asc' })
   const [dragOver, setDragOver] = useState(false)
   const [directoryDropTarget, setDirectoryDropTarget] = useState<string>()
   const [deleteTarget, setDeleteTarget] = useState<SftpEntryView[]>()
@@ -134,7 +136,7 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
   const bodyRef = useRef<HTMLDivElement>(null)
   const loadGenerationRef = useRef(0)
   const endpoint = endpoints.find(item => item.id === pane.endpointId)
-  const entries = view?.entries ?? []
+  const entries = useMemo(() => sortFileEntries(view?.entries ?? [], sort.key, sort.direction), [view?.entries, sort])
   const virtualized = entries.length > 200
   const virtualStart = virtualized ? Math.max(0, Math.floor(scrollTop / FILE_ROW_HEIGHT) - 8) : 0
   const visibleEntries = useMemo(() => virtualized ? entries.slice(virtualStart, Math.min(entries.length, virtualStart + 56)) : entries, [entries, virtualStart, virtualized])
@@ -148,6 +150,11 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
   useEffect(() => { if (endpoint !== undefined) void load(pane.path) }, [endpoint?.id, refreshRevision])
   useEffect(() => { if (dragSource === undefined) { setDragOver(false); setDirectoryDropTarget(undefined) } }, [dragSource])
   const submitPath = (event: FormEvent): void => { event.preventDefault(); void load(draftPath) }
+  const changeSort = (key: FileEntrySortKey): void => {
+    setSort(current => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' })
+    setScrollTop(0)
+    if (bodyRef.current) bodyRef.current.scrollTop = 0
+  }
   const chooseEndpoint = (next: FileEndpointView): void => { loadGenerationRef.current += 1; onChange({ endpointId: next.id, path: next.initialPath }); setDraftPath(next.initialPath); setView(undefined); setError(undefined) }
   const showConnections = (): void => { loadGenerationRef.current += 1; onChange({ endpointId: '', path: '/' }); setView(undefined); setSelected([]); setError(undefined); setLoading(false) }
   const select = (entry: SftpEntryView, additive: boolean): void => setSelected(current => additive ? current.includes(entry.path) ? current.filter(path => path !== entry.path) : [...current, entry.path] : [entry.path])
@@ -174,13 +181,31 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
     <header><button type="button" className="dsh-ssh-pane-back" aria-label="返回连接列表" onClick={showConnections}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-pane-endpoint"><strong>{endpoint.name}</strong><small title={endpoint.address}>{endpoint.address}</small></span><span className={`dsh-ssh-protocol-badge is-${endpoint.protocol}`}>{protocolShort(endpoint.protocol)}</span></header>
     <form className="dsh-ssh-file-pathbar" onSubmit={submitPath}><button type="button" aria-label="上一级目录" disabled={view?.parent === null || loading} onClick={() => { if (view?.parent) void load(view.parent) }}><UpGlyph /></button><button type="button" aria-label="刷新目录" disabled={loading} onClick={() => { void load() }}><RefreshGlyph /></button><input aria-label="远端路径" value={draftPath} onChange={event => setDraftPath(event.target.value)} /><button type="submit" disabled={loading}>前往</button></form>
     <div className="dsh-ssh-file-table" role="grid" aria-busy={loading}>
-      <div className="dsh-ssh-file-table-head" role="row"><span>名称</span><span>大小</span><span>修改时间</span><span aria-hidden="true" /></div>
+      <div className="dsh-ssh-file-table-head" role="row">
+        <SortColumn label="名称" sortKey="name" current={sort} onSort={changeSort} />
+        <SortColumn label="大小" sortKey="size" current={sort} onSort={changeSort} />
+        <SortColumn label="修改时间" sortKey="modifiedAt" current={sort} onSort={changeSort} />
+        <span role="columnheader" aria-label="操作" />
+      </div>
       <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">正在读取目录…</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>重试</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">这个目录是空的。</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * FILE_ROW_HEIGHT}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} paneId={pane.id} endpointId={endpoint.id} sourceDirectory={view?.path ?? pane.path} dragSource={dragSource} dropTarget={directoryDropTarget === entry.path} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * FILE_ROW_HEIGHT}px)` } } : {}} onDelete={() => setDeleteTarget([entry])} onDirectoryTarget={target => { setDragOver(false); setDirectoryDropTarget(target) }} onDropIntoDirectory={(payload, target) => { setDirectoryDropTarget(undefined); onDragSourceChange(undefined); onExternalDrop(payload, target) }} onDragSourceChange={onDragSourceChange} onSelect={additive => select(entry, additive)} onOpen={() => { void load(entry.path) }} />)}</div>}</div>
     </div>
     <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><span className="dsh-ssh-file-pane-actions"><button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></span></footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>{dragSource?.endpointId === pane.endpointId ? '移动到此目录' : '复制到此目录'}</strong><span>{view?.path ?? pane.path}</span></div>}
     {deleteTarget !== undefined && <FileEntryDeleteDialog locationName={endpoint.name} locationKind="remote" entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
   </section>
+}
+
+function SortColumn({ label, sortKey, current, onSort }: { label: string; sortKey: FileEntrySortKey; current: { key: FileEntrySortKey; direction: FileEntrySortDirection }; onSort(key: FileEntrySortKey): void }): JSX.Element {
+  const active = current.key === sortKey
+  return <span role="columnheader" aria-sort={active ? (current.direction === 'asc' ? 'ascending' : 'descending') : 'none'}><button type="button" onClick={() => onSort(sortKey)}>{label}<SortGlyph active={active} direction={current.direction} /></button></span>
+}
+
+function SortGlyph({ active, direction }: { active: boolean; direction: FileEntrySortDirection }): JSX.Element {
+  return <svg className={active ? 'is-active' : ''} viewBox="0 0 12 12" aria-hidden="true"><path d="m3.5 5 2.5 2.5L8.5 5" transform={direction === 'desc' ? undefined : 'rotate(180 6 6)'} /></svg>
+}
+
+function DownloadGlyph(): JSX.Element {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7m0 0 2.6-2.6M8 9 5.4 6.4M3 11.5v1.25h10V11.5" /></svg>
 }
 
 function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, dropTarget, selected, selectedPaths, style, onSelect, onOpen, onDelete, onDirectoryTarget, onDropIntoDirectory, onDragSourceChange }: { entry: SftpEntryView; paneId: string; endpointId: string; sourceDirectory: string; dragSource?: TransferDragSource | undefined; dropTarget: boolean; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void; onDelete(): void; onDirectoryTarget(path?: string): void; onDropIntoDirectory(payload: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void }): JSX.Element {
@@ -209,7 +234,7 @@ function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, 
     onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && acceptsDrop) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = dragSource?.endpointId === endpointId ? 'move' : 'copy'; onDirectoryTarget(entry.path) } }}
     onDragLeave={event => { if (dropTarget && !event.currentTarget.contains(event.relatedTarget as Node)) onDirectoryTarget(undefined) }}
     onDrop={dropIntoDirectory}
-  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : '—'}</span><button type="button" className="dsh-ssh-file-row-delete dsh-ssh-context-action" draggable={false} aria-label={`删除 ${entry.name}`} title={`删除 ${entry.name}`} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></div>
+  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : '—'}</span><span className="dsh-ssh-file-row-actions dsh-ssh-context-action">{(entry.kind === 'file' || entry.kind === 'directory') && <a className="dsh-ssh-file-row-download" href={fileEndpointDownloadUrl(endpointId, entry.path)} download={entry.kind === 'directory' ? `${entry.name}.tar` : entry.name} draggable={false} aria-label={`下载 ${entry.name} 到本地`} title={entry.kind === 'directory' ? `将 ${entry.name} 打包下载到本地` : `下载 ${entry.name} 到本地`} onClick={event => event.stopPropagation()}><DownloadGlyph /></a>}<button type="button" className="dsh-ssh-file-row-delete" draggable={false} aria-label={`删除 ${entry.name}`} title={`删除 ${entry.name}`} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></span></div>
 }
 
 function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; onCancel(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {

@@ -45,7 +45,7 @@ function directoryListTool(store: SshStore, files: RemoteFileSystems): ToolDefin
 }
 
 function transferStartTool(store: SshStore, transfers: FileTransferManager): ToolDefinition {
-  return tool('file_transfer_start', 'Start an asynchronous server-side transfer between two authorized FTP, FTPS, or SFTP endpoints. Use fail as the default conflict policy unless the user explicitly chose another policy.', {
+  return tool('file_transfer_start', 'Preferred tool for copying files between two authorized FTP, FTPS, or SFTP endpoints. Never replace it with an SSH command, temporary HTTP server, open port, base64 stream, or terminal pipe. Use fail as the default conflict policy unless the user explicitly chose another policy.', {
     sourceEndpointId: { type: 'string', required: true },
     sourcePaths: { type: 'array', required: true, items: { type: 'string' }, minItems: 1, maxItems: 100 },
     destinationEndpointId: { type: 'string', required: true },
@@ -125,7 +125,14 @@ function installVisibility(ctx: Context, store: SshStore): () => void {
 function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStore['injection']>): void {
   if (injection === undefined || (injection.fileEndpointIds ?? []).length === 0) { assembly.tools = assembly.tools.filter(schema => !FILE_TOOL_NAMES.has(schema.name)); return }
   if (injection.filePermission === 'browse') assembly.tools = assembly.tools.filter(schema => !TRANSFER_TOOL_NAMES.has(schema.name))
-  assembly.contexts.push({ name: 'dsh-ssh:file-access', text: `Remote file access is limited to explicitly authorized endpoints. Permission: ${injection.filePermission}. Use file_endpoint_list before selecting FTP/SFTP endpoints. Never guess endpoint ids or paths.` })
+  assembly.contexts.push({
+    name: 'dsh-ssh:file-access',
+    text: `Remote file access is limited to explicitly authorized endpoints. Permission: ${injection.filePermission}.
+For any file listing or transfer request, use file_endpoint_list, file_directory_list, and the available file_transfer_* tools before considering SSH commands. Never guess endpoint ids or paths.
+Never start an HTTP or other file server, open a temporary port, encode a file through a terminal, or invent another transport for file delivery.
+For a download to the user's browser-local computer, do not run terminal commands: directly tell the user to select the file in SSH → 文件传输 and click “下载到本地”. The conversation tool cannot attach those remote bytes itself.
+If the requested source or destination is not authorized, explain that directly instead of attempting a workaround.`,
+  })
 }
 
 function presentTitle(name: string, value: unknown): string { const args = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}; return typeof args.sourceEndpointId === 'string' ? `${name} · ${args.sourceEndpointId}` : name }

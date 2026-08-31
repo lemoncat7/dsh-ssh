@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import { Transform } from 'node:stream'
-import type { RemoteFileEntry, RemoteFileSystemSession } from './remote-files.js'
+import type { RemoteFileSystemSession } from './remote-files.js'
 import { remoteJoin, remoteName } from './remote-files.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
+import { scanRemoteTree } from './remote-tree-scan.js'
 
 export type TransferConflictPolicy = 'fail' | 'skip' | 'overwrite' | 'rename'
 export type TransferJobState = 'queued' | 'scanning' | 'transferring' | 'completed' | 'failed' | 'cancelled'
@@ -126,7 +127,12 @@ export class FileTransferManager {
         this.files.connect(job.view.request.sourceEndpointId, signal),
         this.files.connect(job.view.request.destinationEndpointId, signal),
       ])
-      const tasks = await this.scan(source, job.view.request.sourcePaths, job.view.request.destinationDirectory, signal)
+      const tasks = (await scanRemoteTree(source, job.view.request.sourcePaths, signal)).map(task => ({
+        sourcePath: task.sourcePath,
+        destinationPath: remoteJoin(job.view.request.destinationDirectory, task.relativePath),
+        kind: task.kind,
+        size: task.size,
+      }))
       job.view.totalFiles = tasks.filter(task => task.kind === 'file').length
       job.view.totalBytes = tasks.reduce((sum, task) => sum + (task.kind === 'file' ? task.size : 0), 0)
       job.view.state = 'transferring'; this.emit(job.view)
@@ -150,23 +156,6 @@ export class FileTransferManager {
     } finally {
       source?.close(); destination?.close()
     }
-  }
-
-  private async scan(source: RemoteFileSystemSession, sourcePaths: string[], destinationDirectory: string, signal: AbortSignal): Promise<TransferTask[]> {
-    const tasks: TransferTask[] = []
-    const visit = async (sourcePath: string, destinationPath: string, depth: number, knownEntry?: RemoteFileEntry): Promise<void> => {
-      signal.throwIfAborted()
-      if (depth > 64 || tasks.length >= 20_000) throw new Error('directory transfer exceeds the safety limit')
-      const entry = knownEntry ?? await source.stat(sourcePath, signal)
-      if (entry.kind !== 'directory') { tasks.push({ sourcePath: entry.path, destinationPath, kind: 'file', size: entry.size }); return }
-      tasks.push({ sourcePath: entry.path, destinationPath, kind: 'directory', size: 0 })
-      for (const child of (await source.list(entry.path, signal)).entries) {
-        if (child.kind === 'symlink' || child.kind === 'other') continue
-        await visit(child.path, remoteJoin(destinationPath, child.name), depth + 1, child)
-      }
-    }
-    for (const sourcePath of sourcePaths) await visit(sourcePath, remoteJoin(destinationDirectory, remoteName(sourcePath)), 0)
-    return tasks
   }
 
   private emit(view: TransferJobView): void { for (const listener of this.listeners) listener(structuredClone(view)) }

@@ -21,6 +21,9 @@ import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager, type TransferConflictPolicy } from './file-transfer-manager.js'
 import { EndpointSessionManager } from './endpoint-session-manager.js'
 import { deleteRemoteEntries, moveRemoteEntries } from './remote-entry-operations.js'
+import { remoteName } from './remote-files.js'
+import { scanRemoteTree } from './remote-tree-scan.js'
+import { streamRemoteTar } from './remote-tar-download.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -77,6 +80,11 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
       const paneId = requireText(url.searchParams.get('paneId'), 'paneId', 100)
       return sendJson(res, 200, await runtime.fileSessions.run(paneId, endpointId, session => session.list(url.searchParams.get('path') ?? session.endpoint.initialPath)))
+    }
+    if (method === 'GET' && segments[1] === 'download' && segments.length === 2) {
+      const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
+      const requestedPath = requireRawText(url.searchParams.get('path'), 'path', 4096)
+      return streamRemoteEndpointFile(req, res, runtime, endpointId, requestedPath)
     }
     if (method === 'POST' && segments[1] === 'delete' && segments.length === 2) {
       requireMutationHeader(req)
@@ -945,6 +953,37 @@ async function streamLocalFile(res: ServerResponse, url: URL, file: Awaited<Retu
   res.setHeader('Content-Disposition', `${url.searchParams.get('inline') === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(filename)}`)
   res.setHeader('X-Content-Type-Options', 'nosniff')
   await pipeline(file.stream, res)
+}
+
+async function streamRemoteEndpointFile(req: IncomingMessage, res: ServerResponse, runtime: SshApiRuntime, endpointId: string, requestedPath: string): Promise<void> {
+  const controller = new AbortController()
+  let session: Awaited<ReturnType<RemoteFileSystems['connect']>> | undefined
+  const abortRequest = (): void => controller.abort()
+  const abortResponse = (): void => { if (!res.writableEnded) controller.abort() }
+  req.once('aborted', abortRequest)
+  res.once('close', abortResponse)
+  try {
+    session = await runtime.files.connect(endpointId, controller.signal)
+    const entry = await session.stat(requestedPath, controller.signal)
+    if (entry.kind !== 'file' && entry.kind !== 'directory') throw httpError(400, 'this remote entry cannot be downloaded')
+    const basename = remoteName(entry.path) || remoteName(requestedPath) || 'download'
+    const directory = entry.kind === 'directory'
+    const tasks = directory ? await scanRemoteTree(session, [entry.path], controller.signal) : undefined
+    const filename = directory ? `${basename}.tar` : basename
+    res.statusCode = 200
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.setHeader('Content-Type', directory ? 'application/x-tar' : 'application/octet-stream')
+    if (!directory && Number.isSafeInteger(entry.size) && entry.size >= 0) res.setHeader('Content-Length', String(entry.size))
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    if (tasks !== undefined) await streamRemoteTar(session, tasks, res, controller.signal)
+    else await session.download(entry.path, res, controller.signal)
+    if (!res.writableEnded) res.end()
+  } finally {
+    req.off('aborted', abortRequest)
+    res.off('close', abortResponse)
+    session?.close()
+  }
 }
 
 function sendJson(res: ServerResponse, status: number, value: unknown): void {

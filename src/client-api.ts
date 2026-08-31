@@ -85,6 +85,9 @@ export function loadFileEndpointDirectory(paneId: string, endpointId: string, pa
   const query = new URLSearchParams({ paneId, endpointId }); if (path !== undefined) query.set('path', path)
   return api(`/file-transfer/directory?${query.toString()}`)
 }
+export function fileEndpointDownloadUrl(endpointId: string, path: string): string {
+  return `${SSH_API}/file-transfer/download?${new URLSearchParams({ endpointId, path }).toString()}`
+}
 export function deleteFileEndpointEntries(request: { paneId: string; endpointId: string; directory: string; paths: string[] }): Promise<void> {
   return api('/file-transfer/delete', { method: 'POST', body: JSON.stringify(request) })
 }

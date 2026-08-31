@@ -82,7 +82,7 @@ function cwdTool(store: SshStore, connector: SshConnector): ToolDefinition {
 }
 
 function execTool(store: SshStore, connector: SshConnector): ToolDefinition {
-  return tool('ssh_exec', 'Run one non-interactive command only when this conversation is injected in exec mode. If ssh_list reports terminal permission, use ssh_terminal_open and ssh_terminal_send instead so activity remains visible.', {
+  return tool('ssh_exec', 'Run one non-interactive command only when this conversation is injected in exec mode. This tool is not for file upload, download, or transfer; use the dedicated file_* tools or direct the user to SSH → 文件传输. If ssh_list reports terminal permission, use ssh_terminal_open and ssh_terminal_send instead so activity remains visible.', {
     profileId: { type: 'string', required: true, description: 'Exact injected profile id returned by ssh_list.' },
     command: { type: 'string', required: true, description: 'Command to execute on the remote host.' },
     timeoutMs: { type: 'integer', description: 'Optional timeout between 1000 and 300000 milliseconds.' },
@@ -98,7 +98,7 @@ function execTool(store: SshStore, connector: SshConnector): ToolDefinition {
 }
 
 function terminalOpenTool(store: SshStore, terminals: AiTerminalManager): ToolDefinition {
-  return tool('ssh_terminal_open', 'Open or reuse an interactive terminal on an SSH connection injected with terminal permission. Repeated calls for the same conversation, connection, and working directory are idempotent; exited duplicates are removed automatically. Returns an owner-scoped terminal id and whether it was reused.', {
+  return tool('ssh_terminal_open', 'Open or reuse an interactive terminal on an SSH connection injected with terminal permission. Do not open a terminal for file upload, download, or transfer; use the dedicated file_* tools or direct the user to SSH → 文件传输. Repeated calls for the same conversation, connection, and working directory are idempotent; exited duplicates are removed automatically. Returns an owner-scoped terminal id and whether it was reused.', {
     profileId: { type: 'string', required: true, description: 'Exact injected profile id returned by ssh_list.' },
     name: { type: 'string', description: 'Optional terminal display name.' },
   }, async (raw, exec) => {

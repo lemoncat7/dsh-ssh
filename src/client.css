@@ -93,6 +93,17 @@
   --ssh-terminal-border: rgba(255, 255, 255, 0.12);
   --ssh-terminal-text: #f5f5f7;
   --ssh-terminal-muted: #98989d;
+  --ssh-file-canvas: #eef3f3;
+  --ssh-file-panel: #f8fbfb;
+  --ssh-file-card: #ffffff;
+  --ssh-file-surface: #f2f6f6;
+  --ssh-file-raised: #e8eeee;
+  --ssh-file-control: #f8fbfb;
+  --ssh-file-hover: #e6eeee;
+  --ssh-file-selected: #d9e8e8;
+  --ssh-file-accent: #397f83;
+  --ssh-file-accent-strong: #245f63;
+  --ssh-file-border: #cad7d8;
   --ssh-radius-control: 9px;
   --ssh-radius-surface: 13px;
   --ssh-motion-fast: 120ms;
@@ -175,6 +186,17 @@ body[data-ds-dark-theme] :is(
   --ssh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
   --ssh-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.34);
   --ssh-shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.48);
+  --ssh-file-canvas: #182427;
+  --ssh-file-panel: #223235;
+  --ssh-file-card: #1e2c2f;
+  --ssh-file-surface: #26373a;
+  --ssh-file-raised: #2c3e41;
+  --ssh-file-control: #293a3d;
+  --ssh-file-hover: #304447;
+  --ssh-file-selected: #365154;
+  --ssh-file-accent: #70bcc0;
+  --ssh-file-accent-strong: #9ed8da;
+  --ssh-file-border: #3d5053;
   color-scheme: dark;
 }
 :is(

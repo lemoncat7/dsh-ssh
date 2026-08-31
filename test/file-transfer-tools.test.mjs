@@ -17,6 +17,7 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
     state.injections.push({ sessionId: 'session-test', profileIds: [], fileEndpointIds: ['sftp:host-allowed'], filePermission: 'transfer', requireFileApproval: false, permission: 'exec', requireCommandApproval: false, workingDirectories: {}, workingProjectIds: {}, updatedAt: now })
   })
   const tools = new Map()
+  let promptHandler
   const starts = []
   const files = {
     endpoint(id) { return id === 'sftp:host-allowed' ? { id, kind: 'sftp', protocol: 'sftp', name: 'Allowed', address: 'test@allowed', initialPath: '~' } : id === 'sftp:host-hidden' ? { id, kind: 'sftp', protocol: 'sftp', name: 'Hidden', address: 'test@hidden', initialPath: '~' } : undefined },
@@ -26,10 +27,11 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
     start(ownerId, request) { starts.push({ ownerId, request }); return { id: 'job-test', ownerId, request, state: 'queued' } },
     get() { throw new Error('not used') }, cancel() { throw new Error('not used') },
   }
-  const ctx = { tools: { register(definition) { tools.set(definition.name, definition); return () => tools.delete(definition.name) } }, agents: { list() { return [] } }, on() { return () => {} } }
+  const agent = { session: { id: 'session-test' }, ctx: { on(event, handler) { if (event === 'system-prompt/assemble') promptHandler = handler; return () => {} } } }
+  const ctx = { tools: { register(definition) { tools.set(definition.name, definition); return () => tools.delete(definition.name) } }, agents: { list() { return [agent] } }, on() { return () => {} } }
   const dispose = registerFileTransferTools(ctx, store, files, transfers)
   t.after(dispose)
-  const execution = { agent: { session: { id: 'session-test' } }, signal: new AbortController().signal }
+  const execution = { agent, signal: new AbortController().signal }
   const listed = JSON.parse(await tools.get('file_endpoint_list').execute({}, execution))
   assert.deepEqual(listed.endpoints.map(endpoint => endpoint.id), ['sftp:host-allowed'])
   await assert.rejects(tools.get('file_transfer_start').execute({ sourceEndpointId: 'sftp:host-hidden', sourcePaths: ['/a'], destinationEndpointId: 'sftp:host-allowed', destinationDirectory: '/b' }, execution), /not authorized/)
@@ -37,4 +39,10 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
   assert.equal(started.id, 'job-test')
   assert.equal(starts[0].ownerId, 'session-test')
   assert.equal(starts[0].request.conflictPolicy, 'fail')
+  assert.match(tools.get('file_transfer_start').description, /Never replace it with an SSH command, temporary HTTP server/)
+  const assembly = { tools: [...tools.values()].map(tool => ({ name: tool.name })), contexts: [] }
+  await promptHandler(assembly, {}, async () => assembly)
+  const fileContext = assembly.contexts.find(context => context.name === 'dsh-ssh:file-access')
+  assert.match(fileContext.text, /Never start an HTTP or other file server/)
+  assert.match(fileContext.text, /下载到本地/)
 })
