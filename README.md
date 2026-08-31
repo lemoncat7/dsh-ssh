@@ -119,6 +119,8 @@ Device Flow 需要一个属于插件发布者的 GitHub OAuth App Client ID。Cl
 2. 在 OAuth App 设置中启用 Device Flow。
 3. 将 Client ID 填入“高级授权设置”，保存后即可使用“连接 GitHub”。
 
+如果 DSH 所在网络不能直连 GitHub，可在同一页面的“本机运行设置”填写“GitHub 出站代理”并先执行网络测试。该地址只保存在本机 SSH 状态中，不参与 Gist 同步；支持 `http://` 与 `https://` 代理。留空时插件依次读取 `DSH_SSH_GITHUB_PROXY`、`HTTPS_PROXY` 和 `https_proxy`。设置页不会保存带账号密码的代理 URL，认证代理请通过 `DSH_SSH_GITHUB_PROXY` 环境变量配置。
+
 授权只申请 `gist` scope。备用 classic personal access token 同样需要 `gist` scope；fine-grained token 是否可用取决于 GitHub 当前对 Gist 的权限支持。Gist ID 可以留空，首次同步时插件会自动创建一个私有 Gist。为避免主机地址等配置元数据公开，插件会拒绝公开 Gist。
 
 同步范围：

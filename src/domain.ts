@@ -129,6 +129,7 @@ export interface SshSettings {
   allowPublicBind: boolean
   defaultCommandTimeoutMs: number
   maxOutputChars: number
+  githubProxy?: string
 }
 
 export interface SshState {

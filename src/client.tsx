@@ -575,7 +575,7 @@ function SettingsPane(): JSX.Element {
   const [encryptionPassphrase, setEncryptionPassphrase] = useState('')
   const [advanced, setAdvanced] = useState(false)
   const [oauthFlow, setOauthFlow] = useState<GitHubDeviceFlowStart>()
-  const [busy, setBusy] = useState<'save' | 'test' | 'sync' | 'oauth' | 'disconnect'>()
+  const [busy, setBusy] = useState<'save' | 'test' | 'sync' | 'oauth' | 'disconnect' | 'network'>()
   const [notice, setNotice] = useState<string>()
   const [error, setError] = useState<string>()
   useEffect(() => {
@@ -608,6 +608,16 @@ function SettingsPane(): JSX.Element {
     return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer) }
   }, [oauthFlow?.id])
   const save = async (next: SettingsView): Promise<void> => { try { setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(next) })) } catch (reason) { setError(message(reason)) } }
+  const testGitHubNetwork = async (): Promise<void> => {
+    if (settings === undefined) return
+    setBusy('network'); setError(undefined); setNotice(undefined)
+    try {
+      const saved = await api<SettingsView>('/settings', { method: 'PUT', body: JSON.stringify(settings) })
+      setSettings(saved)
+      const result = await api<{ route: 'direct' | 'proxy' }>('/gist-sync/network/test', { method: 'POST' })
+      setNotice(`GitHub 网络连接成功 · ${result.route === 'proxy' ? '通过代理' : '直连'}`)
+    } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
+  }
   const saveGistConfiguration = async (): Promise<GistSyncView> => {
     if (gist === undefined) throw new Error('Gist 同步设置尚未加载')
     const next = await api<GistSyncView>('/gist-sync', {
@@ -699,6 +709,7 @@ function SettingsPane(): JSX.Element {
         </div>
       </section>}
       {settings && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-local-title"><div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-local-title">本机运行设置</strong><small>只影响当前 DSH，不参与 Gist 同步</small></span></div><div className="dsh-ssh-settings-group">
+        <Field label="GitHub 出站代理" hint="仅用于 OAuth 与 Gist API；例如 http://host.docker.internal:7893，留空时使用系统 HTTPS_PROXY"><div className="dsh-ssh-github-proxy-control"><input maxLength={2048} spellCheck={false} value={settings.githubProxy ?? ''} onChange={event => setSettings(withGitHubProxy(settings, event.target.value))} placeholder="直连 GitHub" /><button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void testGitHubNetwork() }}>{busy === 'network' ? '测试中…' : '测试 GitHub 网络'}</button></div></Field>
         <label className="dsh-ssh-switch-row"><span><strong>允许公开端口绑定</strong><small>允许转发监听 0.0.0.0 或其他非回环地址。仅在明确配置防火墙后开启。</small></span><input type="checkbox" checked={settings.allowPublicBind} onChange={event => { void save({ ...settings, allowPublicBind: event.target.checked }) }} /></label>
         <label className="dsh-ssh-number-row"><span><strong>默认命令超时</strong><small>AI 的 ssh_exec 最长等待时间</small></span><input type="number" min="1000" max="300000" step="1000" value={settings.defaultCommandTimeoutMs} onChange={event => setSettings({ ...settings, defaultCommandTimeoutMs: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>毫秒</em></label>
         <label className="dsh-ssh-number-row"><span><strong>最大命令输出</strong><small>超出后保留最新输出，避免挤占上下文</small></span><input type="number" min="1000" max="1000000" step="1000" value={settings.maxOutputChars} onChange={event => setSettings({ ...settings, maxOutputChars: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>字符</em></label>
@@ -756,6 +767,12 @@ function withOauthClientId(view: GistSyncView, value: string): GistSyncView {
   if (trimmed) return { ...view, oauthClientId: trimmed, oauthAvailable: true }
   const { oauthClientId: _oauthClientId, ...rest } = view
   return { ...rest, oauthAvailable: false }
+}
+
+function withGitHubProxy(view: SettingsView, value: string): SettingsView {
+  if (value !== '') return { ...view, githubProxy: value }
+  const { githubProxy: _githubProxy, ...rest } = view
+  return rest
 }
 
 function SyncStatus({ view }: { view: GistSyncView }): JSX.Element {

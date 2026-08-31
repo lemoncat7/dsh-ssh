@@ -12,6 +12,7 @@ import { SshStore } from './store.js'
 import { setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
+import { normalizeGitHubProxy } from './github-http.js'
 import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
 import { ActivityEventBus, streamActivityEvents } from './activity-events.js'
 import { deleteLocalWorkspaceEntries, listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview } from './local-workspace.js'
@@ -85,6 +86,10 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (segments[1] === 'test' && segments.length === 2 && method === 'POST') {
       requireMutationHeader(req)
       return sendJson(res, 200, await runtime.gistSync.testConnection())
+    }
+    if (segments[1] === 'network' && segments[2] === 'test' && segments.length === 3 && method === 'POST') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.testNetwork())
     }
     if (segments[1] === 'run' && segments.length === 2 && method === 'POST') {
       requireMutationHeader(req)
@@ -650,6 +655,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         allowPublicBind: body.allowPublicBind === true,
         defaultCommandTimeoutMs: requireInteger(body.defaultCommandTimeoutMs, 'defaultCommandTimeoutMs', 1000, 300_000),
         maxOutputChars: requireInteger(body.maxOutputChars, 'maxOutputChars', 1000, 1_000_000),
+        ...(typeof body.githubProxy === 'string' && body.githubProxy.trim() !== '' ? { githubProxy: normalizeGitHubProxy(body.githubProxy) } : {}),
       }
       await runtime.store.update(state => { state.settings = settings })
       return sendJson(res, 200, settings)

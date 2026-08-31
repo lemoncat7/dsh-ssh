@@ -18,6 +18,7 @@ import {
 } from './domain.js'
 import { SshCredentialVault } from './credentials.js'
 import { GitHubDeviceAuthService, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus } from './github-device-auth.js'
+import { createGitHubHttpTransport, type GitHubHttpTransport } from './github-http.js'
 import { SshStore } from './store.js'
 
 const MAIN_FILE = 'dsh-ssh.config.json'
@@ -229,6 +230,7 @@ export class GistSyncService {
     private readonly metadataPath: string,
     metadata: SyncMetadata,
     private readonly clientFactory: (token: string) => GitHubGistClient,
+    private readonly githubHttp: GitHubHttpTransport,
   ) {
     this.metadata = metadata
     this.oauth = new GitHubDeviceAuthService(
@@ -241,6 +243,7 @@ export class GistSyncService {
         await this.persist()
         return identity
       },
+      githubHttp.request,
     )
   }
 
@@ -249,10 +252,12 @@ export class GistSyncService {
     credentials: SshCredentialVault,
     vault: GistTokenVault,
     metadataPath: string,
-    clientFactory: (token: string) => GitHubGistClient = token => new GitHubGistClient(token),
+    clientFactory?: (token: string) => GitHubGistClient,
   ): Promise<GistSyncService> {
     const metadata = await readMetadata(metadataPath)
-    const service = new GistSyncService(store, credentials, vault, metadataPath, metadata, clientFactory)
+    const githubHttp = createGitHubHttpTransport(() => store.settings().githubProxy)
+    const factory = clientFactory ?? (token => new GitHubGistClient(token, githubHttp.request))
+    const service = new GistSyncService(store, credentials, vault, metadataPath, metadata, factory, githubHttp)
     service.unsubscribe = store.subscribe((previous, next) => { service.onStoreChanged(previous, next) })
     service.configureAutomaticSync()
     if (metadata.settings.autoSync) service.scheduleAutoSync(1_500)
@@ -267,6 +272,17 @@ export class GistSyncService {
     if (this.pullTimer !== undefined) clearInterval(this.pullTimer)
     await this.persistQueue
     await this.syncQueue.catch(() => {})
+    await this.githubHttp.close()
+  }
+
+  async testNetwork(): Promise<{ route: 'direct' | 'proxy' }> {
+    const response = await this.githubHttp.request('https://api.github.com/meta', {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-ssh-github-network-test' },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) throw new Error(`GitHub 网络测试失败（HTTP ${response.status}）`)
+    await response.body?.cancel()
+    return { route: this.githubHttp.route() }
   }
 
   async view(): Promise<GistSyncView> {

@@ -1192,6 +1192,15 @@ body[data-ds-dark-theme] :is(
   display: grid;
   gap: 8px;
 }
+.dsh-ssh-github-proxy-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.dsh-ssh-github-proxy-control .dsh-ssh-secondary-button {
+  min-width: 136px;
+}
 .dsh-ssh-settings-stack {
   display: grid;
   width: min(100%, 820px);
@@ -1950,6 +1959,12 @@ body[data-ds-dark-theme] :is(
   }
 }
 @media (max-width: 600px) {
+  .dsh-ssh-github-proxy-control {
+    grid-template-columns: 1fr;
+  }
+  .dsh-ssh-github-proxy-control .dsh-ssh-secondary-button {
+    width: 100%;
+  }
   .dsh-ssh-device-code-block {
     align-items: stretch;
     flex-direction: column;
