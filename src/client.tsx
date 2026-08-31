@@ -646,8 +646,7 @@ function SettingsPane(): JSX.Element {
       await saveGistConfiguration()
       const flow = await api<GitHubDeviceFlowStart>('/gist-sync/oauth/start', { method: 'POST' })
       setOauthFlow(flow)
-      window.open(flow.verificationUri, '_blank', 'noopener,noreferrer')
-      setNotice('已打开 GitHub 授权页，请输入下方设备代码')
+      setNotice('设备代码已生成，请在授权窗口中复制后前往 GitHub')
     } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
   }
   const disconnectGitHub = async (): Promise<void> => {
@@ -670,7 +669,6 @@ function SettingsPane(): JSX.Element {
           </span>
         </div>
         {!gist.oauthClientId && <p className="dsh-ssh-auth-hint">首次使用需在下方“高级授权设置”中填写 GitHub OAuth Client ID。它不是密钥，只用于标识授权应用。</p>}
-        {oauthFlow && <div className="dsh-ssh-device-flow" role="status"><span><small>GitHub 设备代码</small><code>{oauthFlow.userCode}</code></span><span><strong>等待浏览器授权</strong><small>代码将在 {new Date(oauthFlow.expiresAt).toLocaleTimeString()} 失效</small></span><a className="dsh-ssh-secondary-button" href={oauthFlow.verificationUri} target="_blank" rel="noreferrer">打开授权页</a></div>}
         <div className="dsh-ssh-gist-fields is-two">
           <Field label="Gist ID" hint="留空后首次同步会自动创建私有 Gist"><input maxLength={64} spellCheck={false} value={gist.gistId ?? ''} onChange={event => setGist(withGistId(gist, event.target.value))} placeholder="自动创建" /></Field>
           <Field label="同步加密密码" hint={gist.encryptionConfigured ? '已安全保存；新设备需输入相同密码' : '至少 6 个字符，建议使用更长密码'}><input type="password" minLength={6} maxLength={512} autoComplete="new-password" value={encryptionPassphrase} onChange={event => setEncryptionPassphrase(event.target.value)} placeholder={gist.encryptionConfigured ? '已配置' : '设置独立加密密码'} /></Field>
@@ -706,8 +704,40 @@ function SettingsPane(): JSX.Element {
         <label className="dsh-ssh-number-row"><span><strong>最大命令输出</strong><small>超出后保留最新输出，避免挤占上下文</small></span><input type="number" min="1000" max="1000000" step="1000" value={settings.maxOutputChars} onChange={event => setSettings({ ...settings, maxOutputChars: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>字符</em></label>
       </div></section>}
     </div>
+    {oauthFlow && <GitHubDeviceAuthorizationDialog flow={oauthFlow} onClose={() => setOauthFlow(undefined)} />}
     {notice && <p className="dsh-ssh-inline-success" role="status">{notice}</p>}{error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
   </div>
+}
+
+function GitHubDeviceAuthorizationDialog({ flow, onClose }: { flow: GitHubDeviceFlowStart; onClose(): void }): JSX.Element {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copyCode = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(flow.userCode)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
+  return <Dialog title="连接 GitHub" subtitle="复制设备代码，再前往 GitHub 完成本次授权" className="dsh-ssh-device-auth-dialog" onClose={onClose}>
+    <div className="dsh-ssh-device-auth-content">
+      <div className="dsh-ssh-device-code-block">
+        <span><small>一次性设备代码</small><code>{flow.userCode}</code></span>
+        <button type="button" className="dsh-ssh-secondary-button" onClick={() => { void copyCode() }}>{copyState === 'copied' ? '已复制' : '复制代码'}</button>
+      </div>
+      <ol className="dsh-ssh-device-auth-steps">
+        <li><span>1</span><p><strong>复制上方代码</strong><small>设备代码只用于这一次授权</small></p></li>
+        <li><span>2</span><p><strong>打开 GitHub 授权页</strong><small>粘贴代码并确认授权给当前 OAuth App</small></p></li>
+        <li><span>3</span><p><strong>返回 DSH</strong><small>授权成功后会自动完成连接</small></p></li>
+      </ol>
+      {copyState === 'failed' && <p className="dsh-ssh-inline-error" role="alert">浏览器未允许自动复制，请选中设备代码手动复制。</p>}
+      <p className="dsh-ssh-device-auth-expiry">代码将在 {new Date(flow.expiresAt).toLocaleTimeString()} 失效</p>
+      <div className="dsh-ssh-dialog-actions">
+        <button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>稍后再说</button>
+        <a className="dsh-ssh-primary-button" href={flow.verificationUri} target="_blank" rel="noreferrer">前往 GitHub 授权</a>
+      </div>
+    </div>
+  </Dialog>
 }
 
 function SyncStrategyButton({ active, title, description, onClick }: { active: boolean; title: string; description: string; onClick(): void }): JSX.Element {

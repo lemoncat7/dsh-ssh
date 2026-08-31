@@ -1277,8 +1277,7 @@ body[data-ds-dark-theme] :is(
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dsh-ssh-github-auth > span:nth-child(2) small,
-.dsh-ssh-device-flow small {
+.dsh-ssh-github-auth > span:nth-child(2) small {
   color: var(--ssh-text-subtle);
   font-size: var(--ssh-type-caption);
   line-height: 1.45;
@@ -1311,33 +1310,90 @@ body[data-ds-dark-theme] :is(
   font-size: var(--ssh-type-caption);
   line-height: 1.5;
 }
-.dsh-ssh-device-flow {
+.dsh-ssh-device-auth-dialog-modal {
+  width: min(520px, calc(100vw - 32px));
+}
+.dsh-ssh-device-auth-dialog {
+  width: 100%;
+}
+.dsh-ssh-device-auth-content {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 18px;
+}
+.dsh-ssh-device-code-block {
+  display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--ssh-accent) 34%, var(--ssh-border));
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--ssh-accent) 38%, var(--ssh-border));
   border-radius: 12px;
   background: color-mix(in srgb, var(--ssh-selected) 78%, var(--ssh-card-surface));
 }
-.dsh-ssh-device-flow > span {
+.dsh-ssh-device-code-block > span {
   display: grid;
-  gap: 3px;
+  min-width: 0;
+  gap: 6px;
 }
-.dsh-ssh-device-flow code {
+.dsh-ssh-device-code-block small,
+.dsh-ssh-device-auth-steps small,
+.dsh-ssh-device-auth-expiry {
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.45;
+}
+.dsh-ssh-device-code-block code {
+  user-select: all;
   color: var(--ssh-text);
   font-family: var(--ssh-font-mono), monospace;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: .12em;
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: .14em;
+  overflow-wrap: anywhere;
 }
-.dsh-ssh-device-flow strong {
-  color: var(--ssh-text);
+.dsh-ssh-device-auth-steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dsh-ssh-device-auth-steps li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.dsh-ssh-device-auth-steps li > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--ssh-border);
+  border-radius: 50%;
+  color: var(--ssh-text-subtle);
+  background: var(--ssh-control-surface);
   font-size: var(--ssh-type-caption);
+  font-weight: 700;
+}
+.dsh-ssh-device-auth-steps p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.dsh-ssh-device-auth-steps strong {
+  color: var(--ssh-text);
+  font-size: var(--ssh-type-body);
   font-weight: 650;
 }
-.dsh-ssh-device-flow > a {
+.dsh-ssh-device-auth-expiry {
+  margin: -4px 0 0;
+}
+.dsh-ssh-device-auth-content .dsh-ssh-dialog-actions {
+  margin-top: 0;
+}
+.dsh-ssh-device-auth-content .dsh-ssh-dialog-actions a {
   text-decoration: none;
 }
 .dsh-ssh-sync-meta {
@@ -1877,19 +1933,14 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-sync-strategy button {
     min-height: 58px;
   }
-  .dsh-ssh-github-auth,
-  .dsh-ssh-device-flow {
+  .dsh-ssh-github-auth {
     grid-template-columns: auto minmax(0, 1fr);
   }
-  .dsh-ssh-github-auth-actions,
-  .dsh-ssh-device-flow > a {
+  .dsh-ssh-github-auth-actions {
     grid-column: 1 / -1;
   }
   .dsh-ssh-github-auth-actions {
     justify-content: flex-end;
-  }
-  .dsh-ssh-device-flow > a {
-    width: 100%;
   }
   .dsh-ssh-advanced-auth > p {
     grid-column: auto;
@@ -1899,6 +1950,13 @@ body[data-ds-dark-theme] :is(
   }
 }
 @media (max-width: 600px) {
+  .dsh-ssh-device-code-block {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .dsh-ssh-device-code-block .dsh-ssh-secondary-button {
+    width: 100%;
+  }
   .dsh-ssh-dialog-modal {
     width: 100vw;
     max-height: 100dvh;

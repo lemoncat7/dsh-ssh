@@ -111,7 +111,7 @@ FTP Profile 与 SSH Profile 分开保存。FTP Profile 自有密码使用 `dsh-f
 
 ## GitHub Gist 配置同步
 
-所有同步选项都位于「远端 → SSH 面板 → 设置」。默认使用 GitHub OAuth Device Flow：点击“连接 GitHub”后，插件打开 GitHub 官方设备授权页，用户输入一次性设备代码即可完成登录；access token 由服务端直接写入 DSH 凭据服务，不经过浏览器，也不会出现在同步状态文件中。Personal Access Token 仅保留在“高级授权设置”中作为备用。
+所有同步选项都位于「远端 → SSH 面板 → 设置」。默认使用 GitHub OAuth Device Flow：点击“连接 GitHub”后，插件先在 DSH 内显示一次性设备代码和复制按钮，用户再从同一授权窗口打开 GitHub 官方设备授权页并粘贴代码；access token 由服务端直接写入 DSH 凭据服务，不经过浏览器，也不会出现在同步状态文件中。Personal Access Token 仅保留在“高级授权设置”中作为备用。
 
 Device Flow 需要一个属于插件发布者的 GitHub OAuth App Client ID。Client ID 本身不是密钥，可公开分发；Client Secret 不得写入插件，而且此流程不需要 Client Secret。首次配置时：
 
