@@ -16,6 +16,7 @@ import { FtpFileSystemAdapter } from './ftp-adapter.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager } from './file-transfer-manager.js'
 import { EndpointSessionManager } from './endpoint-session-manager.js'
+import { GistSyncService, GistTokenVault } from './gist-sync.js'
 
 export const Config = ConfigSchema
 export type Config = SshConfig
@@ -39,6 +40,7 @@ export function apply(context: Context, config: SshConfig): void {
       maxOutputChars: resolved.maxOutputChars,
     })
     const credentials = new SshCredentialVault(ctx.credentials)
+    const gistSync = await GistSyncService.open(store, credentials, new GistTokenVault(ctx.credentials), `${resolved.statePath}.gist-sync.json`)
     const connector = new SshConnector(store, credentials)
     const dialer = new NetworkDialer(store, credentials)
     const files = new RemoteFileSystems([
@@ -58,7 +60,7 @@ export function apply(context: Context, config: SshConfig): void {
       const webServer = runtime.webServer ?? runtime.get('webServer') as WebServerLike | undefined
       if (webServer === undefined) throw new Error('dsh-ssh exposeWeb requires webServer')
       disposeApi = registerSshApi(webServer, resolved.apiPrefix, {
-        store, credentials, connector, dialer, files, transfers, fileSessions, forwards, terminals, aiTerminals, activityEvents,
+        store, credentials, gistSync, connector, dialer, files, transfers, fileSessions, forwards, terminals, aiTerminals, activityEvents,
         sessionCwd: sessionId => runtime.agents.get(sessionId as SessionId)?.session.header.cwd,
       })
     }
@@ -75,6 +77,7 @@ export function apply(context: Context, config: SshConfig): void {
       await transfers.closeAll()
       fileSessions.closeAll()
       await forwards.closeAll()
+      await gistSync.close()
     }
   }, 'dsh-ssh.runtime')
 }

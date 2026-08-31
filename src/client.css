@@ -1190,8 +1190,358 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-settings-group {
   display: grid;
-  max-width: 680px;
   gap: 8px;
+}
+.dsh-ssh-settings-stack {
+  display: grid;
+  width: min(100%, 820px);
+  gap: 14px;
+  padding-bottom: 6px;
+}
+.dsh-ssh-settings-section {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 14px;
+  background: var(--ssh-card-surface);
+  box-shadow: var(--ssh-shadow-sm);
+}
+.dsh-ssh-settings-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.dsh-ssh-settings-section-heading > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.dsh-ssh-settings-section-heading strong {
+  color: var(--ssh-text);
+  font-size: var(--ssh-type-body);
+  font-weight: 650;
+}
+.dsh-ssh-settings-section-heading small {
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.5;
+}
+.dsh-ssh-gist-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.dsh-ssh-gist-fields .dsh-ssh-field:first-child {
+  grid-column: 1 / -1;
+}
+.dsh-ssh-gist-fields.is-two .dsh-ssh-field:first-child {
+  grid-column: auto;
+}
+.dsh-ssh-github-auth {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 12px;
+  background: var(--ssh-control-surface);
+}
+.dsh-ssh-github-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--ssh-border-strong);
+  border-radius: 50%;
+  color: var(--ssh-text);
+  background: var(--ssh-card-surface);
+  font-family: var(--ssh-font-mono), monospace;
+  font-size: var(--ssh-type-caption);
+  font-weight: 700;
+  letter-spacing: -.04em;
+}
+.dsh-ssh-github-auth > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.dsh-ssh-github-auth > span:nth-child(2) strong {
+  overflow: hidden;
+  color: var(--ssh-text);
+  font-size: var(--ssh-type-caption);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-ssh-github-auth > span:nth-child(2) small,
+.dsh-ssh-device-flow small {
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.45;
+}
+.dsh-ssh-github-auth-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dsh-ssh-github-auth-actions .dsh-ssh-primary-button,
+.dsh-ssh-github-auth-actions .dsh-ssh-secondary-button {
+  min-width: 104px;
+}
+.dsh-ssh-text-button {
+  min-height: 32px;
+  padding: 0 7px;
+  border-radius: 7px;
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  cursor: pointer;
+  transition: color var(--ssh-motion-fast), background-color var(--ssh-motion-fast);
+}
+.dsh-ssh-text-button:hover:not(:disabled) {
+  color: var(--ssh-danger);
+  background: color-mix(in srgb, var(--ssh-danger) 8%, transparent);
+}
+.dsh-ssh-auth-hint {
+  margin: -6px 2px 0;
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.5;
+}
+.dsh-ssh-device-flow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--ssh-accent) 34%, var(--ssh-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ssh-selected) 78%, var(--ssh-card-surface));
+}
+.dsh-ssh-device-flow > span {
+  display: grid;
+  gap: 3px;
+}
+.dsh-ssh-device-flow code {
+  color: var(--ssh-text);
+  font-family: var(--ssh-font-mono), monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+.dsh-ssh-device-flow strong {
+  color: var(--ssh-text);
+  font-size: var(--ssh-type-caption);
+  font-weight: 650;
+}
+.dsh-ssh-device-flow > a {
+  text-decoration: none;
+}
+.dsh-ssh-sync-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.dsh-ssh-sync-meta > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 9px;
+  background: var(--ssh-control-surface);
+}
+.dsh-ssh-sync-meta small {
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+}
+.dsh-ssh-sync-meta strong {
+  overflow: hidden;
+  color: var(--ssh-text-muted);
+  font-family: var(--ssh-font-mono), monospace;
+  font-size: var(--ssh-type-caption);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-ssh-advanced-toggle {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  cursor: pointer;
+  transition: color var(--ssh-motion-fast), background-color var(--ssh-motion-fast);
+}
+.dsh-ssh-advanced-toggle:hover {
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+.dsh-ssh-advanced-toggle svg {
+  transition: transform var(--ssh-motion-fast);
+}
+.dsh-ssh-advanced-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.dsh-ssh-advanced-auth {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 11px;
+  background: var(--ssh-control-surface);
+}
+.dsh-ssh-advanced-auth > p {
+  grid-column: 1 / -1;
+  margin: -2px 0 0;
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.5;
+}
+.dsh-ssh-advanced-auth a {
+  color: var(--ssh-accent);
+  text-decoration: none;
+}
+.dsh-ssh-advanced-auth a:hover {
+  text-decoration: underline;
+}
+.dsh-ssh-sync-strategy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dsh-ssh-sync-strategy legend {
+  margin: 0 0 2px;
+  padding: 0;
+  color: var(--ssh-text-muted);
+  font-size: var(--ssh-type-caption);
+  font-weight: 600;
+}
+.dsh-ssh-sync-strategy > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.dsh-ssh-sync-strategy button {
+  display: grid;
+  min-width: 0;
+  min-height: 72px;
+  align-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 11px;
+  color: var(--ssh-text-muted);
+  background: var(--ssh-control-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--ssh-motion-fast), background-color var(--ssh-motion-fast), color var(--ssh-motion-fast), box-shadow var(--ssh-motion-fast);
+}
+.dsh-ssh-sync-strategy button:hover:not(.is-active) {
+  border-color: var(--ssh-border-strong);
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+.dsh-ssh-sync-strategy button.is-active {
+  border-color: color-mix(in srgb, var(--ssh-accent) 42%, var(--ssh-border));
+  color: var(--ssh-text);
+  background: var(--ssh-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ssh-accent) 8%, transparent);
+}
+.dsh-ssh-sync-strategy button strong {
+  font-size: var(--ssh-type-caption);
+  font-weight: 650;
+}
+.dsh-ssh-sync-strategy button small {
+  overflow-wrap: anywhere;
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.45;
+}
+.dsh-ssh-sync-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.dsh-ssh-sync-options .dsh-ssh-switch-row,
+.dsh-ssh-sync-options .dsh-ssh-number-row {
+  min-height: 64px;
+  margin: 0;
+  background: var(--ssh-control-surface);
+}
+.dsh-ssh-sync-scope {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 10px;
+  color: var(--ssh-text-subtle);
+  background: var(--ssh-control-surface);
+  font-size: var(--ssh-type-caption);
+  line-height: 1.55;
+}
+.dsh-ssh-sync-scope strong {
+  color: var(--ssh-text-muted);
+  font-weight: 650;
+}
+.dsh-ssh-sync-status {
+  display: inline-flex;
+  min-height: 28px;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--ssh-border);
+  border-radius: 999px;
+  color: var(--ssh-text-subtle);
+  background: var(--ssh-control-surface);
+  font-size: var(--ssh-type-caption);
+  white-space: nowrap;
+}
+.dsh-ssh-sync-status i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ssh-text-subtle);
+}
+.dsh-ssh-sync-status.is-ready i { background: var(--ssh-success); }
+.dsh-ssh-sync-status.is-error i { background: var(--ssh-danger); }
+.dsh-ssh-sync-status.is-running i {
+  background: var(--ssh-accent);
+  animation: dsh-ssh-sync-pulse 1.2s ease-in-out infinite;
+}
+.dsh-ssh-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.dsh-ssh-settings-actions > :where(button, a) {
+  min-width: 104px;
+  text-decoration: none;
+}
+.dsh-ssh-inline-success {
+  width: min(100%, 820px);
+  margin: 10px 0 0;
+  color: var(--ssh-success);
+  font-size: var(--ssh-type-caption);
+}
+@keyframes dsh-ssh-sync-pulse {
+  0%, 100% { opacity: .45; transform: scale(.86); }
+  50% { opacity: 1; transform: scale(1); }
 }
 .dsh-ssh-settings-group .dsh-ssh-switch-row {
   margin: 0;
@@ -1505,6 +1855,47 @@ body[data-ds-dark-theme] :is(
   }
   .dsh-ssh-number-row {
     grid-template-columns: minmax(0, 1fr) 86px 28px;
+  }
+  .dsh-ssh-settings-section {
+    padding: 12px;
+  }
+  .dsh-ssh-settings-section-heading,
+  .dsh-ssh-settings-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .dsh-ssh-gist-fields,
+  .dsh-ssh-sync-options,
+  .dsh-ssh-sync-meta,
+  .dsh-ssh-advanced-auth,
+  .dsh-ssh-sync-strategy > div {
+    grid-template-columns: 1fr;
+  }
+  .dsh-ssh-gist-fields .dsh-ssh-field:first-child {
+    grid-column: auto;
+  }
+  .dsh-ssh-sync-strategy button {
+    min-height: 58px;
+  }
+  .dsh-ssh-github-auth,
+  .dsh-ssh-device-flow {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .dsh-ssh-github-auth-actions,
+  .dsh-ssh-device-flow > a {
+    grid-column: 1 / -1;
+  }
+  .dsh-ssh-github-auth-actions {
+    justify-content: flex-end;
+  }
+  .dsh-ssh-device-flow > a {
+    width: 100%;
+  }
+  .dsh-ssh-advanced-auth > p {
+    grid-column: auto;
+  }
+  .dsh-ssh-settings-actions > :where(button, a) {
+    width: 100%;
   }
 }
 @media (max-width: 600px) {
@@ -2827,7 +3218,8 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-session-create-shell,
   .dsh-ssh-activity-panel,
   .dsh-ssh-file-preview-body,
-  .dsh-ssh-sftp-dropzone {
+  .dsh-ssh-sftp-dropzone,
+  .dsh-ssh-sync-status.is-running i {
     animation: none;
   }
   .dsh-ssh-vault-row,

@@ -6,6 +6,7 @@ import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProjec
 export class SshStore {
   private state: SshState
   private queue: Promise<unknown> = Promise.resolve()
+  private readonly listeners = new Set<(previous: SshState, next: SshState) => void>()
 
   private constructor(private readonly path: string, initial: SshState) {
     this.state = initial
@@ -41,14 +42,24 @@ export class SshStore {
   injection(sessionId: string): SessionInjection | undefined { return structuredClone(this.state.injections.find(item => item.sessionId === sessionId)) }
   settings(): SshSettings { return structuredClone(this.state.settings) }
 
+  subscribe(listener: (previous: SshState, next: SshState) => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
   update(mutator: (draft: SshState) => void): Promise<SshState> {
     const operation = this.queue.then(async () => {
+      const previous = this.snapshot()
       const draft = structuredClone(this.state)
       mutator(draft)
       validateReferences(draft)
       await this.persist(draft)
       this.state = draft
-      return this.snapshot()
+      const next = this.snapshot()
+      for (const listener of this.listeners) {
+        try { listener(previous, next) } catch { /* State is already durable; observers must not roll back updates. */ }
+      }
+      return next
     })
     this.queue = operation.catch(() => {})
     return operation

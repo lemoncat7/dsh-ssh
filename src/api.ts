@@ -24,6 +24,7 @@ import { deleteRemoteEntries, moveRemoteEntries } from './remote-entry-operation
 import { remoteName } from './remote-files.js'
 import { scanRemoteTree } from './remote-tree-scan.js'
 import { streamRemoteTar } from './remote-tar-download.js'
+import { GistSyncService } from './gist-sync.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -39,6 +40,7 @@ export interface WebServerLike {
 export interface SshApiRuntime {
   store: SshStore
   credentials: SshCredentialVault
+  gistSync: GistSyncService
   connector: SshConnector
   forwards: ForwardManager
   terminals: BrowserTerminalManager
@@ -73,6 +75,35 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const method = req.method ?? 'GET'
 
   if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 5 })
+
+  if (segments[0] === 'gist-sync') {
+    if (segments.length === 1 && method === 'GET') return sendJson(res, 200, await runtime.gistSync.view())
+    if (segments.length === 1 && method === 'PUT') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.configure(await readObject(req)))
+    }
+    if (segments[1] === 'test' && segments.length === 2 && method === 'POST') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.testConnection())
+    }
+    if (segments[1] === 'run' && segments.length === 2 && method === 'POST') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.sync())
+    }
+    if (segments[1] === 'oauth' && segments[2] === 'start' && segments.length === 3 && method === 'POST') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.startOAuth())
+    }
+    if (segments[1] === 'oauth' && segments[2] === 'poll' && segments.length === 3 && method === 'POST') {
+      requireMutationHeader(req)
+      const input = await readObject(req)
+      return sendJson(res, 200, await runtime.gistSync.pollOAuth(requireText(input.id, 'id', 64)))
+    }
+    if (segments[1] === 'oauth' && segments[2] === 'disconnect' && segments.length === 3 && method === 'POST') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.disconnectGitHub())
+    }
+  }
 
   if (segments[0] === 'file-transfer') {
     if (method === 'GET' && segments[1] === 'endpoints' && segments.length === 2) return sendJson(res, 200, runtime.files.endpoints())

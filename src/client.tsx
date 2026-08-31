@@ -29,7 +29,7 @@ import hostWorkbenchCss from './host-workbench.css'
 import {
   activityEventStreamUrl, api, browserTerminalStreamUrl, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
   profileAddress,
-  type ForwardStatus, type ForwardView, type FtpProfileView,
+  type ForwardStatus, type ForwardView, type FtpProfileView, type GistSyncView, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
@@ -570,16 +570,180 @@ function ProxyEditor({ value, onClose, onSaved }: { value?: ProxyEntryView | und
 
 function SettingsPane(): JSX.Element {
   const [settings, setSettings] = useState<SettingsView>()
+  const [gist, setGist] = useState<GistSyncView>()
+  const [token, setToken] = useState('')
+  const [encryptionPassphrase, setEncryptionPassphrase] = useState('')
+  const [advanced, setAdvanced] = useState(false)
+  const [oauthFlow, setOauthFlow] = useState<GitHubDeviceFlowStart>()
+  const [busy, setBusy] = useState<'save' | 'test' | 'sync' | 'oauth' | 'disconnect'>()
+  const [notice, setNotice] = useState<string>()
   const [error, setError] = useState<string>()
-  useEffect(() => { void api<SettingsView>('/settings').then(setSettings).catch(reason => setError(message(reason))) }, [])
+  useEffect(() => {
+    void Promise.all([api<SettingsView>('/settings'), api<GistSyncView>('/gist-sync')])
+      .then(([nextSettings, nextGist]) => { setSettings(nextSettings); setGist(nextGist) })
+      .catch(reason => setError(message(reason)))
+  }, [])
+  useEffect(() => {
+    if (oauthFlow === undefined) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const poll = async (): Promise<void> => {
+      try {
+        const status = await api<GitHubDeviceFlowStatus>('/gist-sync/oauth/poll', { method: 'POST', body: JSON.stringify({ id: oauthFlow.id }) })
+        if (cancelled) return
+        if (status.state === 'complete') {
+          setOauthFlow(undefined)
+          setGist(await api('/gist-sync'))
+          setNotice(`GitHub 已连接 · ${status.login}`)
+          return
+        }
+        timer = setTimeout(() => { void poll() }, Math.max(1_000, status.retryAfterMs))
+      } catch (reason) {
+        if (cancelled) return
+        setOauthFlow(undefined)
+        setError(message(reason))
+      }
+    }
+    timer = setTimeout(() => { void poll() }, Math.max(1_000, oauthFlow.retryAfterMs))
+    return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer) }
+  }, [oauthFlow?.id])
   const save = async (next: SettingsView): Promise<void> => { try { setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(next) })) } catch (reason) { setError(message(reason)) } }
-  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>SSH 设置</h1><p>安全边界和 AI 命令输出限制</p></div></div>
-    {settings && <div className="dsh-ssh-settings-group">
-      <label className="dsh-ssh-switch-row"><span><strong>允许公开端口绑定</strong><small>允许转发监听 0.0.0.0 或其他非回环地址。仅在明确配置防火墙后开启。</small></span><input type="checkbox" checked={settings.allowPublicBind} onChange={event => { void save({ ...settings, allowPublicBind: event.target.checked }) }} /></label>
-      <label className="dsh-ssh-number-row"><span><strong>默认命令超时</strong><small>AI 的 ssh_exec 最长等待时间</small></span><input type="number" min="1000" max="300000" step="1000" value={settings.defaultCommandTimeoutMs} onChange={event => setSettings({ ...settings, defaultCommandTimeoutMs: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>毫秒</em></label>
-      <label className="dsh-ssh-number-row"><span><strong>最大命令输出</strong><small>超出后保留最新输出，避免挤占上下文</small></span><input type="number" min="1000" max="1000000" step="1000" value={settings.maxOutputChars} onChange={event => setSettings({ ...settings, maxOutputChars: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>字符</em></label>
-    </div>}{error && <p className="dsh-ssh-inline-error">{error}</p>}
+  const saveGistConfiguration = async (): Promise<GistSyncView> => {
+    if (gist === undefined) throw new Error('Gist 同步设置尚未加载')
+    const next = await api<GistSyncView>('/gist-sync', {
+      method: 'PUT',
+      body: JSON.stringify({
+        settings: {
+          autoSync: gist.autoSync, strategy: gist.strategy, backupRetention: gist.backupRetention,
+          gistId: gist.gistId ?? '', oauthClientId: gist.oauthClientId ?? '',
+        },
+        ...(token.trim() ? { token: token.trim() } : {}),
+        ...(encryptionPassphrase ? { encryptionPassphrase } : {}),
+      }),
+    })
+    setGist(next); setToken(''); setEncryptionPassphrase('')
+    return next
+  }
+  const persistGist = async (kind: 'save' | 'test' | 'sync'): Promise<GistSyncView | undefined> => {
+    if (gist === undefined) return undefined
+    setBusy(kind); setError(undefined); setNotice(undefined)
+    try {
+      const next = await saveGistConfiguration()
+      if (kind === 'save') { setNotice('Gist 同步设置已保存'); return next }
+      if (kind === 'test') {
+        const result = await api<{ login: string }>('/gist-sync/test', { method: 'POST' })
+        setNotice(`连接成功 · ${result.login}`)
+        setGist(await api('/gist-sync'))
+        return next
+      }
+      const synced = await api<GistSyncView>('/gist-sync/run', { method: 'POST' })
+      setGist(synced); setNotice(syncResultLabel(synced.lastResult)); return synced
+    } catch (reason) { setError(message(reason)); return undefined } finally { setBusy(undefined) }
+  }
+  const connectGitHub = async (): Promise<void> => {
+    setBusy('oauth'); setError(undefined); setNotice(undefined)
+    try {
+      await saveGistConfiguration()
+      const flow = await api<GitHubDeviceFlowStart>('/gist-sync/oauth/start', { method: 'POST' })
+      setOauthFlow(flow)
+      window.open(flow.verificationUri, '_blank', 'noopener,noreferrer')
+      setNotice('已打开 GitHub 授权页，请输入下方设备代码')
+    } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
+  }
+  const disconnectGitHub = async (): Promise<void> => {
+    setBusy('disconnect'); setError(undefined); setNotice(undefined); setOauthFlow(undefined)
+    try {
+      setGist(await api('/gist-sync/oauth/disconnect', { method: 'POST' }))
+      setNotice('GitHub 账号已断开，同步加密密码仍保留在本机')
+    } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
+  }
+  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>SSH 设置</h1><p>安全边界、命令限制与跨设备配置同步</p></div></div>
+    <div className="dsh-ssh-settings-stack">
+      {gist && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-gist-title">
+        <div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-gist-title">GitHub Gist 同步</strong><small>主机、FTP/FTPS、项目目录、代理与密钥库端到端加密同步</small></span><SyncStatus view={gist} /></div>
+        <div className="dsh-ssh-github-auth">
+          <span className="dsh-ssh-github-mark" aria-hidden="true">GH</span>
+          <span><strong>{gist.tokenConfigured ? `已连接 ${gist.githubLogin ?? 'GitHub'}` : '连接 GitHub'}</strong><small>{gist.tokenConfigured ? '授权凭据安全保存在当前 DSH' : '通过 GitHub 设备授权获取 Gist 访问权限'}</small></span>
+          <span className="dsh-ssh-github-auth-actions">
+            <button type="button" className={gist.tokenConfigured ? 'dsh-ssh-secondary-button' : 'dsh-ssh-primary-button'} disabled={busy !== undefined || !gist.oauthClientId} onClick={() => { void connectGitHub() }}>{busy === 'oauth' ? '连接中…' : gist.tokenConfigured ? '重新连接' : '连接 GitHub'}</button>
+            {gist.tokenConfigured && <button type="button" className="dsh-ssh-text-button" disabled={busy !== undefined} onClick={() => { void disconnectGitHub() }}>{busy === 'disconnect' ? '断开中…' : '断开'}</button>}
+          </span>
+        </div>
+        {!gist.oauthClientId && <p className="dsh-ssh-auth-hint">首次使用需在下方“高级授权设置”中填写 GitHub OAuth Client ID。它不是密钥，只用于标识授权应用。</p>}
+        {oauthFlow && <div className="dsh-ssh-device-flow" role="status"><span><small>GitHub 设备代码</small><code>{oauthFlow.userCode}</code></span><span><strong>等待浏览器授权</strong><small>代码将在 {new Date(oauthFlow.expiresAt).toLocaleTimeString()} 失效</small></span><a className="dsh-ssh-secondary-button" href={oauthFlow.verificationUri} target="_blank" rel="noreferrer">打开授权页</a></div>}
+        <div className="dsh-ssh-gist-fields is-two">
+          <Field label="Gist ID" hint="留空后首次同步会自动创建私有 Gist"><input maxLength={64} spellCheck={false} value={gist.gistId ?? ''} onChange={event => setGist(withGistId(gist, event.target.value))} placeholder="自动创建" /></Field>
+          <Field label="同步加密密码" hint={gist.encryptionConfigured ? '已安全保存；新设备需输入相同密码' : '至少 6 个字符，建议使用更长密码'}><input type="password" minLength={6} maxLength={512} autoComplete="new-password" value={encryptionPassphrase} onChange={event => setEncryptionPassphrase(event.target.value)} placeholder={gist.encryptionConfigured ? '已配置' : '设置独立加密密码'} /></Field>
+        </div>
+        <div className="dsh-ssh-sync-meta" aria-label="同步版本信息"><span><small>云端版本</small><strong title={gist.cloudVersion}>{gist.cloudVersion ? gist.cloudVersion.slice(0, 10) : '尚未读取'}</strong></span><span><small>上次同步</small><strong>{gist.lastSyncAt ? formatRelativeTime(gist.lastSyncAt) : '尚未同步'}</strong></span></div>
+        <fieldset className="dsh-ssh-sync-strategy"><legend>同步策略</legend><div role="group" aria-label="Gist 同步策略">
+          <SyncStrategyButton active={gist.strategy === 'smart'} title="智能" description="自动判断两端变化并按条目合并" onClick={() => setGist({ ...gist, strategy: 'smart' })} />
+          <SyncStrategyButton active={gist.strategy === 'local-first'} title="本地优先" description="双方同时修改时保留本机配置" onClick={() => setGist({ ...gist, strategy: 'local-first' })} />
+          <SyncStrategyButton active={gist.strategy === 'cloud-first'} title="云端优先" description="双方同时修改时采用 Gist 配置" onClick={() => setGist({ ...gist, strategy: 'cloud-first' })} />
+        </div></fieldset>
+        <div className="dsh-ssh-sync-options">
+          <label className="dsh-ssh-switch-row"><span><strong>自动同步</strong><small>启动后、配置变化后和后台每五分钟检查一次</small></span><input type="checkbox" checked={gist.autoSync} onChange={event => setGist({ ...gist, autoSync: event.target.checked })} /></label>
+          <label className="dsh-ssh-number-row"><span><strong>备份保留数量</strong><small>主 Gist 内保留的显式历史快照；GitHub 自身修订历史不受影响</small></span><input type="number" min="0" max="50" step="1" value={gist.backupRetention} onChange={event => setGist({ ...gist, backupRetention: Number(event.target.value) })} /><em>份</em></label>
+        </div>
+        <button type="button" className="dsh-ssh-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}><span>高级授权设置</span><IconChevronDownOutline14 /></button>
+        {advanced && <div className="dsh-ssh-advanced-auth">
+          <Field label="GitHub OAuth Client ID" hint="在 GitHub OAuth App 中启用 Device Flow；不需要 Client Secret"><input maxLength={128} spellCheck={false} value={gist.oauthClientId ?? ''} onChange={event => setGist(withOauthClientId(gist, event.target.value))} placeholder="Ov23li…" /></Field>
+          <Field label="Personal Access Token（备用）" hint={gist.tokenConfigured ? '已有授权；填写后会替换当前授权' : '仅在无法使用 OAuth 时填写，需要 gist 权限'}><input type="password" autoComplete="new-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} placeholder="ghp_… / github_pat_…" /></Field>
+          <p>没有 OAuth App？<a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer">前往 GitHub 创建</a>，创建后在应用设置中启用 Device Flow。</p>
+        </div>}
+        <p className="dsh-ssh-sync-scope"><strong>同步内容：</strong>主机、FTP/FTPS、固定项目目录、代理库、密钥库，以及其中的密码和私钥。敏感字段上传前会加密。<br /><strong>仅保留本机：</strong>当前会话授权、端口转发、公开绑定与命令限制。GitHub Token 和同步加密密码也始终只保存在本机 DSH 凭据服务。</p>
+        {gist.lastError && <p className="dsh-ssh-inline-error" role="alert">上次同步失败：{gist.lastError}</p>}
+        <div className="dsh-ssh-settings-actions">
+          {gist.gistUrl && <a className="dsh-ssh-secondary-button" href={gist.gistUrl} target="_blank" rel="noreferrer">打开 Gist</a>}
+          <button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void persistGist('test') }}>{busy === 'test' ? '测试中…' : '测试连接'}</button>
+          <button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void persistGist('sync') }}>{busy === 'sync' ? '同步中…' : '立即同步'}</button>
+          <button type="button" className="dsh-ssh-primary-button" disabled={busy !== undefined} onClick={() => { void persistGist('save') }}>{busy === 'save' ? '保存中…' : '保存同步设置'}</button>
+        </div>
+      </section>}
+      {settings && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-local-title"><div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-local-title">本机运行设置</strong><small>只影响当前 DSH，不参与 Gist 同步</small></span></div><div className="dsh-ssh-settings-group">
+        <label className="dsh-ssh-switch-row"><span><strong>允许公开端口绑定</strong><small>允许转发监听 0.0.0.0 或其他非回环地址。仅在明确配置防火墙后开启。</small></span><input type="checkbox" checked={settings.allowPublicBind} onChange={event => { void save({ ...settings, allowPublicBind: event.target.checked }) }} /></label>
+        <label className="dsh-ssh-number-row"><span><strong>默认命令超时</strong><small>AI 的 ssh_exec 最长等待时间</small></span><input type="number" min="1000" max="300000" step="1000" value={settings.defaultCommandTimeoutMs} onChange={event => setSettings({ ...settings, defaultCommandTimeoutMs: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>毫秒</em></label>
+        <label className="dsh-ssh-number-row"><span><strong>最大命令输出</strong><small>超出后保留最新输出，避免挤占上下文</small></span><input type="number" min="1000" max="1000000" step="1000" value={settings.maxOutputChars} onChange={event => setSettings({ ...settings, maxOutputChars: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>字符</em></label>
+      </div></section>}
+    </div>
+    {notice && <p className="dsh-ssh-inline-success" role="status">{notice}</p>}{error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
   </div>
+}
+
+function SyncStrategyButton({ active, title, description, onClick }: { active: boolean; title: string; description: string; onClick(): void }): JSX.Element {
+  return <button type="button" className={active ? 'is-active' : ''} aria-pressed={active} onClick={onClick}><strong>{title}</strong><small>{description}</small></button>
+}
+
+function withGistId(view: GistSyncView, value: string): GistSyncView {
+  const trimmed = value.trim()
+  if (trimmed) return { ...view, gistId: trimmed }
+  const { gistId: _gistId, gistUrl: _gistUrl, ...rest } = view
+  return rest
+}
+
+function withOauthClientId(view: GistSyncView, value: string): GistSyncView {
+  const trimmed = value.trim()
+  if (trimmed) return { ...view, oauthClientId: trimmed, oauthAvailable: true }
+  const { oauthClientId: _oauthClientId, ...rest } = view
+  return { ...rest, oauthAvailable: false }
+}
+
+function SyncStatus({ view }: { view: GistSyncView }): JSX.Element {
+  const ready = view.tokenConfigured && view.encryptionConfigured
+  const label = view.running ? '同步中' : view.lastError ? '需要处理' : view.lastSyncAt === undefined ? ready ? '等待首次同步' : '尚未配置' : `上次同步 ${formatRelativeTime(view.lastSyncAt)}`
+  return <span className={`dsh-ssh-sync-status${view.running ? ' is-running' : view.lastError ? ' is-error' : ready ? ' is-ready' : ''}`} role="status"><i aria-hidden="true" />{label}</span>
+}
+
+function syncResultLabel(result: GistSyncView['lastResult']): string {
+  return result === 'uploaded' ? '本地配置已上传' : result === 'downloaded' ? '云端配置已应用' : result === 'merged' ? '两端配置已智能合并' : '配置已经是最新状态'
+}
+
+function formatRelativeTime(value: number): string {
+  const elapsed = Math.max(0, Date.now() - value)
+  if (elapsed < 60_000) return '刚刚'
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)} 分钟前`
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)} 小时前`
+  return new Date(value).toLocaleString()
 }
 
 function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileView; profiles: ProfileView[]; value?: ForwardView | undefined; onClose(): void; onSaved(): void }): JSX.Element {

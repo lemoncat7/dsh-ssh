@@ -45,6 +45,7 @@ dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 - 左侧远端区域提供右侧栏开关；目录页使用真实 SFTP 浏览远端文件，终端页使用单一终端画面观察并操作 AI 终端
 - 插件服务与 Web 客户端兼容 Windows、macOS 和 Linux，不依赖本机 `ssh` 或 `sftp` 命令
 - 首次连接主机指纹确认、输出上限、命令超时和公开端口绑定保护
+- GitHub Gist 跨设备配置同步，支持智能、本地优先和云端优先策略；主机、FTP/FTPS、项目目录、代理库、密钥库及其凭据均端到端加密
 
 ## 界面
 
@@ -107,6 +108,46 @@ FTP Profile 与 SSH Profile 分开保存。FTP Profile 自有密码使用 `dsh-f
 管理 API 和 Web UI只返回是否配置以及字段名，不返回任何凭据值。默认拒绝非回环地址的端口监听；若确实需要监听 `0.0.0.0`，必须在「远端 → 设置」中显式开启。
 
 首次连接会拒绝未知主机密钥并展示 SHA-256 指纹。用户确认后才把指纹写入 Profile，后续连接严格比对。
+
+## GitHub Gist 配置同步
+
+所有同步选项都位于「远端 → SSH 面板 → 设置」。默认使用 GitHub OAuth Device Flow：点击“连接 GitHub”后，插件打开 GitHub 官方设备授权页，用户输入一次性设备代码即可完成登录；access token 由服务端直接写入 DSH 凭据服务，不经过浏览器，也不会出现在同步状态文件中。Personal Access Token 仅保留在“高级授权设置”中作为备用。
+
+Device Flow 需要一个属于插件发布者的 GitHub OAuth App Client ID。Client ID 本身不是密钥，可公开分发；Client Secret 不得写入插件，而且此流程不需要 Client Secret。首次配置时：
+
+1. 在 GitHub Developer Settings 创建 OAuth App。
+2. 在 OAuth App 设置中启用 Device Flow。
+3. 将 Client ID 填入“高级授权设置”，保存后即可使用“连接 GitHub”。
+
+授权只申请 `gist` scope。备用 classic personal access token 同样需要 `gist` scope；fine-grained token 是否可用取决于 GitHub 当前对 Gist 的权限支持。Gist ID 可以留空，首次同步时插件会自动创建一个私有 Gist。为避免主机地址等配置元数据公开，插件会拒绝公开 Gist。
+
+同步范围：
+
+- SSH 主机、FTP/FTPS 连接与固定远端项目目录
+- 代理库及代理密码
+- 密钥库元数据，以及密码、私钥和私钥口令
+- 连接自身保存的 SSH/FTP 密码和内联代理密码
+
+以下内容具有明确的本机边界，不会同步：
+
+- 当前 DSH 会话的主机/文件授权、权限和工作目录
+- 本机端口转发规则
+- 公开端口绑定、命令超时和最大输出限制
+- GitHub Token 与同步加密密码本身
+
+敏感字段在离开 DSH 前使用同步加密密码经 scrypt 派生密钥，并通过 AES-256-GCM 加密；Gist 中不包含明文密码或私钥。同步加密密码最少 6 个字符，仍建议使用 12 个以上字符的独立密码。该密码无法从 Gist 恢复，新设备必须输入相同密码，丢失后只能重新建立同步配置。
+
+三种策略只在两端同时发生变化时决定冲突方向：
+
+- `智能`：按每条配置的更新时间合并，并使用删除墓碑避免旧设备复活已删除条目。
+- `本地优先`：双方都修改时使用当前设备配置。
+- `云端优先`：双方都修改时使用 Gist 配置。
+
+空白新设备第一次连接已有 Gist 时始终先安全拉取云端，不会因为选择“本地优先”而覆盖已有配置。自动同步会在插件启动后、本地可同步配置变化约 3 秒后以及后台每 5 分钟运行；任务串行执行，避免并发覆盖。
+
+覆盖可能丢失的一侧之前，插件会在同一个 Gist 中创建显式备份文件，并按设置保留 0～50 份。该数量只控制 `dsh-ssh.backup.*.json` 文件；GitHub 自己维护的 Gist revision history 无法由插件裁剪。
+
+设置页显示最近一次由 GitHub 返回的云端 Gist revision SHA（短格式展示，完整值保留在提示中）。创建、上传、下载、合并或连接测试都会刷新这个云端版本；它表示真实的 Gist 修订版本，不是固定的数据结构版本号。
 
 ## DSH 配置
 

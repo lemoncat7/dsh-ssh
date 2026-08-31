@@ -45,6 +45,25 @@ export interface TransferJobView {
 }
 export interface RemoteProjectView { id: string; profileId: string; name: string; path: string; createdAt: number; updatedAt: number }
 export interface SettingsView { allowPublicBind: boolean; defaultCommandTimeoutMs: number; maxOutputChars: number }
+export interface GistSyncView {
+  autoSync: boolean
+  strategy: 'smart' | 'local-first' | 'cloud-first'
+  backupRetention: number
+  gistId?: string
+  oauthClientId?: string
+  tokenConfigured: boolean
+  encryptionConfigured: boolean
+  running: boolean
+  lastSyncAt?: number
+  lastResult?: 'uploaded' | 'downloaded' | 'merged' | 'unchanged'
+  lastError?: string
+  gistUrl?: string
+  githubLogin?: string
+  cloudVersion?: string
+  oauthAvailable: boolean
+}
+export interface GitHubDeviceFlowStart { id: string; userCode: string; verificationUri: string; expiresAt: number; retryAfterMs: number }
+export type GitHubDeviceFlowStatus = { state: 'pending'; retryAfterMs: number } | { state: 'complete'; login: string }
 export interface ActivityProfileView { id: string; name: string; host: string; port: number; username: string; cwd: string }
 export interface ActivityCommandView { id: string; command: string; submitted: boolean; startedAt: number; completedAt: number; output: string; waitReason: string; truncated: boolean }
 export interface ActivityTerminalView {

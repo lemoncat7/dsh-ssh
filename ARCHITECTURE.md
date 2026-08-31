@@ -14,6 +14,8 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 
 - `src/api.ts` translates HTTP routes into explicit store, terminal, file-transfer, forwarding, and credential operations.
 - `src/store.ts` owns persistent SSH configuration.
+- `src/gist-sync.ts` owns portable configuration snapshots, encrypted secret export/import, three-way conflict resolution, tombstones, explicit backups, and serialized background synchronization.
+- `src/github-device-auth.ts` owns the bounded GitHub Device Flow state machine. Device codes remain server-side and completed access tokens are written directly to the credential service.
 - `src/session-access.ts` and `src/tools.ts` define the session authorization boundary used by AI tools.
 - `src/remote-files.ts` defines the protocol-neutral endpoint and remote filesystem contract.
 - `src/sftp-adapter.ts` and `src/ftp-adapter.ts` implement that contract without leaking protocol details upward.
@@ -43,8 +45,11 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 
 | State | Owner | Persistence |
 | --- | --- | --- |
-| SSH profiles, proxies, credentials, forwards | server store | profile data + DSH credential service |
-| FTP/FTPS profiles | server store | profile data + DSH credential service |
+| SSH profiles, proxy library, credential vault, remote projects | server store | profile data + DSH credential service; encrypted Gist snapshot when enabled |
+| FTP/FTPS profiles | server store | profile data + DSH credential service; encrypted Gist snapshot when enabled |
+| Gist ID, strategy, tombstones, last sync summary | Gist sync service | local metadata file |
+| GitHub token and sync encryption passphrase | Gist token vault | local DSH credential service only |
+| OAuth Client ID and last observed Gist revision | Gist sync service | local metadata file; neither is secret |
 | Mounted hosts, permission, fixed directories | session access store | per DSH session |
 | Authorized file endpoints and file permission | session access store | per DSH session |
 | Browser file control sessions | endpoint session manager | process lifetime, 60-second idle reap |
@@ -62,6 +67,9 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - Remote-to-remote transfers use backpressured streams and never stage a complete file on local disk.
 - Browser browsing sessions and transfer job sessions are isolated so a long transfer cannot block pane navigation.
 - Secrets are write-only from the browser and are never returned by profile APIs.
+- Portable sync never exports session grants, forwarding rules, or local runtime settings. Passwords and private keys are encrypted with AES-256-GCM before network I/O; the token and encryption passphrase never enter the snapshot.
+- GitHub authorization requests only the `gist` scope. The browser receives a one-time user code and flow identifier, never the OAuth access token or GitHub device code.
+- Sync operations are serialized. A blank device bootstraps from an existing cloud snapshot, while subsequent divergent edits use a base digest and tombstone-aware deterministic merge.
 - Terminal input is sequenced and terminal resources are explicitly disposed on close or unmount.
 - Visual motion uses `transform` and `opacity`, remains interruptible, and is disabled by `prefers-reduced-motion`.
 - Filesystem paths are treated as remote paths unless a value is explicitly named as a DSH local workspace.
