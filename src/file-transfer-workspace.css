@@ -242,7 +242,7 @@
 .dsh-ssh-transfer-queue-heading small { color: var(--ssh-text-subtle); }
 .dsh-ssh-transfer-job-list { display: flex; gap: 8px; max-height: 116px; padding: 0 10px 9px; overflow: auto; }
 .dsh-ssh-transfer-job-list > p { margin: 8px 2px; color: var(--ssh-text-subtle); }
-.dsh-ssh-transfer-job-list article { display: grid; grid-template-columns: 8px minmax(180px, 270px) 28px; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 260px; padding: 7px 8px; border: 1px solid var(--ssh-border); border-radius: 8px; background: var(--ssh-surface); }
+.dsh-ssh-transfer-job-list article { display: grid; grid-template-columns: 8px minmax(210px, 292px) 28px; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 290px; padding: 7px 8px; border: 1px solid var(--ssh-border); border-radius: 8px; background: var(--ssh-surface); }
 .dsh-ssh-job-resolve { min-height: 28px; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--ssh-warning) 35%, var(--ssh-border)); border-radius: 7px; color: var(--ssh-warning); background: transparent; font: 600 var(--ssh-type-caption)/1 var(--ssh-font-sans); cursor: pointer; }
 .dsh-ssh-transfer-state { width: 7px; height: 7px; border-radius: 50%; background: var(--ssh-text-subtle); }
 .dsh-ssh-transfer-state.is-transferring,
@@ -255,6 +255,7 @@
 .dsh-ssh-transfer-job-copy strong { color: var(--ssh-text); font-size: var(--ssh-type-label); font-weight: 600; }
 .dsh-ssh-transfer-job-copy strong i { color: var(--ssh-text-subtle); font-style: normal; }
 .dsh-ssh-transfer-job-copy small { color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); }
+.dsh-ssh-transfer-job-time { overflow: hidden; color: var(--ssh-text-subtle); font: 500 var(--ssh-type-caption)/1.2 var(--ssh-font-mono); text-overflow: ellipsis; white-space: nowrap; }
 .dsh-ssh-transfer-progress { height: 2px; overflow: hidden; border-radius: 2px; background: color-mix(in srgb, var(--ssh-text) 8%, transparent); }
 .dsh-ssh-transfer-progress i { display: block; width: 100%; height: 100%; transform-origin: left; background: var(--ssh-accent); transition: transform 160ms linear; }
 .dsh-ssh-transfer-empty { display: grid; place-items: center; align-content: center; gap: 7px; min-height: 0; color: var(--ssh-text-subtle); }

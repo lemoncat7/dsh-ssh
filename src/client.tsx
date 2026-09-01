@@ -67,7 +67,7 @@ export function apply(ctx: ClientContext): void {
   const activityController = createActivityController(ctx)
   const controller = createController(ctx, () => activityController.close())
   ctx.effect(() => observePluginWorkspace(PLUGIN_ID, () => { controller.close(); activityController.close() }), 'dsh-ssh: exclusive workspace')
-  ctx.effect(() => () => { controller.close(); activityController.close() }, 'dsh-ssh: workspace lifecycle')
+  ctx.effect(() => () => { controller.close(); activityController.dispose() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'ssh-remote', order: -100,
   }, props => <RemoteSidebar
@@ -112,54 +112,98 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
 }
 
 function createActivityController(ctx: ClientContext): ActivityController {
+  const runtime = ctx as unknown as { sessions: ISessions }
   const listeners = new Set<() => void>()
-  let openSessionId: string | undefined
-  let selectedProfileId: string | undefined
-  let requestedView: ActivityViewMode | undefined
+  const states = new Map<string, { open: boolean; selectedProfileId?: string; requestedView: ActivityViewMode }>()
+  let currentSessionId = normalizeSessionId(runtime.sessions.list.getSnapshot().current)
+  let mountedSessionId: string | undefined
+  let restoreFrame: number | undefined
   let dispose: (() => void) | undefined
   const notify = (): void => { for (const listener of listeners) listener() }
+  const cancelRestore = (): void => {
+    if (restoreFrame === undefined) return
+    window.cancelAnimationFrame(restoreFrame)
+    restoreFrame = undefined
+  }
+  const unmount = (): boolean => {
+    if (dispose === undefined) return false
+    const current = dispose
+    dispose = undefined
+    mountedSessionId = undefined
+    current()
+    return true
+  }
+  const mount = (targetSessionId: string, openDetails = true): void => {
+    if (mountedSessionId === targetSessionId && dispose !== undefined) return
+    unmount()
+    mountedSessionId = targetSessionId
+    dispose = ctx.slots.register({ name: 'details', priority: -2 }, props => (
+      <SshActivityPanel {...props} controller={controller} />
+    ))
+    if (openDetails) ctx.layout.openDetails()
+  }
+  const syncCurrentSession = (): void => {
+    const snapshot = runtime.sessions.list.getSnapshot()
+    const nextSessionId = normalizeSessionId(snapshot.current)
+    if (nextSessionId === currentSessionId) return
+    cancelRestore()
+    const wasMounted = unmount()
+    currentSessionId = nextSessionId
+    if (nextSessionId !== undefined && states.get(nextSessionId)?.open === true) {
+      mount(nextSessionId, false)
+      // DSH intentionally closes details in AppFrame's layout effect whenever
+      // the selected session changes. Restore only after that commit, and only
+      // if the same session still owns an open SSH panel.
+      restoreFrame = window.requestAnimationFrame(() => {
+        restoreFrame = undefined
+        if (currentSessionId === nextSessionId && mountedSessionId === nextSessionId && states.get(nextSessionId)?.open === true) ctx.layout.openDetails()
+      })
+    } else if (wasMounted) ctx.layout.closeDetails()
+    notify()
+  }
   const controller: ActivityController = {
     open(sessionId, profileId, view) {
       const nextView = view ?? (profileId === undefined ? 'local-directory' : 'remote-directory')
-      if (dispose !== undefined && openSessionId === sessionId) {
-        if (profileId !== undefined) selectedProfileId = profileId
-        requestedView = nextView
-        ctx.layout.openDetails()
-        notify()
-        return
-      }
-      controller.close()
+      const previous = states.get(sessionId)
+      const selectedProfileId = profileId ?? previous?.selectedProfileId
+      states.set(sessionId, { open: true, ...(selectedProfileId === undefined ? {} : { selectedProfileId }), requestedView: nextView })
       activatePluginWorkspace(PLUGIN_ID)
-      openSessionId = sessionId
-      selectedProfileId = profileId
-      requestedView = nextView
-      dispose = ctx.slots.register({ name: 'details', priority: -2 }, props => (
-        <SshActivityPanel {...props} controller={controller} />
-      ))
-      ctx.layout.openDetails()
+      if (sessionId === currentSessionId) { cancelRestore(); mount(sessionId); ctx.layout.openDetails() }
       notify()
     },
     toggle(sessionId) {
-      if (dispose !== undefined && openSessionId === sessionId) return controller.close(sessionId)
+      if (states.get(sessionId)?.open === true) return controller.close(sessionId)
       controller.open(sessionId)
     },
     close(sessionId) {
-      if (sessionId !== undefined && sessionId !== openSessionId) return
-      const current = dispose
-      dispose = undefined
-      openSessionId = undefined
-      selectedProfileId = undefined
-      requestedView = undefined
-      current?.()
-      if (current !== undefined) ctx.layout.closeDetails()
+      const targetSessionId = sessionId ?? currentSessionId
+      if (targetSessionId === undefined) return
+      const previous = states.get(targetSessionId)
+      if (previous !== undefined) states.set(targetSessionId, { ...previous, open: false })
+      if (targetSessionId === currentSessionId) {
+        cancelRestore()
+        if (unmount()) ctx.layout.closeDetails()
+      }
       notify()
     },
-    isOpen: sessionId => dispose !== undefined && openSessionId === sessionId,
-    selected: sessionId => openSessionId === sessionId ? selectedProfileId : undefined,
-    requestedView: sessionId => openSessionId === sessionId ? requestedView : undefined,
+    isOpen: sessionId => states.get(sessionId)?.open === true,
+    selected: sessionId => states.get(sessionId)?.selectedProfileId,
+    requestedView: sessionId => states.get(sessionId)?.requestedView,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
+    dispose() {
+      disposeSelection()
+      cancelRestore()
+      unmount()
+      states.clear()
+      listeners.clear()
+    },
   }
+  const disposeSelection = runtime.sessions.list.subscribe(syncCurrentSession)
   return controller
+}
+
+function normalizeSessionId(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {

@@ -244,14 +244,33 @@ function requireProfile(store: SshStore, exec: ToolRunContext, profileId: string
 
 function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
   const attached = new Map<Agent, () => void>()
+  const inheritance = new Map<string, Promise<void>>()
+  const ensureInheritedAccess = (agent: Agent): Promise<void> => {
+    const childSessionId = String(agent.session.id)
+    const current = inheritance.get(childSessionId)
+    if (current !== undefined) return current
+    const parentSessionId = agent.session.header?.origin === 'subagent' ? undefined : agent.session.header?.parentSession
+    if (parentSessionId === undefined) return Promise.resolve()
+    const operation = store.inheritInjection(String(parentSessionId), childSessionId)
+      .then(inherited => {
+        if (inherited) ctx.logger.info(`dsh-ssh: inherited session access ${String(parentSessionId)} -> ${childSessionId}`)
+      })
+      .finally(() => { inheritance.delete(childSessionId) })
+    inheritance.set(childSessionId, operation)
+    return operation
+  }
   const attach = (agent: Agent): void => {
     if (attached.has(agent)) return
     const dispose = agent.ctx.on('system-prompt/assemble', async (_assembly, _context, next) => {
+      await ensureInheritedAccess(agent)
       const result = await next()
       applyModeToolVisibility(result, store.injection(agent.session.id)?.permission)
       return result
     })
     attached.set(agent, dispose)
+    void ensureInheritedAccess(agent).catch(error => {
+      ctx.logger.warn(`dsh-ssh: failed to inherit access for session ${String(agent.session.id)}: ${String(error)}`)
+    })
   }
   for (const agent of ctx.agents.list()) attach(agent)
   const disposeCreated = ctx.on('agent/created', ({ agent }) => attach(agent))
@@ -264,6 +283,7 @@ function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
     disposeCreated()
     for (const dispose of attached.values()) dispose()
     attached.clear()
+    inheritance.clear()
   }
 }
 

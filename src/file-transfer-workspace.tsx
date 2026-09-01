@@ -20,6 +20,7 @@ interface TransferTab { id: string; name: string; panes: PaneState[] }
 type TransferDragSource = RemoteFilesDragPayload
 const STORAGE_KEY = 'dsh-ssh:file-transfer:tabs:v2'
 const FILE_ROW_HEIGHT = 38
+const transferClockFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries, access, onProfilesChanged }: { ftpProfiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; access: SessionAccessState; onProfilesChanged(): void }): JSX.Element {
   const [endpoints, setEndpoints] = useState<FileEndpointView[]>([])
@@ -244,7 +245,7 @@ function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: Transf
     <button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-queue-heading" aria-expanded={open} onClick={() => setOpen(value => !value)}><span><strong>传输任务</strong><small>{active.length > 0 ? `${active.length} 个进行中` : jobs.length > 0 ? '最近任务' : '暂无任务'}</small></span><span>{open ? '收起' : '展开'}</span></button>
     {open && <div className="dsh-ssh-transfer-job-list">{jobs.length === 0 ? <p>从一个窗格拖到另一个窗格，或选中文件后点击“传送到下一栏”。</p> : jobs.slice(0, 12).map(job => {
       const progress = job.totalBytes > 0 ? Math.min(100, job.transferredBytes / job.totalBytes * 100) : job.state === 'completed' ? 100 : 0
-      return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label="取消传输" onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : job.state === 'failed' && job.error?.includes('destination already contains') ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>处理</button> : null}</article>
+      return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label="取消传输" onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : job.state === 'failed' && job.error?.includes('destination already contains') ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>处理</button> : null}</article>
     })}</div>}
   </section>
 }
@@ -330,6 +331,20 @@ function canDropIntoPane(source: TransferDragSource | undefined, pane: PaneState
 function isFinished(state: TransferJobView['state']): boolean { return state === 'completed' || state === 'failed' || state === 'cancelled' }
 function formatBytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`; if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`; return `${(value / 1024 ** 3).toFixed(2)} GB` }
 function jobLabel(job: TransferJobView, progress: number): string { if (job.state === 'queued') return '等待传输'; if (job.state === 'scanning') return '正在扫描目录'; if (job.state === 'transferring') { const seconds = Math.max(1, (Date.now() - (job.startedAt ?? Date.now())) / 1000); const speed = job.transferredBytes / seconds; const remaining = speed > 0 ? Math.max(0, (job.totalBytes - job.transferredBytes) / speed) : 0; return `${progress.toFixed(0)}% · ${formatBytes(speed)}/s${remaining > 1 ? ` · 约 ${formatDuration(remaining)}` : ''}` } if (job.state === 'completed') return `已完成 ${job.completedFiles} 个文件${job.skippedFiles ? `，跳过 ${job.skippedFiles}` : ''}`; if (job.state === 'cancelled') return '已取消'; return '传输失败' }
+function jobTimeLabel(job: TransferJobView): string {
+  if (job.startedAt === undefined) return `创建于 ${formatClock(job.createdAt)}`
+  const end = job.completedAt ?? Date.now()
+  const elapsed = formatElapsed(Math.max(0, end - job.startedAt))
+  return job.completedAt === undefined ? `已执行 ${elapsed}` : `耗时 ${elapsed} · 完成于 ${formatClock(job.completedAt)}`
+}
+function formatClock(timestamp: number): string { return transferClockFormatter.format(timestamp) }
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000))
+  if (seconds < 60) return `${seconds} 秒`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} 分 ${String(seconds % 60).padStart(2, '0')} 秒`
+  return `${Math.floor(minutes / 60)} 小时 ${String(minutes % 60).padStart(2, '0')} 分`
+}
 function formatDuration(seconds: number): string { if (seconds < 60) return `${Math.ceil(seconds)} 秒`; const minutes = Math.ceil(seconds / 60); return minutes < 60 ? `${minutes} 分钟` : `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟` }
 function UpGlyph(): JSX.Element { return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12V4m0 0L4.8 7.2M8 4l3.2 3.2" /></svg> }
 function RefreshGlyph(): JSX.Element { return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.2 5.2A5 5 0 1 0 13 9M12.2 5.2V2.5m0 2.7H9.5" /></svg> }

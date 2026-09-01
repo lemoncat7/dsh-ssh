@@ -42,6 +42,20 @@ export class SshStore {
   injection(sessionId: string): SessionInjection | undefined { return structuredClone(this.state.injections.find(item => item.sessionId === sessionId)) }
   settings(): SshSettings { return structuredClone(this.state.settings) }
 
+  /** Copy durable access from a parent conversation into a newly forked conversation. */
+  async inheritInjection(parentSessionId: string, childSessionId: string): Promise<boolean> {
+    if (parentSessionId === childSessionId || this.injection(childSessionId) !== undefined || this.injection(parentSessionId) === undefined) return false
+    let inherited = false
+    await this.update(state => {
+      if (state.injections.some(item => item.sessionId === childSessionId)) return
+      const parent = state.injections.find(item => item.sessionId === parentSessionId)
+      if (parent === undefined) return
+      state.injections.push({ ...structuredClone(parent), sessionId: childSessionId, updatedAt: Date.now() })
+      inherited = true
+    })
+    return inherited
+  }
+
   subscribe(listener: (previous: SshState, next: SshState) => void): () => void {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }

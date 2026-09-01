@@ -55,7 +55,8 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 | Browser file control sessions | endpoint session manager | process lifetime, 60-second idle reap |
 | File transfer jobs | file transfer manager | process lifetime |
 | Browser terminal process | terminal manager | process lifetime |
-| Active panel, selected host, open dialog | React feature component | browser lifetime |
+| Activity-panel open state, view and selected host | per-session browser controller | plugin lifetime |
+| Open dialog and transient pane state | React feature component | component lifetime |
 | Terminal/SFTP split width | `ResizableSplit` | browser local storage |
 
 ## Invariants
@@ -63,6 +64,7 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - The plugin uses only public DSH slots and injected client services; it does not patch DSH source code.
 - A tool call must pass the session access boundary before reaching SSH resources.
 - SSH command permission and remote-file permission are independent; authorizing one never implies the other.
+- A regular user fork copies the parent session grant once, before prompt assembly. Existing child grants win, live terminals/jobs are never copied, and `origin: subagent` lineage is excluded.
 - FTP control and passive data sockets use the same route policy. FTPS wraps both socket classes with verified TLS.
 - Remote-to-remote transfers use backpressured streams and never stage a complete file on local disk.
 - Browser browsing sessions and transfer job sessions are isolated so a long transfer cannot block pane navigation.

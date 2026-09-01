@@ -35,6 +35,7 @@ export interface ActivityController {
   selected(sessionId: string): string | undefined
   requestedView(sessionId: string): ActivityViewMode | undefined
   subscribe(listener: () => void): () => void
+  dispose(): void
 }
 
 export function SshActivityPanel(props: DetailsProps & { controller: ActivityController }): JSX.Element {
@@ -53,13 +54,14 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
       const next = await loadActivity(sessionId)
       setActivity(next)
       if (next.injection?.permission !== 'terminal') {
+        if (props.controller.requestedView(sessionId) === 'terminals') props.controller.open(sessionId, undefined, 'local-directory')
         setView(current => current === 'terminals' ? 'local-directory' : current)
       }
       setError(undefined)
     } catch (reason) {
       setError(errorMessage(reason))
     }
-  }, [sessionId])
+  }, [props.controller, sessionId])
 
   useEffect(() => {
     let disposed = false
@@ -98,9 +100,9 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
       <button type="button" className="dsh-ssh-icon-button" aria-label="关闭 SSH 活动" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
     </header>
     {activity && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
-      <button type="button" data-ssh-interactive="choice" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => setView('local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
-      {activity.profiles.length > 0 && <button type="button" data-ssh-interactive="choice" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => setView('remote-directory')}><ServerGlyph />远端目录</button>}
-      {activity.injection?.permission === 'terminal' && <button type="button" data-ssh-interactive="choice" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => setView('terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
+      <button type="button" data-ssh-interactive="choice" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => props.controller.open(sessionId, undefined, 'local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
+      {activity.profiles.length > 0 && <button type="button" data-ssh-interactive="choice" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => props.controller.open(sessionId, undefined, 'remote-directory')}><ServerGlyph />远端目录</button>}
+      {activity.injection?.permission === 'terminal' && <button type="button" data-ssh-interactive="choice" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => props.controller.open(sessionId, undefined, 'terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
     </nav>}
     <div className="dsh-ssh-activity-body">
       {activity === undefined ? <p className="dsh-ssh-activity-state" role="status">正在读取 SSH 会话…</p>
