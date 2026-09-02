@@ -1774,6 +1774,104 @@ body[data-ds-dark-theme] :is(
   line-height: 1.4;
   font-weight: 400;
 }
+.dsh-ssh-suggestion-input,
+.dsh-ssh-password-input {
+  position: relative;
+  min-width: 0;
+  font-weight: 400;
+}
+.dsh-ssh-suggestion-input > input {
+  padding-right: 38px;
+}
+.dsh-ssh-suggestion-toggle,
+.dsh-ssh-password-input > button {
+  appearance: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ssh-text-subtle);
+  background: transparent;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+.dsh-ssh-suggestion-toggle {
+  width: 30px;
+}
+.dsh-ssh-suggestion-toggle:hover,
+.dsh-ssh-password-input > button:hover {
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+.dsh-ssh-suggestion-input.is-open .dsh-ssh-suggestion-toggle > svg {
+  transform: rotate(180deg);
+}
+.dsh-ssh-suggestion-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: 176px;
+  gap: 2px;
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--ssh-border) 76%, var(--ssh-text) 24%);
+  border-radius: 10px;
+  background: var(--ssh-modal-surface-raised);
+  box-shadow: var(--ssh-shadow-md);
+}
+.dsh-ssh-suggestion-menu > button {
+  appearance: none;
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ssh-text-muted);
+  background: transparent;
+  font: 500 12px/1.35 var(--ssh-font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.dsh-ssh-suggestion-menu > button:is(:hover, .is-active) {
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+.dsh-ssh-suggestion-menu > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-ssh-suggestion-menu > button > svg {
+  flex: none;
+  color: var(--ssh-accent-strong);
+}
+.dsh-ssh-suggestion-menu > p {
+  margin: 0;
+  padding: 9px;
+  color: var(--ssh-text-subtle);
+  font-size: var(--ssh-type-caption);
+  font-weight: 400;
+  line-height: 1.4;
+}
+.dsh-ssh-password-input > input {
+  padding-right: 54px;
+}
+.dsh-ssh-password-input > button {
+  min-width: 44px;
+  padding: 0 8px;
+  font: 600 var(--ssh-type-caption)/1 var(--ssh-font-sans);
+}
 .dsh-ssh-form-divider {
   display: flex;
   align-items: center;

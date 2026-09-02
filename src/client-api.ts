@@ -31,6 +31,7 @@ export interface InjectionView {
 }
 export interface FtpProfileView {
   id: string; name: string; group?: string; protocol: 'ftp' | 'ftps-explicit' | 'ftps-implicit'
+  tags: string[]
   host: string; port: number; username: string; credentialId?: string
   proxy: { type: 'none' } | { type: 'saved'; proxyId: string }
   initialPath: string; connectTimeoutMs: number; tlsServerName?: string

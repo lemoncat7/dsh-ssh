@@ -27,6 +27,7 @@ test('encrypts portable SSH, FTP, proxy and vault configuration without leaking 
 
   assert.equal(snapshot.collections.profiles.length, 1)
   assert.equal(snapshot.collections.ftpProfiles.length, 1)
+  assert.deepEqual(snapshot.collections.ftpProfiles[0].tags, ['files', 'production'])
   assert.equal(snapshot.collections.proxyEntries.length, 1)
   assert.equal(snapshot.collections.credentialEntries.length, 2)
   assert.equal(snapshot.collections.remoteProjects.length, 1)
@@ -103,6 +104,7 @@ test('creates a private Gist, rotates explicit backups, and restores encrypted c
   assert.equal(restored.lastResult, 'downloaded')
   assert.equal(restored.cloudVersion, github.revision())
   assert.equal(target.store.profile('host-one')?.name, 'Host revision 3')
+  assert.deepEqual(target.store.ftpProfile('ftp-one')?.tags, ['files', 'production'])
   assert.equal((await target.credentials.readEntry('credential-password')).password, 'vault-password')
   assert.equal((await target.credentials.readEntry('credential-key')).privateKey, 'PRIVATE KEY MATERIAL')
   assert.equal((await target.credentials.readProxyEntry('proxy-one')).proxyPassword, 'proxy-password')
@@ -162,6 +164,25 @@ test('recovers from damaged local sync metadata without preventing SSH startup',
   assert.equal((await readdir(fixture.directory)).some(name => name.startsWith('gist.json.corrupt.')), true)
 })
 
+test('loads legacy FTP profiles without tags and persists the normalized metadata', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-ssh-legacy-ftp-tags-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const statePath = join(directory, 'state.json')
+  const state = emptyState()
+  state.ftpProfiles.push({
+    id: 'ftp-legacy', name: 'Legacy FTP', protocol: 'ftps-explicit', host: 'ftp.internal', port: 21,
+    username: 'root', proxy: { type: 'none' }, initialPath: '/', connectTimeoutMs: 15_000,
+    createdAt: 10, updatedAt: 10,
+  })
+  await writeFile(statePath, `${JSON.stringify(state)}\n`, 'utf8')
+
+  const store = await SshStore.open(statePath, state.settings)
+  assert.deepEqual(store.ftpProfile('ftp-legacy')?.tags, [])
+  await store.update(() => {})
+  const persisted = JSON.parse(await readFile(statePath, 'utf8'))
+  assert.deepEqual(persisted.ftpProfiles[0].tags, [])
+})
+
 test('refuses a public Gist before any SSH configuration can be uploaded', async () => {
   const request = async () => json({
     id: 'abcdef1234567890abcdef1234567890',
@@ -191,7 +212,7 @@ async function seedPortableConfiguration(store, credentials) {
     )
     state.proxyEntries.push({ id: 'proxy-one', name: 'Office proxy', proxyType: 'socks5', host: 'proxy.internal', port: 1080, username: 'proxy-user', createdAt: now, updatedAt: now })
     state.profiles.push({ ...profile('host-one', 'Host one', now), credentialId: 'credential-password', proxy: { type: 'saved', proxyId: 'proxy-one' } })
-    state.ftpProfiles.push({ id: 'ftp-one', name: 'FTP one', protocol: 'ftps-explicit', host: 'ftp.internal', port: 21, username: 'root', credentialId: 'credential-password', proxy: { type: 'saved', proxyId: 'proxy-one' }, initialPath: '/', connectTimeoutMs: 15_000, createdAt: now, updatedAt: now })
+    state.ftpProfiles.push({ id: 'ftp-one', name: 'FTP one', protocol: 'ftps-explicit', host: 'ftp.internal', port: 21, username: 'root', credentialId: 'credential-password', proxy: { type: 'saved', proxyId: 'proxy-one' }, initialPath: '/', connectTimeoutMs: 15_000, tags: ['files', 'production'], createdAt: now, updatedAt: now })
     state.remoteProjects.push({ id: 'project-one', profileId: 'host-one', name: 'Application', path: '/srv/app', createdAt: now, updatedAt: now })
     state.forwardRules.push({ id: 'forward-local', profileId: 'host-one', name: 'Local only', kind: 'local', bindHost: '127.0.0.1', bindPort: 8080, targetHost: '127.0.0.1', targetPort: 80, autoStart: false, createdAt: now, updatedAt: now })
     state.injections.push({ sessionId: 'session-local', profileIds: ['host-one'], fileEndpointIds: ['sftp:host-one'], filePermission: 'transfer', requireFileApproval: true, permission: 'exec', requireCommandApproval: true, workingDirectories: { 'host-one': '/srv/app' }, workingProjectIds: { 'host-one': 'project-one' }, updatedAt: now })

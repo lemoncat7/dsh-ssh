@@ -112,7 +112,7 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
   return {
     schemaVersion: 5,
     profiles: Array.isArray(state.profiles) ? state.profiles.map(normalizeStoredProfile) : [],
-    ftpProfiles: Array.isArray(state.ftpProfiles) ? state.ftpProfiles.filter(isStoredFtpProfile) : [],
+    ftpProfiles: Array.isArray(state.ftpProfiles) ? state.ftpProfiles.map(normalizeStoredFtpProfile).filter((profile): profile is FtpProfile => profile !== undefined) : [],
     remoteProjects: Array.isArray(state.remoteProjects) ? state.remoteProjects.filter(isStoredRemoteProject) : [],
     credentialEntries: Array.isArray(state.credentialEntries) ? state.credentialEntries : [],
     proxyEntries: Array.isArray(state.proxyEntries) ? state.proxyEntries : [],
@@ -181,6 +181,20 @@ function isStoredFtpProfile(value: unknown): value is FtpProfile {
     typeof profile.initialPath === 'string' && Number.isInteger(profile.connectTimeoutMs) && profile.connectTimeoutMs! >= 1000 && profile.connectTimeoutMs! <= 120_000 &&
     typeof profile.createdAt === 'number' && typeof profile.updatedAt === 'number' &&
     typeof proxy === 'object' && proxy !== null && (proxy.type === 'none' || proxy.type === 'saved' && typeof proxy.proxyId === 'string')
+}
+
+function normalizeStoredFtpProfile(value: unknown): FtpProfile | undefined {
+  if (!isStoredFtpProfile(value)) return undefined
+  const rawTags = (value as { tags?: unknown }).tags
+  const tags = Array.isArray(rawTags) ? rawTags.filter((tag): tag is string => typeof tag === 'string') : []
+  const uniqueTags = new Map<string, string>()
+  for (const rawTag of tags) {
+    const tag = rawTag.trim()
+    if (tag.length < 1 || tag.length > 32 || uniqueTags.size >= 20) continue
+    const key = tag.toLocaleLowerCase('zh-CN')
+    if (!uniqueTags.has(key)) uniqueTags.set(key, tag)
+  }
+  return { ...value, tags: [...uniqueTags.values()] }
 }
 
 function isStoredRemoteProject(value: unknown): value is RemoteProject {

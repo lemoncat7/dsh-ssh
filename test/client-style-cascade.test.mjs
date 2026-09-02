@@ -8,6 +8,9 @@ const clientSourceUrl = new URL('../src/client.tsx', import.meta.url)
 const transferSourceUrl = new URL('../src/file-transfer-workspace.tsx', import.meta.url)
 const sftpSourceUrl = new URL('../src/sftp-client.tsx', import.meta.url)
 const remoteTreeSourceUrl = new URL('../src/remote-workspace-tree.tsx', import.meta.url)
+const profileEditorSourceUrl = new URL('../src/profile-editor.tsx', import.meta.url)
+const ftpEditorSourceUrl = new URL('../src/ftp-profile-editor.tsx', import.meta.url)
+const uiComponentsSourceUrl = new URL('../src/ui-components.tsx', import.meta.url)
 const adaptiveStylesheetUrl = new URL('../src/adaptive-workspace.css', import.meta.url)
 const transferStylesheetUrl = new URL('../src/file-transfer-workspace.css', import.meta.url)
 const workbenchStylesheetUrl = new URL('../src/host-workbench.css', import.meta.url)
@@ -79,4 +82,25 @@ test('all SSH workspaces share one neutral material and typography contract', as
   assert.match(transferCss, /\.dsh-ssh-file-row-download\s*\{[\s\S]*?appearance:\s*none;/)
   assert.doesNotMatch(featureCss, /#[\da-f]{3,8}\b|rgba?\(/i)
   assert.doesNotMatch(readableCss, /font-size:\s*(?:10|11)px|font:[^;\n]*(?:10|11)px\//)
+})
+
+test('profile metadata pickers, password visibility, and host groups use owned accessible controls', async () => {
+  const [css, profileSource, ftpSource, uiSource, remoteTreeSource] = await Promise.all([
+    readFile(stylesheetUrl, 'utf8'),
+    readFile(profileEditorSourceUrl, 'utf8'),
+    readFile(ftpEditorSourceUrl, 'utf8'),
+    readFile(uiComponentsSourceUrl, 'utf8'),
+    readFile(remoteTreeSourceUrl, 'utf8'),
+  ])
+
+  assert.match(profileSource, /<SuggestionInput ariaLabel="主机分组"/)
+  assert.match(profileSource, /<SuggestionInput ariaLabel="主机标签" multiple/)
+  assert.match(ftpSource, /<SuggestionInput ariaLabel="FTP 分组"/)
+  assert.match(ftpSource, /<SuggestionInput ariaLabel="FTP 标签" multiple/)
+  assert.match(uiSource, /role="combobox"/)
+  assert.match(uiSource, /role="listbox"/)
+  assert.match(uiSource, /aria-label=\{visible \? '隐藏密码' : '显示密码'\}/)
+  assert.match(remoteTreeSource, /aria-expanded=\{!collapsed\}/)
+  assert.match(css, /\.dsh-ssh-suggestion-menu\s*\{[\s\S]*?background:\s*var\(--ssh-modal-surface-raised\);/)
+  assert.match(css, /\.dsh-ssh-password-input > button\s*\{[\s\S]*?min-width:\s*44px;/)
 })

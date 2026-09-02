@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import {
   IconChevronLeftOutline14, IconDataOutline16, IconPlusOutline16, IconTrashOutline16, IconWarningOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { api, type FtpProfileView, type ProxyEntryView, type VaultEntryView } from './client-api.js'
-import { Dialog, Field, errorMessage } from './ui-components.js'
+import { Dialog, Field, SuggestionInput, errorMessage } from './ui-components.js'
 
 type EditorTarget = FtpProfileView | 'new'
 
@@ -38,7 +38,7 @@ export function FtpConnectionsDialog({ profiles, vaultEntries, proxyEntries, onC
       </aside>
       <main className="dsh-ssh-ftp-manager-detail">
         {deleting !== undefined ? <DeleteConnection profile={deleting} error={error} onBack={() => setDeleting(undefined)} onDelete={() => remove(deleting)} />
-          : editing !== undefined ? <FtpProfileEditor key={editing === 'new' ? 'new' : editing.id} value={editing === 'new' ? undefined : editing} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onBack={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged() }} />
+          : editing !== undefined ? <FtpProfileEditor key={editing === 'new' ? 'new' : editing.id} value={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onBack={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged() }} />
             : <div className="dsh-ssh-ftp-manager-overview"><span><IconDataOutline16 size={22} /></span><h3>选择一个连接进行编辑</h3><p>文件窗格会把这里保存的 FTP、FTPS 与 SSH 主机提供的 SFTP 汇总成连接列表。</p><dl><div><dt>FTPS</dt><dd>加密控制与文件数据，默认严格校验证书</dd></div><div><dt>FTP</dt><dd>兼容旧服务器，但账号和文件内容不加密</dd></div><div><dt>SFTP</dt><dd>由 SSH 主机管理，不在这里重复配置</dd></div></dl></div>}
       </main>
     </div>
@@ -58,12 +58,12 @@ function DeleteConnection({ profile, error, onBack, onDelete }: { profile: FtpPr
   </div>
 }
 
-function FtpProfileEditor({ value, vaultEntries, proxyEntries, onBack, onSaved }: { value?: FtpProfileView | undefined; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onBack(): void; onSaved(): void }): JSX.Element {
+function FtpProfileEditor({ value, profiles, vaultEntries, proxyEntries, onBack, onSaved }: { value?: FtpProfileView | undefined; profiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onBack(): void; onSaved(): void }): JSX.Element {
   const passwordEntries = vaultEntries.filter(entry => entry.authType === 'password')
   const [form, setForm] = useState({
     name: value?.name ?? '', group: value?.group ?? '', protocol: value?.protocol ?? 'ftps-explicit' as FtpProfileView['protocol'],
     host: value?.host ?? '', port: String(value?.port ?? 21), username: value?.username ?? '', credentialId: value?.credentialId ?? '', password: '',
-    proxyId: value?.proxy.type === 'saved' ? value.proxy.proxyId : '', initialPath: value?.initialPath ?? '/', connectTimeoutMs: String(value?.connectTimeoutMs ?? 15_000), tlsServerName: value?.tlsServerName ?? '',
+    proxyId: value?.proxy.type === 'saved' ? value.proxy.proxyId : '', initialPath: value?.initialPath ?? '/', connectTimeoutMs: String(value?.connectTimeoutMs ?? 15_000), tlsServerName: value?.tlsServerName ?? '', tags: value?.tags.join(', ') ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -74,6 +74,7 @@ function FtpProfileEditor({ value, vaultEntries, proxyEntries, onBack, onSaved }
       name: form.name, ...(form.group.trim() ? { group: form.group.trim() } : {}), protocol: form.protocol, host: form.host, port: Number(form.port), username: form.username,
       ...(form.credentialId ? { credentialId: form.credentialId } : {}), proxy: form.proxyId ? { type: 'saved', proxyId: form.proxyId } : { type: 'none' },
       initialPath: form.initialPath, connectTimeoutMs: Number(form.connectTimeoutMs), ...(form.tlsServerName.trim() ? { tlsServerName: form.tlsServerName.trim() } : {}),
+      tags: form.tags.split(/[,，]/u).map(item => item.trim()).filter(Boolean),
     }, secrets: { password: form.password },
   })
   const submit = async (event: FormEvent): Promise<void> => {
@@ -87,11 +88,13 @@ function FtpProfileEditor({ value, vaultEntries, proxyEntries, onBack, onSaved }
     catch (reason) { setError(errorMessage(reason)) } finally { setTesting(false) }
   }
   const protocolChanged = (protocol: FtpProfileView['protocol']): void => setForm(current => ({ ...current, protocol, port: current.port === '21' || current.port === '990' ? String(protocol === 'ftps-implicit' ? 990 : 21) : current.port }))
+  const groupOptions = useMemo(() => profiles.flatMap(item => item.group === undefined ? [] : [item.group]), [profiles])
+  const tagOptions = useMemo(() => profiles.flatMap(item => item.tags), [profiles])
   return <form className="dsh-ssh-ftp-editor-form" onSubmit={event => { void submit(event) }}>
     <header className="dsh-ssh-ftp-editor-heading"><button type="button" className="dsh-ssh-ftp-detail-back" onClick={onBack}><IconChevronLeftOutline14 size={14} />返回连接列表</button><span><strong>{value === undefined ? '新建文件连接' : value.name}</strong><small>{value === undefined ? '填写服务器和认证信息' : '修改后可先测试再保存'}</small></span></header>
     <div className="dsh-ssh-ftp-editor-scroll">
       <section className="dsh-ssh-ftp-editor-section"><div className="dsh-ssh-form-section-heading"><strong>连接类型</strong><small>优先使用 FTPS；仅在服务器不支持 TLS 时选择 FTP</small></div><div className="dsh-ssh-ftp-protocol-options" role="radiogroup" aria-label="连接协议">{([['ftps-explicit', 'FTPS', '显式 TLS · 推荐'], ['ftps-implicit', 'FTPS-I', '隐式 TLS'], ['ftp', 'FTP', '未加密']] as const).map(option => <button type="button" data-ssh-interactive="choice" role="radio" aria-checked={form.protocol === option[0]} className={form.protocol === option[0] ? 'is-active' : ''} key={option[0]} onClick={() => protocolChanged(option[0])}><span className={`dsh-ssh-protocol-badge is-${option[0]}`}>{option[1]}</span><span><strong>{option[1]}</strong><small>{option[2]}</small></span></button>)}</div>{form.protocol === 'ftp' && <p className="dsh-ssh-form-warning">普通 FTP 的账号、密码和文件内容均不加密。</p>}</section>
-      <section className="dsh-ssh-ftp-editor-section"><div className="dsh-ssh-form-section-heading"><strong>服务器</strong><small>名称用于连接列表，分组用于区分环境或用途</small></div><div className="dsh-ssh-form-grid"><Field label="连接名称"><input autoFocus={value === undefined} required maxLength={80} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></Field><Field label="分组（可选）"><input maxLength={64} value={form.group} onChange={event => setForm({ ...form, group: event.target.value })} /></Field></div><div className="dsh-ssh-form-grid is-host"><Field label="服务器地址"><input required maxLength={253} spellCheck={false} value={form.host} onChange={event => setForm({ ...form, host: event.target.value })} /></Field><Field label="端口"><input required type="number" min="1" max="65535" value={form.port} onChange={event => setForm({ ...form, port: event.target.value })} /></Field></div></section>
+      <section className="dsh-ssh-ftp-editor-section"><div className="dsh-ssh-form-section-heading"><strong>服务器</strong><small>名称用于连接列表，分组与标签可复用已有选项</small></div><div className="dsh-ssh-form-grid"><Field label="连接名称"><input autoFocus={value === undefined} required maxLength={80} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></Field><Field label="分组（可选）"><SuggestionInput ariaLabel="FTP 分组" maxLength={64} options={groupOptions} placeholder="选择已有分组或输入新分组" value={form.group} onChange={group => setForm(current => ({ ...current, group }))} /></Field></div><div className="dsh-ssh-form-grid is-host"><Field label="服务器地址"><input required maxLength={253} spellCheck={false} value={form.host} onChange={event => setForm({ ...form, host: event.target.value })} /></Field><Field label="端口"><input required type="number" min="1" max="65535" value={form.port} onChange={event => setForm({ ...form, port: event.target.value })} /></Field></div><Field label="标签（可选）" hint="可选择已有标签或直接输入；多个标签使用逗号分隔。"><SuggestionInput ariaLabel="FTP 标签" multiple options={tagOptions} placeholder="选择或输入标签" value={form.tags} onChange={tags => setForm(current => ({ ...current, tags }))} /></Field></section>
       <section className="dsh-ssh-ftp-editor-section"><div className="dsh-ssh-form-section-heading"><strong>身份认证</strong><small>密码只写入 DSH 凭据服务，不会在界面回显</small></div><div className="dsh-ssh-form-grid"><Field label="用户名"><input required maxLength={128} autoComplete="username" value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} /></Field><Field label="凭据来源"><select value={form.credentialId} onChange={event => setForm({ ...form, credentialId: event.target.value })}><option value="">此连接单独保存密码</option>{passwordEntries.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · {entry.username}</option>)}</select></Field></div>{!form.credentialId && <Field label="密码" hint={value?.credential.configured && value.credential.source === 'profile' ? '已保存；留空保持不变' : '保存后不会回显'}><input required={value === undefined || value.credential.source !== 'profile' || !value.credential.configured} type="password" autoComplete="new-password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} /></Field>}</section>
       <section className="dsh-ssh-ftp-editor-section"><div className="dsh-ssh-form-section-heading"><strong>路径与网络</strong><small>代理复用 SSH 插件的代理库，控制和数据连接使用同一路径</small></div><div className="dsh-ssh-form-grid"><Field label="初始目录"><input required maxLength={4096} spellCheck={false} value={form.initialPath} onChange={event => setForm({ ...form, initialPath: event.target.value })} /></Field><Field label="连接代理"><select value={form.proxyId} onChange={event => setForm({ ...form, proxyId: event.target.value })}><option value="">直连</option>{proxyEntries.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · {entry.proxyType.toUpperCase()}</option>)}</select></Field></div><details className="dsh-ssh-form-advanced"><summary>高级连接设置</summary><div className="dsh-ssh-form-grid"><Field label="连接超时（毫秒）"><input required type="number" min="1000" max="120000" step="1000" value={form.connectTimeoutMs} onChange={event => setForm({ ...form, connectTimeoutMs: event.target.value })} /></Field><Field label="TLS 服务器名称" hint="证书名称与主机不同时填写"><input maxLength={253} spellCheck={false} value={form.tlsServerName} onChange={event => setForm({ ...form, tlsServerName: event.target.value })} /></Field></div></details></section>
       {testResult && <p className="dsh-ssh-inline-success" role="status">{testResult}</p>}{error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}

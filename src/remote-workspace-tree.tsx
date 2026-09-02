@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  IconEditOutline16, IconFolderClose16,
+  IconChevronDownOutline14, IconChevronRightOutline14, IconEditOutline16, IconFolderClose16,
   IconFolderOpenOutline16, IconPlusOutline16, IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
@@ -40,6 +40,7 @@ interface RemoteWorkspaceTreeProps {
 export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Element {
   const panelGlow = useBorderGlowSurface<HTMLElement>()
   const [query, setQuery] = useState('')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [projects, setProjects] = useState<Record<string, RemoteProjectView[]>>({})
   const [loadingProfile, setLoadingProfile] = useState<string>()
@@ -68,6 +69,11 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     props.onProfiles(enabled ? current.filter(id => id !== profileId) : [...current, profileId])
     if (enabled) props.onDirectory(profileId, undefined)
   }
+  const toggleGroup = (name: string): void => setCollapsedGroups(current => {
+    const next = new Set(current)
+    if (next.has(name)) next.delete(name); else next.add(name)
+    return next
+  })
 
   return <aside ref={panelGlow.ref} onPointerMove={panelGlow.onPointerMove} onPointerLeave={panelGlow.onPointerLeave} className="dsh-ssh-remote-tree dsh-ssh-border-surface">
     <header className="dsh-ssh-tree-header">
@@ -76,9 +82,11 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     </header>
     <label className="dsh-ssh-search"><span className="sr-only">搜索主机</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索主机、分组、标签…" /></label>
     <div className="dsh-ssh-tree-scroll dsh-ssh-scroll-surface">
-      {groups.map(group => <section className="dsh-ssh-tree-group" key={group.name}>
-        <h3><span>{group.name}</span><small>{group.profiles.length}</small></h3>
-        {group.profiles.map(profile => {
+      {groups.map(group => {
+        const collapsed = collapsedGroups.has(group.name)
+        return <section className="dsh-ssh-tree-group" key={group.name} data-collapsed={collapsed}>
+        <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name}</span><small>{group.profiles.length}</small></button></h3>
+        {!collapsed && group.profiles.map(profile => {
           const open = expanded.has(profile.id)
           const enabled = props.access?.profileIds.includes(profile.id) === true
           const children = projects[profile.id] ?? []
@@ -123,7 +131,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
             </div>}
           </div>
         })}
-      </section>)}
+      </section>})}
       {groups.length === 0 && <p className="dsh-ssh-tree-no-results">{props.profiles.length === 0 ? '还没有 SSH 主机' : '没有匹配的主机'}</p>}
     </div>
     <SessionAccessFooter access={props.access} loading={props.accessLoading} saving={props.accessSaving} error={props.accessError ?? error} onPermission={props.onPermission} onApproval={props.onApproval} />

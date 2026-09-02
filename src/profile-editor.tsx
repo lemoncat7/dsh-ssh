@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import {
   IconCheckOutline14,
   IconChevronDownOutline14,
@@ -15,7 +15,7 @@ import {
   type ProxyEntryView,
   type VaultEntryView,
 } from './client-api.js'
-import { Dialog, Field, errorMessage } from './ui-components.js'
+import { Dialog, Field, SuggestionInput, errorMessage } from './ui-components.js'
 
 export function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }: { profile: ProfileView; dependents: ProfileView[]; onClose(): void; onDeleted(): void }): JSX.Element {
   const [deleting, setDeleting] = useState(false)
@@ -83,6 +83,8 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
     },
   })
   const selectedCredential = vaultEntries.find(entry => entry.id === form.credentialId)
+  const groupOptions = useMemo(() => profiles.flatMap(item => item.group === undefined ? [] : [item.group]), [profiles])
+  const tagOptions = useMemo(() => profiles.flatMap(item => item.tags), [profiles])
   const buildPayload = (hostFingerprint = form.hostFingerprint) => {
     const proxy = form.proxyType === 'none' ? { type: 'none' }
       : form.proxyType === 'saved' ? { type: 'saved', proxyId: form.proxyEntryId }
@@ -142,9 +144,9 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
   return <Dialog title={profile === undefined ? '新建 SSH 连接' : `编辑 ${profile.name}`} subtitle="凭据保存后不会回显" onClose={onClose}>
     <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>连接信息</strong><small>主机地址与显示方式</small></div>
-        <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} placeholder="开发服务器" {...field('name')} /></Field><Field label="分组"><input maxLength={64} placeholder="例如：生产环境" {...field('group')} /></Field></div>
+        <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} placeholder="开发服务器" {...field('name')} /></Field><Field label="分组"><SuggestionInput ariaLabel="主机分组" maxLength={64} options={groupOptions} placeholder="选择已有分组或输入新分组" value={form.group} onChange={group => setForm(current => ({ ...current, group }))} /></Field></div>
         <div className="dsh-ssh-form-grid is-host"><Field label="主机"><input required placeholder="server.example.com" spellCheck={false} {...field('host')} /></Field><Field label="端口"><input required type="number" inputMode="numeric" min="1" max="65535" {...field('port')} /></Field></div>
-        <Field label="标签" hint="多个标签使用英文逗号分隔。"><input placeholder="production, linux" {...field('tags')} /></Field>
+        <Field label="标签" hint="可选择已有标签或直接输入；多个标签使用逗号分隔。"><SuggestionInput ariaLabel="主机标签" multiple options={tagOptions} placeholder="选择或输入标签" value={form.tags} onChange={tags => setForm(current => ({ ...current, tags }))} /></Field>
       </div>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>身份认证</strong><small>选择共享凭据或单独保存</small></div>
         <Field label="凭据来源" hint="可使用此连接自己的凭据，或引用密钥库中的常用账号。"><select {...field('credentialId')}><option value="">此连接独立保存</option>{vaultEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.username}</option>)}</select></Field>

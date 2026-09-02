@@ -88,6 +88,7 @@ export interface FtpProfile {
   id: string
   name: string
   group?: string
+  tags: string[]
   protocol: FtpProtocol
   host: string
   port: number
@@ -104,6 +105,7 @@ export interface FtpProfile {
 export interface FtpProfileDraft {
   name: string
   group?: string
+  tags: string[]
   protocol: FtpProtocol
   host: string
   port?: number
@@ -155,6 +157,7 @@ export function normalizeFtpProfileDraft(value: unknown): FtpProfileDraft {
   return {
     name: text(input.name, 'name', 1, 80),
     ...optionalText(input.group, 'group', 1, 64),
+    tags: stringArray(input.tags, 'tags', 20, 32),
     protocol,
     host: text(input.host, 'host', 1, 253),
     port: integer(input.port ?? defaultPort, 'port', 1, 65_535),

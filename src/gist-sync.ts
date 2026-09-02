@@ -811,7 +811,7 @@ function parseFtpProfile(value: unknown): FtpProfile {
     id: text(input.id, 'ftpProfile.id', 1, 100), name: draft.name, ...(draft.group === undefined ? {} : { group: draft.group }), protocol: draft.protocol,
     host: draft.host, port: draft.port ?? (draft.protocol === 'ftps-implicit' ? 990 : 21), username: draft.username,
     ...(draft.credentialId === undefined ? {} : { credentialId: draft.credentialId }), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/',
-    connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, ...(draft.tlsServerName === undefined ? {} : { tlsServerName: draft.tlsServerName }),
+    connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, ...(draft.tlsServerName === undefined ? {} : { tlsServerName: draft.tlsServerName }), tags: draft.tags ?? [],
     createdAt: timestamp(input.createdAt, 'createdAt'), updatedAt: timestamp(input.updatedAt, 'updatedAt'),
   }
 }
