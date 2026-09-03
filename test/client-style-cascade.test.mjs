@@ -15,6 +15,7 @@ const adaptiveStylesheetUrl = new URL('../src/adaptive-workspace.css', import.me
 const transferStylesheetUrl = new URL('../src/file-transfer-workspace.css', import.meta.url)
 const workbenchStylesheetUrl = new URL('../src/host-workbench.css', import.meta.url)
 const remoteTreeStylesheetUrl = new URL('../src/remote-workspace-tree.css', import.meta.url)
+const terminalSourceUrl = new URL('../src/terminal-view.ts', import.meta.url)
 
 test('button reset stays below component styles in the cascade', async () => {
   const css = await readFile(stylesheetUrl, 'utf8')
@@ -53,14 +54,15 @@ test('shared interactive surface contract owns themed hover and selection states
   assert.match(remoteTreeSource, /dsh-ssh-tree-mount dsh-ssh-context-action/)
 })
 
-test('all SSH workspaces share one neutral material and typography contract', async () => {
-  const [css, adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss] = await Promise.all([
+test('all SSH workspaces share one cool-charcoal material and typography contract', async () => {
+  const [css, adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss, terminalSource] = await Promise.all([
     readFile(stylesheetUrl, 'utf8'),
     readFile(adaptiveStylesheetUrl, 'utf8'),
     readFile(transferStylesheetUrl, 'utf8'),
     readFile(workbenchStylesheetUrl, 'utf8'),
     readFile(remoteTreeStylesheetUrl, 'utf8'),
     readFile(interactiveStylesheetUrl, 'utf8'),
+    readFile(terminalSourceUrl, 'utf8'),
   ])
   const featureCss = [adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss].join('\n')
   const readableCss = [css, featureCss].join('\n')
@@ -70,13 +72,15 @@ test('all SSH workspaces share one neutral material and typography contract', as
   assert.match(css, /--ssh-card-surface:/)
   assert.match(css, /--ssh-activity-surface:/)
   assert.match(css, /--ssh-modal-surface:/)
-  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-panel:\s*#2c2c2e;/)
-  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-surface:\s*#1c1c1e;/)
+  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-panel:\s*rgb\(25 33 35 \/ 90%\);/)
+  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-surface:\s*rgb\(16 23 25 \/ 92%\);/)
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-accent:\s*#69b6ba;/)
-  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-file-surface:\s*#2c2c2e;/)
+  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-file-surface:\s*#182022;/)
   assert.doesNotMatch(css, /#182427|#223235|#26373a|#2c3e41/)
+  assert.match(terminalSource, /background: '#101719'/)
+  assert.match(terminalSource, /selectionBackground: '#69b6ba40'/)
   assert.match(css, /--ssh-content-filter:[^;]*blur\(18px\);/)
-  assert.match(css, /prefers-reduced-transparency:[\s\S]*?--ssh-canvas:\s*#e9e9ed;[\s\S]*?--ssh-canvas:\s*#1c1c1e;/)
+  assert.match(css, /prefers-reduced-transparency:[\s\S]*?--ssh-canvas:\s*#e9e9ed;[\s\S]*?--ssh-canvas:\s*#101719;/)
   assert.match(css, /\.dsh-ssh-workspace\s*\{[\s\S]*?background:\s*var\(--ssh-canvas\);/)
   assert.match(adaptiveCss, /\.dsh-ssh-adaptive-content\s*\{[\s\S]*?background:\s*var\(--ssh-surface\);[\s\S]*?backdrop-filter:\s*var\(--ssh-content-filter\);/)
   assert.match(adaptiveCss, /prefers-reduced-transparency:\s*reduce[\s\S]*?\.dsh-ssh-adaptive-content,[\s\S]*?backdrop-filter:\s*none;/)

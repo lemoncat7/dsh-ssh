@@ -88,8 +88,8 @@
   --ssh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
   --ssh-shadow-md: 0 10px 28px rgba(31, 31, 35, 0.085);
   --ssh-shadow-lg: 0 24px 64px rgba(31, 31, 35, 0.14);
-  --ssh-terminal-surface: #1c1c1e;
-  --ssh-terminal-raised: #242426;
+  --ssh-terminal-surface: #101719;
+  --ssh-terminal-raised: #182022;
   --ssh-terminal-border: rgba(255, 255, 255, 0.12);
   --ssh-terminal-text: #f5f5f7;
   --ssh-terminal-muted: #98989d;
@@ -129,33 +129,33 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-session-create-modal
 ) {
   --ssh-canvas: transparent;
-  --ssh-panel: #2c2c2e;
-  --ssh-text: #f5f5f7;
-  --ssh-text-muted: #d1d1d6;
-  --ssh-text-subtle: #98989d;
-  --ssh-hover: rgba(255, 255, 255, 0.075);
+  --ssh-panel: rgb(25 33 35 / 90%);
+  --ssh-text: #e3eaeb;
+  --ssh-text-muted: #bbc9cc;
+  --ssh-text-subtle: #95a7ab;
+  --ssh-hover: rgb(105 182 186 / 9%);
   --ssh-selected: rgb(105 182 186 / 14%);
-  --ssh-control: #3a3a3c;
+  --ssh-control: rgb(39 50 53 / 92%);
   --ssh-accent: #69b6ba;
   --ssh-accent-strong: #8aced0;
   --ssh-on-accent: #101819;
   --ssh-success: #30d158;
   --ssh-danger: #ff453a;
   --ssh-warning: #ff9f0a;
-  --ssh-surface: #1c1c1e;
-  --ssh-surface-raised: #323235;
+  --ssh-surface: rgb(16 23 25 / 92%);
+  --ssh-surface-raised: rgb(32 41 43 / 94%);
   --ssh-chrome-surface: var(--ssh-panel);
-  --ssh-card-surface: #323235;
+  --ssh-card-surface: rgb(32 41 43 / 90%);
   --ssh-card-highlight: rgba(255, 255, 255, 0.11);
   --ssh-control-surface: var(--ssh-control);
   --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
-  --ssh-modal-surface: #2c2c2e;
-  --ssh-modal-surface-raised: #323235;
-  --ssh-activity-surface: #1c1c1e;
-  --ssh-activity-surface-raised: #2c2c2e;
-  --ssh-border: rgba(255, 255, 255, 0.105);
+  --ssh-modal-surface: #182022;
+  --ssh-modal-surface-raised: #20292b;
+  --ssh-activity-surface: rgb(16 23 25 / 96%);
+  --ssh-activity-surface-raised: rgb(25 33 35 / 94%);
+  --ssh-border: rgb(184 204 205 / 11%);
   --ssh-host-border: var(--ssh-border);
-  --ssh-separator: rgba(255, 255, 255, 0.08);
+  --ssh-separator: rgb(184 204 205 / 8%);
   --ssh-focus-ring: rgb(105 182 186 / 72%);
   --ssh-scrollbar-thumb: rgba(235, 235, 245, 0.28);
   --ssh-scrollbar-hover: rgba(235, 235, 245, 0.46);
@@ -186,17 +186,17 @@ body[data-ds-dark-theme] :is(
   --ssh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
   --ssh-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.34);
   --ssh-shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.48);
-  --ssh-file-canvas: #1c1c1e;
-  --ssh-file-panel: #2c2c2e;
-  --ssh-file-card: #323235;
-  --ssh-file-surface: #2c2c2e;
-  --ssh-file-raised: #323235;
-  --ssh-file-control: #3a3a3c;
-  --ssh-file-hover: rgb(255 255 255 / 7.5%);
+  --ssh-file-canvas: #101719;
+  --ssh-file-panel: #182022;
+  --ssh-file-card: #20292b;
+  --ssh-file-surface: #182022;
+  --ssh-file-raised: #20292b;
+  --ssh-file-control: #273235;
+  --ssh-file-hover: rgb(105 182 186 / 9%);
   --ssh-file-selected: rgb(105 182 186 / 14%);
   --ssh-file-accent: #69b6ba;
   --ssh-file-accent-strong: #8aced0;
-  --ssh-file-border: rgb(255 255 255 / 10%);
+  --ssh-file-border: rgb(184 204 205 / 10%);
   color-scheme: dark;
 }
 :is(
@@ -2160,18 +2160,18 @@ body[data-ds-dark-theme] :is(
     .dsh-ssh-preview-modal,
     .dsh-ssh-session-create-modal
   ) {
-    --ssh-canvas: #1c1c1e;
-    --ssh-panel: #2c2c2e;
-    --ssh-surface: #2c2c2e;
-    --ssh-surface-raised: #323235;
-    --ssh-card-surface: #323235;
-    --ssh-control: #3a3a3c;
-    --ssh-control-surface: #3a3a3c;
-    --ssh-chrome-surface: #2c2c2e;
-    --ssh-modal-surface: #2c2c2e;
-    --ssh-modal-surface-raised: #3a3a3c;
-    --ssh-activity-surface: #1c1c1e;
-    --ssh-activity-surface-raised: #2c2c2e;
+    --ssh-canvas: #101719;
+    --ssh-panel: #182022;
+    --ssh-surface: #182022;
+    --ssh-surface-raised: #20292b;
+    --ssh-card-surface: #20292b;
+    --ssh-control: #273235;
+    --ssh-control-surface: #273235;
+    --ssh-chrome-surface: #182022;
+    --ssh-modal-surface: #182022;
+    --ssh-modal-surface-raised: #20292b;
+    --ssh-activity-surface: #101719;
+    --ssh-activity-surface-raised: #182022;
   }
   .dsh-ssh-dialog > header,
   .dsh-ssh-toolbar,
