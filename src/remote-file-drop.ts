@@ -16,7 +16,7 @@ export interface RemoteDropResult {
 export async function executeRemoteFileDrop(source: RemoteFilesDragPayload, destination: RemoteDropDestination): Promise<RemoteDropResult> {
   const operation = remoteDropOperation(source, destination)
   if (operation === 'none') return { operation }
-  if (operation === 'invalid') throw new Error('不能把目录移动到自身或其子目录')
+  if (operation === 'invalid') throw new Error("You can't move a directory into itself or one of its subdirectories.")
   if (operation === 'move') {
     await moveFileEndpointEntries({
       paneId: destination.paneId,

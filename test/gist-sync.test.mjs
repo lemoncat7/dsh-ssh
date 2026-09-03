@@ -40,7 +40,7 @@ test('encrypts portable SSH, FTP, proxy and vault configuration without leaking 
   assert.equal(secrets['vault-entry:credential-password'].password, 'vault-password')
   assert.equal(secrets['vault-entry:credential-key'].privateKey, 'PRIVATE KEY MATERIAL')
   assert.equal(secrets['proxy-entry:proxy-one'].proxyPassword, 'proxy-password')
-  await assert.rejects(decryptPortableSecrets(snapshot, 'wrong encryption password'), /无法解密/)
+  await assert.rejects(decryptPortableSecrets(snapshot, 'wrong encryption password'), /Cannot decrypt/)
 })
 
 test('uses a three-way decision and tombstone-aware deterministic smart merge', () => {
@@ -160,7 +160,7 @@ test('recovers from damaged local sync metadata without preventing SSH startup',
   t.after(() => service.close())
   const view = await service.view()
   assert.equal(view.autoSync, false)
-  assert.match(view.lastError, /状态损坏，已安全重置/)
+  assert.match(view.lastError, /corrupted and has been safely reset/)
   assert.equal((await readdir(fixture.directory)).some(name => name.startsWith('gist.json.corrupt.')), true)
 })
 
@@ -191,7 +191,7 @@ test('refuses a public Gist before any SSH configuration can be uploaded', async
     files: {},
   })
   const client = new GitHubGistClient('github-token-value-for-tests', request)
-  await assert.rejects(client.get('abcdef1234567890abcdef1234567890'), /只支持私有 Gist/)
+  await assert.rejects(client.get('abcdef1234567890abcdef1234567890'), /private Gists only/)
 })
 
 async function createFixture(t, label = 'encryption') {

@@ -12,10 +12,10 @@ export function FileEntryDeleteDialog({ locationName, locationKind, entries, onC
     try { await onDelete(); setDeleting(false); onClose() }
     catch (reason) { setError(errorMessage(reason)); setDeleting(false) }
   }
-  return <Dialog className="dsh-ssh-file-delete-dialog" title={`删除 ${entries.length} 项？`} subtitle={`${locationName} · 此操作无法撤销`} onClose={() => { if (!deleting) onClose() }}>
-    <div className="dsh-ssh-file-delete-copy"><span><IconTrashOutline16 size={18} /></span><p>将直接从{locationKind === 'local' ? '当前会话目录' : '远端'}删除所选内容。{directories > 0 ? `其中 ${directories} 个目录及其全部内容会被递归删除。` : ''}</p></div>
-    <div className="dsh-ssh-file-delete-list">{entries.slice(0, 6).map(entry => <div key={entry.path}>{entry.kind === 'directory' ? <IconFolderClose16 size={17} /> : <IconDataOutline16 size={17} />}<span><strong>{entry.name}</strong><small title={entry.path}>{entry.path}</small></span></div>)}{entries.length > 6 && <p>以及其他 {entries.length - 6} 项</p>}</div>
+  return <Dialog className="dsh-ssh-file-delete-dialog" title={`Delete ${entries.length} items?`} subtitle={`${locationName} · this cannot be undone`} onClose={() => { if (!deleting) onClose() }}>
+    <div className="dsh-ssh-file-delete-copy"><span><IconTrashOutline16 size={18} /></span><p>The selected items will be deleted directly from {locationKind === 'local' ? "the current session directory" : "the remote"}.{directories > 0 ? `Of these, ${directories} directories and all their contents will be recursively deleted.` : ''}</p></div>
+    <div className="dsh-ssh-file-delete-list">{entries.slice(0, 6).map(entry => <div key={entry.path}>{entry.kind === 'directory' ? <IconFolderClose16 size={17} /> : <IconDataOutline16 size={17} />}<span><strong>{entry.name}</strong><small title={entry.path}>{entry.path}</small></span></div>)}{entries.length > 6 && <p>and {entries.length - 6} more items</p>}</div>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-dialog-actions"><span /><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={deleting} onClick={onClose}>取消</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting} onClick={() => { void submit() }}>{deleting ? '正在删除…' : '确认删除'}</button></div>
+    <div className="dsh-ssh-dialog-actions"><span /><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={deleting} onClick={onClose}>Cancel</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting} onClick={() => { void submit() }}>{deleting ? "Deleting…" : "Confirm delete"}</button></div>
   </Dialog>
 }

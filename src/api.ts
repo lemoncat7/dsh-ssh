@@ -529,27 +529,27 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'GET' && segments[1] === 'local-directory' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, "No working directory is available for the current session.")
       return sendJson(res, 200, await listLocalWorkspace(cwd, url.searchParams.get('path') ?? undefined))
     }
     if (method === 'GET' && segments[1] === 'local-file' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, "No working directory is available for the current session.")
       return sendJson(res, 200, await readLocalWorkspacePreview(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
     }
     if (method === 'POST' && segments[1] === 'local-delete' && segments.length === 2) {
       requireMutationHeader(req)
       const request = parseLocalDeleteRequest(await readObject(req))
       const cwd = runtime.sessionCwd(request.sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, "No working directory is available for the current session.")
       await deleteLocalWorkspaceEntries(cwd, request.directory, request.paths)
       return sendJson(res, 204, undefined)
     }
     if (method === 'GET' && segments[1] === 'local-download' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, "No working directory is available for the current session.")
       return streamLocalFile(res, url, await openLocalWorkspaceFile(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
     }
     if (method === 'GET' && segments[1] === 'events' && segments.length === 2) {

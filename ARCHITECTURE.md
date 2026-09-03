@@ -71,7 +71,7 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - Secrets are write-only from the browser and are never returned by profile APIs.
 - Portable sync never exports session grants, forwarding rules, or local runtime settings. Passwords and private keys are encrypted with AES-256-GCM before network I/O; the token and encryption passphrase never enter the snapshot.
 - GitHub authorization requests only the `gist` scope. The browser receives a one-time user code and flow identifier, never the OAuth access token or GitHub device code.
-- OAuth、GitHub 身份校验、Gist API 与原始 Gist 下载共享同一个出站传输层。传输层按请求读取本机代理设置，因此修改代理无需重启；代理连接池在地址变化和插件卸载时会释放。
+- OAuth, GitHub identity verification, the Gist API, and raw Gist downloads share one outbound transport layer. The transport reads local proxy settings per request, so proxy changes apply without a restart; proxy connection pools are released when the address changes or the plugin unloads.
 - Sync operations are serialized. A blank device bootstraps from an existing cloud snapshot, while subsequent divergent edits use a base digest and tombstone-aware deterministic merge.
 - Terminal input is sequenced and terminal resources are explicitly disposed on close or unmount.
 - Visual motion uses `transform` and `opacity`, remains interruptible, and is disabled by `prefers-reduced-motion`.

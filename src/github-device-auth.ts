@@ -38,7 +38,7 @@ export class GitHubDeviceAuthService {
 
   async start(): Promise<GitHubDeviceFlowStart> {
     this.prune()
-    if (this.pending.size >= MAX_PENDING_FLOWS) throw new Error('等待中的 GitHub 授权过多，请稍后重试')
+    if (this.pending.size >= MAX_PENDING_FLOWS) throw new Error("Too many pending GitHub authorizations. Try again later.")
     const clientId = normalizeClientId(this.clientId())
     const value = await this.form(DEVICE_CODE_URL, { client_id: clientId, scope: 'gist' })
     const deviceCode = requiredText(value.device_code, 'GitHub device_code', 20, 512)
@@ -57,11 +57,11 @@ export class GitHubDeviceAuthService {
 
   async poll(id: string): Promise<GitHubDeviceFlowStatus> {
     const flow = this.pending.get(normalizeFlowId(id))
-    if (flow === undefined) throw new Error('GitHub 授权已失效，请重新连接')
+    if (flow === undefined) throw new Error("The GitHub authorization is no longer valid. Reconnect.")
     const now = Date.now()
     if (now >= flow.expiresAt) {
       this.pending.delete(flow.id)
-      throw new Error('GitHub 授权已过期，请重新连接')
+      throw new Error("The GitHub authorization expired. Reconnect.")
     }
     if (now < flow.nextPollAt) return { state: 'pending', retryAfterMs: flow.nextPollAt - now }
     flow.nextPollAt = now + flow.intervalMs
@@ -84,10 +84,10 @@ export class GitHubDeviceAuthService {
       return { state: 'pending', retryAfterMs: flow.intervalMs }
     }
     this.pending.delete(flow.id)
-    if (error === 'access_denied') throw new Error('GitHub 授权已取消')
-    if (error === 'expired_token') throw new Error('GitHub 授权已过期，请重新连接')
-    if (error === 'incorrect_client_credentials') throw new Error('GitHub OAuth Client ID 无效')
-    throw new Error(`GitHub 授权失败：${error}`)
+    if (error === 'access_denied') throw new Error("GitHub authorization canceled.")
+    if (error === 'expired_token') throw new Error("The GitHub authorization expired. Reconnect.")
+    if (error === 'incorrect_client_credentials') throw new Error("Invalid GitHub OAuth Client ID.")
+    throw new Error(`GitHub authorization failed: ${error}`)
   }
 
   close(): void { this.pending.clear() }
@@ -113,7 +113,7 @@ export class GitHubDeviceAuthService {
     })
     const value = await response.json().catch(() => undefined) as unknown
     if (!response.ok || typeof value !== 'object' || value === null || Array.isArray(value)) {
-      throw new Error(`GitHub 授权服务请求失败（HTTP ${response.status}）`)
+      throw new Error(`GitHub authorization request failed (HTTP ${response.status})`)
     }
     return value as Record<string, unknown>
   }
@@ -122,29 +122,29 @@ export class GitHubDeviceAuthService {
 function normalizeClientId(value: string | undefined): string {
   const clientId = value?.trim()
   if (clientId === undefined || !/^[A-Za-z0-9._-]{10,128}$/.test(clientId)) {
-    throw new Error('请先在同步设置中填写有效的 GitHub OAuth Client ID')
+    throw new Error("Enter a valid GitHub OAuth Client ID in the sync settings first.")
   }
   return clientId
 }
 
 function normalizeFlowId(value: string): string {
-  if (!/^[a-f0-9]{36}$/.test(value)) throw new Error('GitHub 授权标识无效')
+  if (!/^[a-f0-9]{36}$/.test(value)) throw new Error("Invalid GitHub authorization identifier.")
   return value
 }
 
 function requiredText(value: unknown, label: string, min: number, max: number): string {
-  if (typeof value !== 'string' || value.length < min || value.length > max) throw new Error(`${label} 格式无效`)
+  if (typeof value !== 'string' || value.length < min || value.length > max) throw new Error(`${label} has an invalid format`)
   return value
 }
 
 function boundedInteger(value: unknown, label: string, min: number, max: number): number {
-  if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw new Error(`${label} 格式无效`)
+  if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw new Error(`${label} has an invalid format`)
   return value as number
 }
 
 function trustedVerificationUri(value: unknown): string {
   const uri = requiredText(value, 'GitHub verification_uri', 10, 512)
   const parsed = new URL(uri)
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') throw new Error('GitHub 返回了不可信的授权地址')
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com') throw new Error("GitHub returned an untrusted authorization URL.")
   return parsed.toString()
 }

@@ -91,21 +91,21 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
     }
   }, [refresh, view])
 
-  return <section className="dsh-ssh-activity-panel" aria-label="SSH 活动">
+  return <section className="dsh-ssh-activity-panel" aria-label="SSH Activity">
     <header className="dsh-ssh-activity-header">
       <div className="dsh-ssh-activity-title">
         <span className="dsh-ssh-activity-mark"><ServerGlyph /></span>
-        <span><strong>SSH 活动</strong><small>当前会话 · {shortId(sessionId)}</small></span>
+        <span><strong>SSH activity</strong><small>Current session · {shortId(sessionId)}</small></span>
       </div>
-      <button type="button" className="dsh-ssh-icon-button" aria-label="关闭 SSH 活动" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
+      <button type="button" className="dsh-ssh-icon-button" aria-label="Close SSH Activity" onClick={() => props.controller.close(sessionId)}><IconCloseOutline16 size={16} /></button>
     </header>
-    {activity && <nav className="dsh-ssh-activity-tabs" aria-label="SSH 活动视图">
-      <button type="button" data-ssh-interactive="choice" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => props.controller.open(sessionId, undefined, 'local-directory')}><IconFolderOpenOutline16 size={16} />会话目录</button>
-      {activity.profiles.length > 0 && <button type="button" data-ssh-interactive="choice" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => props.controller.open(sessionId, undefined, 'remote-directory')}><ServerGlyph />远端目录</button>}
-      {activity.injection?.permission === 'terminal' && <button type="button" data-ssh-interactive="choice" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => props.controller.open(sessionId, undefined, 'terminals')}><IconCodeOutline16 size={16} />终端{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
+    {activity && <nav className="dsh-ssh-activity-tabs" aria-label="SSH activity view">
+      <button type="button" data-ssh-interactive="choice" className={view === 'local-directory' ? 'is-active' : ''} aria-pressed={view === 'local-directory'} onClick={() => props.controller.open(sessionId, undefined, 'local-directory')}><IconFolderOpenOutline16 size={16} />Session directory</button>
+      {activity.profiles.length > 0 && <button type="button" data-ssh-interactive="choice" className={view === 'remote-directory' ? 'is-active' : ''} aria-pressed={view === 'remote-directory'} onClick={() => props.controller.open(sessionId, undefined, 'remote-directory')}><ServerGlyph />Remote directory</button>}
+      {activity.injection?.permission === 'terminal' && <button type="button" data-ssh-interactive="choice" className={view === 'terminals' ? 'is-active' : ''} aria-pressed={view === 'terminals'} onClick={() => props.controller.open(sessionId, undefined, 'terminals')}><IconCodeOutline16 size={16} />Terminal{activity.terminals.length > 0 && <em>{activity.terminals.length}</em>}</button>}
     </nav>}
     <div className="dsh-ssh-activity-body">
-      {activity === undefined ? <p className="dsh-ssh-activity-state" role="status">正在读取 SSH 会话…</p>
+      {activity === undefined ? <p className="dsh-ssh-activity-state" role="status">Reading SSH sessions…</p>
         : view === 'local-directory' ? <LocalWorkspaceBrowser sessionId={sessionId} />
           : view === 'remote-directory' ? <RemoteDirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId, 'remote-directory')} onSaved={refresh} />
             : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} onClosed={refresh} />}
@@ -116,7 +116,7 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
 
 function RemoteDirectoryActivity({ sessionId, profiles, selectedProfileId, onProfile, onSaved }: { sessionId: string; profiles: ActivityProfileView[]; selectedProfileId?: string | undefined; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
   const profile = profiles.find(item => item.id === selectedProfileId) ?? profiles[0]
-  if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>没有可浏览的远端</strong><p>请先在 SSH 面板中允许当前会话访问一台主机。</p></div>
+  if (profile === undefined) return <div className="dsh-ssh-activity-empty"><IconFolderOpenOutline16 size={22} /><strong>No browsable remotes</strong><p>Allow the current session to access a host in the SSH panel first.</p></div>
   return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
 }
 
@@ -133,7 +133,7 @@ function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: strin
     }
   }, [preferred?.terminalId, selectedId, terminals])
 
-  if (terminal === undefined) return <div className="dsh-ssh-activity-empty"><IconCodeOutline16 size={22} /><strong>还没有打开的终端</strong><p>AI 打开交互终端后，会直接显示在这里。</p></div>
+  if (terminal === undefined) return <div className="dsh-ssh-activity-empty"><IconCodeOutline16 size={22} /><strong>No terminals open yet</strong><p>Terminals opened by the AI appear here directly.</p></div>
 
   const closeSelectedTerminal = async (): Promise<void> => {
     if (closingId !== undefined) return
@@ -148,15 +148,15 @@ function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: strin
       setClosingId(undefined)
     }
   }
-  const closeLabel = terminal.status.kind === 'running' ? '结束' : '移除'
+  const closeLabel = terminal.status.kind === 'running' ? "End" : "Remove"
 
   return <div className="dsh-ssh-terminal-workbench">
-    {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher dsh-ssh-scroll-surface" aria-label="SSH 终端">{terminals.map((item, index) => {
-      const label = item.name || `终端 ${index + 1}`
+    {terminals.length > 1 && <nav className="dsh-ssh-terminal-switcher dsh-ssh-scroll-surface" aria-label="SSH terminal">{terminals.map((item, index) => {
+      const label = item.name || `Terminal ${index + 1}`
       return <button type="button" data-ssh-interactive="choice" title={label} className={item.terminalId === terminal.terminalId ? 'is-active' : ''} aria-pressed={item.terminalId === terminal.terminalId} key={item.terminalId} onClick={() => setSelectedId(item.terminalId)}><span className={`dsh-ssh-terminal-state-dot is-${item.status.kind}`} /><span className="dsh-ssh-terminal-switcher-label">{label}</span></button>
     })}</nav>}
     <div className="dsh-ssh-terminal-observer">
-      <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><div className="dsh-ssh-terminal-observer-actions"><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? '运行中' : '已退出'}</span><button type="button" className="dsh-ssh-terminal-close" disabled={closingId !== undefined} aria-label={`${closeLabel}终端 ${terminal.name}`} title={terminal.status.kind === 'running' ? '结束并关闭这个终端' : '从活动面板移除这个终端'} onClick={() => { void closeSelectedTerminal() }}><IconCloseOutline16 size={14} /><span>{closingId === terminal.terminalId ? '处理中' : closeLabel}</span></button></div></div>
+      <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><div className="dsh-ssh-terminal-observer-actions"><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? "Running" : "Exited"}</span><button type="button" className="dsh-ssh-terminal-close" disabled={closingId !== undefined} aria-label={`${closeLabel}Terminal ${terminal.name}`} title={terminal.status.kind === 'running' ? "End and close this terminal" : "Remove this terminal from the activity panel"} onClick={() => { void closeSelectedTerminal() }}><IconCloseOutline16 size={14} /><span>{closingId === terminal.terminalId ? "Processing" : closeLabel}</span></button></div></div>
       <InteractiveTerminal key={terminal.terminalId} sessionId={sessionId} terminal={terminal} onError={setError} />
     </div>
     {error && <p className="dsh-ssh-terminal-input-error" role="alert">{error}</p>}
@@ -209,5 +209,5 @@ function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessi
     if (terminal !== undefined) terminal.options.disableStdin = activity.status.kind !== 'running'
   }, [activity.status.kind])
 
-  return <div className="dsh-ssh-terminal-screen" aria-label="交互式 SSH 终端"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div>
+  return <div className="dsh-ssh-terminal-screen" aria-label="Interactive SSH terminal"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div>
 }

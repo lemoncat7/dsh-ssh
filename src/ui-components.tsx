@@ -27,11 +27,11 @@ export function Dialog({ title, subtitle, className, onClose, children }: Dialog
     closeWithMotion()
   }
 
-  return <Modal open onClose={closeWithMotion} title={title} closeLabel="关闭" headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
+  return <Modal open onClose={closeWithMotion} title={title} closeLabel="Close" headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
     <BorderGlow>
       <GlareHover>
         <section ref={surfaceRef} className={`dsh-ssh-dialog dsh-ssh-scroll-surface${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>
-          <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={closeWithMotion} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
+          <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={closeWithMotion} aria-label="Close"><IconCloseOutline16 size={16} /></button></header>
           {children}
         </section>
       </GlareHover>
@@ -137,15 +137,15 @@ export function SuggestionInput({ value, options, placeholder, maxLength, multip
     <button
       type="button"
       className="dsh-ssh-suggestion-toggle"
-      aria-label={`${open ? '收起' : '展开'}${ariaLabel}已有选项`}
+      aria-label={`${open ? "Collapse" : "Expand"}${ariaLabel}existing options`}
       aria-expanded={open}
       onClick={() => {
         if (open) { setOpen(false); return }
         setFilter(''); setActiveIndex(0); setOpen(true); inputRef.current?.focus()
       }}
     ><IconChevronDownOutline14 size={14} /></button>
-    {open && <div id={listId} className="dsh-ssh-suggestion-menu dsh-ssh-scroll-surface" role="listbox" aria-label={`${ariaLabel}已有选项`}>
-      {filtered.length === 0 ? <p>{normalizedOptions.length === 0 ? '暂无已有选项，可直接输入' : '没有匹配项，可直接输入新内容'}</p>
+    {open && <div id={listId} className="dsh-ssh-suggestion-menu dsh-ssh-scroll-surface" role="listbox" aria-label={`${ariaLabel}existing options`}>
+      {filtered.length === 0 ? <p>{normalizedOptions.length === 0 ? "No existing options yet. Type directly." : "No matches. Type a new value."}</p>
         : filtered.map((option, index) => <button
           id={`${listId}-${index}`}
           type="button"
@@ -164,7 +164,7 @@ export function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>,
   const [visible, setVisible] = useState(false)
   return <div className="dsh-ssh-password-input">
     <input {...props} type={visible ? 'text' : 'password'} />
-    <button type="button" aria-label={visible ? '隐藏密码' : '显示密码'} aria-pressed={visible} onClick={() => setVisible(current => !current)}>{visible ? '隐藏' : '显示'}</button>
+    <button type="button" aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible} onClick={() => setVisible(current => !current)}>{visible ? "Hide" : "Show"}</button>
   </div>
 }
 
@@ -177,7 +177,7 @@ export function Segment({ active, onClick, children }: { active: boolean; onClic
 export function EmptyState(): JSX.Element {
   const surfaceRef = useRef<HTMLDivElement>(null)
   useStaggeredEntrance(surfaceRef)
-  return <div ref={surfaceRef} className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>连接你的第一台远端主机</h1><p>使用“主机与项目”旁的添加按钮保存 SSH 配置，随后即可打开终端、建立端口转发，并按会话授权给 AI。</p></div>
+  return <div ref={surfaceRef} className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>Connect your first remote host</h1><p>Use the add button next to “Hosts & projects” to save an SSH config, then open terminals, set up port forwards, and grant per-session access to the AI.</p></div>
 }
 
 export function ServerGlyph(): JSX.Element {

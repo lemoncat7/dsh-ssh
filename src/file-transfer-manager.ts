@@ -96,7 +96,7 @@ export class FileTransferManager {
       if (job === undefined || job.view.state !== 'queued') continue
       job.controller.abort(new Error('file transfer service is stopping'))
       job.view.state = 'cancelled'
-      job.view.error = '传输服务已停止'
+      job.view.error = "Transfer service stopped"
       job.view.completedAt = Date.now()
       this.emit(job.view)
     }
@@ -151,7 +151,7 @@ export class FileTransferManager {
     } catch (error) {
       delete job.view.currentPath
       job.view.state = signal.aborted ? 'cancelled' : 'failed'
-      job.view.error = signal.aborted ? '传输已取消' : errorMessage(error)
+      job.view.error = signal.aborted ? "Transfer canceled" : errorMessage(error)
       job.view.completedAt = Date.now(); this.emit(job.view)
     } finally {
       source?.close(); destination?.close()

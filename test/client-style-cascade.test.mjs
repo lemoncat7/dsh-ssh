@@ -49,7 +49,7 @@ test('shared interactive surface contract owns themed hover and selection states
   assert.match(transferSource, /onOpen=\{\(\) => \{ void load\(entry\.path\) \}\}/)
   assert.doesNotMatch(transferSource, /onOpen=\{\(\) => \{ if \(entry\.kind === 'directory'\)/)
   assert.match(sftpSource, /dsh-ssh-sftp-row-delete dsh-ssh-context-action/)
-  assert.match(sftpSource, /deletion=\{\{ locationName: '本地会话', locationKind: 'local', remove \}\}/)
+  assert.match(sftpSource, /deletion=\{\{ locationName: "Local session", locationKind: 'local', remove \}\}/)
   assert.match(remoteTreeSource, /dsh-ssh-tree-mount dsh-ssh-context-action/)
 })
 
@@ -93,13 +93,13 @@ test('profile metadata pickers, password visibility, and host groups use owned a
     readFile(remoteTreeSourceUrl, 'utf8'),
   ])
 
-  assert.match(profileSource, /<SuggestionInput ariaLabel="主机分组"/)
-  assert.match(profileSource, /<SuggestionInput ariaLabel="主机标签" multiple/)
-  assert.match(ftpSource, /<SuggestionInput ariaLabel="FTP 分组"/)
-  assert.match(ftpSource, /<SuggestionInput ariaLabel="FTP 标签" multiple/)
+  assert.match(profileSource, /<SuggestionInput ariaLabel="Host group"/)
+  assert.match(profileSource, /<SuggestionInput ariaLabel="Host tags" multiple/)
+  assert.match(ftpSource, /<SuggestionInput ariaLabel="FTP groups"/)
+  assert.match(ftpSource, /<SuggestionInput ariaLabel="FTP tags" multiple/)
   assert.match(uiSource, /role="combobox"/)
   assert.match(uiSource, /role="listbox"/)
-  assert.match(uiSource, /aria-label=\{visible \? '隐藏密码' : '显示密码'\}/)
+  assert.match(uiSource, /aria-label=\{visible \? "Hide password" : "Show password"\}/)
   assert.match(remoteTreeSource, /aria-expanded=\{!collapsed\}/)
   assert.match(css, /\.dsh-ssh-suggestion-menu\s*\{[\s\S]*?background:\s*var\(--ssh-modal-surface-raised\);/)
   assert.match(css, /\.dsh-ssh-password-input > button\s*\{[\s\S]*?min-width:\s*44px;/)

@@ -130,7 +130,7 @@ function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStor
     text: `Remote file access is limited to explicitly authorized endpoints. Permission: ${injection.filePermission}.
 For any file listing or transfer request, use file_endpoint_list, file_directory_list, and the available file_transfer_* tools before considering SSH commands. Never guess endpoint ids or paths.
 Never start an HTTP or other file server, open a temporary port, encode a file through a terminal, or invent another transport for file delivery.
-For a download to the user's browser-local computer, do not run terminal commands: directly tell the user to select the file in SSH → 文件传输 and click “下载到本地”. The conversation tool cannot attach those remote bytes itself.
+For a download to the user's browser-local computer, do not run terminal commands: directly tell the user to select the file in SSH → File Transfer and click “Download to local”. The conversation tool cannot attach those remote bytes itself.
 If the requested source or destination is not authorized, explain that directly instead of attempting a workaround.`,
   })
 }
