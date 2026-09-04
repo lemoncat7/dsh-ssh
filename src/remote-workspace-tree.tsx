@@ -9,6 +9,7 @@ import {
   type InjectionView, type ProfileView, type RemoteProjectView,
 } from './client-api.js'
 import { ProjectSessionDialog } from './project-session-dialog.js'
+import { RemotePathInput } from './remote-path-input.js'
 import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
 
@@ -158,7 +159,8 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault(); setSaving(true); setError(undefined)
+    event.preventDefault()
+    setSaving(true); setError(undefined)
     try {
       if (project === undefined) await createRemoteProject(profile.id, { name, path })
       else await updateRemoteProject(profile.id, project.id, { name, path })
@@ -173,7 +175,7 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
   return <Dialog className="dsh-ssh-project-dialog" title={project === undefined ? '添加固定目录' : '编辑固定目录'} subtitle={`${profile.name} · 终端与 SFTP 的默认远端路径`} onClose={onClose}>
     <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
         <label className="dsh-ssh-field"><span>名称</span><input required maxLength={80} value={name} placeholder="网站项目" onChange={event => setName(event.target.value)} /></label>
-        <label className="dsh-ssh-field"><span>远端路径</span><input required maxLength={4096} value={path} spellCheck={false} placeholder="/var/www/example" onChange={event => setPath(event.target.value)} /><small>保存前会在右侧 SFTP 中验证路径是否可访问。</small></label>
+        <RemotePathInput profileId={profile.id} value={path} disabled={saving} onChange={setPath} />
         {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
         <div className="dsh-ssh-dialog-actions">{project !== undefined && <button type="button" className="dsh-ssh-danger-button" disabled={saving} onClick={() => { void remove() }}><IconTrashOutline16 size={15} />删除</button>}<span className="dsh-ssh-dialog-spacer" /><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={saving} onClick={onClose}>取消</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? '保存中…' : '保存目录'}</button></div>
     </form>

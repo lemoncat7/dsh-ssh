@@ -570,6 +570,91 @@
   width: min(480px, calc(100vw - 32px));
 }
 
+.dsh-ssh-remote-path-field > label {
+  color: var(--ssh-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dsh-ssh-remote-path-field > input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--ssh-danger) 64%, var(--ssh-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ssh-danger) 10%, transparent);
+}
+
+.dsh-ssh-remote-path-field > small.dsh-ssh-remote-path-feedback {
+  min-height: 17px;
+}
+
+.dsh-ssh-remote-path-feedback.is-checking {
+  color: var(--ssh-text-muted);
+}
+
+.dsh-ssh-remote-path-feedback.is-ready {
+  color: var(--ssh-success);
+}
+
+.dsh-ssh-remote-path-feedback.is-error {
+  color: var(--ssh-danger);
+  font-weight: 520;
+  overflow-wrap: anywhere;
+}
+
+.dsh-ssh-remote-path-options {
+  display: grid;
+  max-height: 184px;
+  gap: 3px;
+  padding: 4px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ssh-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ssh-control-surface) 86%, transparent);
+  scrollbar-color: color-mix(in srgb, var(--ssh-text-muted) 28%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.dsh-ssh-remote-path-options > button {
+  appearance: none;
+  display: grid;
+  width: 100%;
+  min-height: 34px;
+  grid-template-columns: 20px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ssh-text-muted);
+  background: transparent;
+  font: 500 var(--ssh-type-label)/1.3 var(--ssh-font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.dsh-ssh-remote-path-options > button:hover:not(:disabled) {
+  border-color: var(--ssh-border);
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+
+.dsh-ssh-remote-path-options > button:focus-visible {
+  outline: 2px solid var(--ssh-focus-ring);
+  outline-offset: -1px;
+}
+
+.dsh-ssh-remote-path-options > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-ssh-remote-path-options > button:disabled {
+  cursor: default;
+  opacity: .46;
+}
+
 .dsh-ssh-session-create-modal {
   --ssh-surface: var(--ssh-modal-surface);
   --ssh-surface-raised: var(--ssh-modal-surface-raised);
@@ -865,6 +950,12 @@
 }
 
 @media (max-width: 600px) {
+  .dsh-ssh-project-dialog-modal {
+    width: 100vw;
+  }
+  .dsh-ssh-remote-path-options {
+    max-height: min(30dvh, 184px);
+  }
   .dsh-ssh-session-create-modal {
     width: calc(100vw - 24px);
     max-height: calc(100dvh - 24px);
@@ -896,6 +987,7 @@
   .dsh-ssh-access-approval > i,
   .dsh-ssh-access-approval > i::after,
   .dsh-ssh-workspace-option > span,
+  .dsh-ssh-remote-path-options > button,
   .dsh-ssh-workspace-option i::after {
     transition: none;
   }
