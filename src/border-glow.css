@@ -1,24 +1,3 @@
-.dsh-ssh-border-glow {
-  --ssh-border-glow-proximity: 0;
-  --ssh-border-glow-angle: 0deg;
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  width: 100%;
-  height: 100%;
-  max-height: inherit;
-  border-radius: 15px;
-  transform: translateZ(0);
-}
-
-.dsh-ssh-border-glow::before,
-.dsh-ssh-border-glow-edge {
-  position: absolute;
-  border-radius: inherit;
-  pointer-events: none;
-  content: "";
-}
-
 .dsh-ssh-border-surface {
   --ssh-border-glow-proximity: 0;
   --ssh-border-glow-angle: 0deg;
@@ -49,65 +28,7 @@
   content: "";
 }
 
-.dsh-ssh-border-glow::before {
-  z-index: 2;
-  inset: -1px;
-  padding: 1px;
-  background: conic-gradient(
-    from var(--ssh-border-glow-angle),
-    var(--ssh-border-glow-core) 0deg,
-    var(--ssh-border-glow-soft) 7deg,
-    transparent 21deg 339deg,
-    var(--ssh-border-glow-shadow) 348deg,
-    var(--ssh-border-glow-core) 360deg
-  );
-  opacity: var(--ssh-border-glow-proximity);
-  transition: opacity 160ms ease-out;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.dsh-ssh-border-glow-edge {
-  z-index: -1;
-  inset: -5px;
-  padding: 5px;
-  background: conic-gradient(
-    from var(--ssh-border-glow-angle),
-    var(--ssh-border-glow-haze) 0deg,
-    transparent 17deg 343deg,
-    var(--ssh-border-glow-haze) 360deg
-  );
-  filter: blur(4px);
-  opacity: calc(var(--ssh-border-glow-proximity) * .48);
-  transition: opacity 220ms ease-out;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.dsh-ssh-border-glow-inner {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  min-width: 0;
-  max-height: inherit;
-  border-radius: inherit;
-}
-
-@media (max-width: 600px) {
-  .dsh-ssh-border-glow {
-    border-radius: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce), (prefers-reduced-transparency: reduce) {
-  .dsh-ssh-border-glow::before,
-  .dsh-ssh-border-glow-edge,
   .dsh-ssh-border-surface::before {
     display: none;
   }

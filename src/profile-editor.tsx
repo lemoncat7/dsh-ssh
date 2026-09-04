@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   IconCheckOutline14,
   IconChevronDownOutline14,
@@ -16,6 +16,7 @@ import {
   type VaultEntryView,
 } from './client-api.js'
 import { Dialog, Field, SuggestionInput, errorMessage } from './ui-components.js'
+import { findDuplicateProfileEndpoint } from './profile-endpoint.js'
 
 export function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }: { profile: ProfileView; dependents: ProfileView[]; onClose(): void; onDeleted(): void }): JSX.Element {
   const [deleting, setDeleting] = useState(false)
@@ -73,11 +74,16 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
   const [testState, setTestState] = useState<'success'>()
   const [pendingFingerprint, setPendingFingerprint] = useState<string>()
   const [error, setError] = useState<string>()
+  const [endpointError, setEndpointError] = useState<string>()
+  const [endpointTouched, setEndpointTouched] = useState(false)
+  const endpointErrorId = useId()
+  const hostInputRef = useRef<HTMLInputElement>(null)
 
   const field = (name: Exclude<keyof typeof form, 'jumpProfileIds'>) => ({
     value: form[name],
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       setForm(value => ({ ...value, [name]: event.target.value }))
+      if (name === 'host' || name === 'port') setEndpointError(undefined)
       setTestState(undefined)
       setPendingFingerprint(undefined)
     },
@@ -85,6 +91,10 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
   const selectedCredential = vaultEntries.find(entry => entry.id === form.credentialId)
   const groupOptions = useMemo(() => profiles.flatMap(item => item.group === undefined ? [] : [item.group]), [profiles])
   const tagOptions = useMemo(() => profiles.flatMap(item => item.tags), [profiles])
+  const duplicateProfile = useMemo(() => findDuplicateProfileEndpoint(profiles, { host: form.host, port: Number(form.port) }, profile?.id), [form.host, form.port, profile?.id, profiles])
+  const endpointValidationMessage = endpointTouched
+    ? duplicateProfile === undefined ? endpointError : `该地址和端口已由“${duplicateProfile.name}”使用，请修改主机或端口。`
+    : undefined
   const buildPayload = (hostFingerprint = form.hostFingerprint) => {
     const proxy = form.proxyType === 'none' ? { type: 'none' }
       : form.proxyType === 'saved' ? { type: 'saved', proxyId: form.proxyEntryId }
@@ -111,6 +121,8 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
   }
 
   const testConnection = async (confirmedFingerprint?: string): Promise<void> => {
+    setEndpointTouched(true)
+    if (duplicateProfile !== undefined) { hostInputRef.current?.focus(); return }
     setTesting(true)
     setError(undefined)
     setTestState(undefined)
@@ -121,6 +133,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
       setTestState('success')
     } catch (reason) {
       if (reason instanceof ApiError && reason.body?.code === 'HOST_KEY_REQUIRED' && typeof reason.body.fingerprint === 'string') setPendingFingerprint(reason.body.fingerprint)
+      else if (reason instanceof ApiError && reason.body?.code === 'DUPLICATE_PROFILE_ENDPOINT') { setEndpointError(errorMessage(reason)); hostInputRef.current?.focus() }
       else setError(errorMessage(reason))
     } finally {
       setTesting(false)
@@ -129,13 +142,16 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
+    setEndpointTouched(true)
+    if (duplicateProfile !== undefined) { hostInputRef.current?.focus(); return }
     setSaving(true)
     setError(undefined)
     try {
       await api(profile === undefined ? '/profiles' : `/profiles/${profile.id}`, { method: profile === undefined ? 'POST' : 'PUT', body: JSON.stringify(buildPayload()) })
       onSaved()
     } catch (reason) {
-      setError(errorMessage(reason))
+      if (reason instanceof ApiError && reason.body?.code === 'DUPLICATE_PROFILE_ENDPOINT') { setEndpointError(errorMessage(reason)); hostInputRef.current?.focus() }
+      else setError(errorMessage(reason))
     } finally {
       setSaving(false)
     }
@@ -145,7 +161,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
     <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>连接信息</strong><small>主机地址与显示方式</small></div>
         <div className="dsh-ssh-form-grid"><Field label="名称"><input required maxLength={80} placeholder="开发服务器" {...field('name')} /></Field><Field label="分组"><SuggestionInput ariaLabel="主机分组" maxLength={64} options={groupOptions} placeholder="选择已有分组或输入新分组" value={form.group} onChange={group => setForm(current => ({ ...current, group }))} /></Field></div>
-        <div className="dsh-ssh-form-grid is-host"><Field label="主机"><input required placeholder="server.example.com" spellCheck={false} {...field('host')} /></Field><Field label="端口"><input required type="number" inputMode="numeric" min="1" max="65535" {...field('port')} /></Field></div>
+        <div className="dsh-ssh-form-grid is-host"><Field label="主机"><input ref={hostInputRef} required aria-invalid={endpointValidationMessage === undefined ? undefined : true} aria-describedby={endpointValidationMessage === undefined ? undefined : endpointErrorId} placeholder="server.example.com" spellCheck={false} {...field('host')} onBlur={() => setEndpointTouched(true)} />{endpointValidationMessage && <small id={endpointErrorId} className="dsh-ssh-field-error" role="alert">{endpointValidationMessage}</small>}</Field><Field label="端口"><input required aria-invalid={endpointValidationMessage === undefined ? undefined : true} aria-describedby={endpointValidationMessage === undefined ? undefined : endpointErrorId} type="number" inputMode="numeric" min="1" max="65535" {...field('port')} onBlur={() => setEndpointTouched(true)} /></Field></div>
         <Field label="标签" hint="可选择已有标签或直接输入；多个标签使用逗号分隔。"><SuggestionInput ariaLabel="主机标签" multiple options={tagOptions} placeholder="选择或输入标签" value={form.tags} onChange={tags => setForm(current => ({ ...current, tags }))} /></Field>
       </div>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>身份认证</strong><small>选择共享凭据或单独保存</small></div>

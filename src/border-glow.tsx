@@ -1,9 +1,4 @@
-import { useCallback, useEffect, useRef, type PointerEvent, type ReactNode, type RefObject } from 'react'
-
-interface BorderGlowProps {
-  children: ReactNode
-  className?: string | undefined
-}
+import { useCallback, useEffect, useRef, type PointerEvent, type RefObject } from 'react'
 
 interface PointerPosition {
   clientX: number
@@ -60,18 +55,4 @@ export function useBorderGlowSurface<T extends HTMLElement>(): BorderGlowSurface
   }, [])
 
   return { ref: surfaceRef, onPointerMove: handlePointerMove, onPointerLeave: hideGlow }
-}
-
-export function BorderGlow({ children, className }: BorderGlowProps): JSX.Element {
-  const glow = useBorderGlowSurface<HTMLDivElement>()
-
-  return <div
-    ref={glow.ref}
-    className={`dsh-ssh-border-glow${className === undefined ? '' : ` ${className}`}`}
-    onPointerMove={glow.onPointerMove}
-    onPointerLeave={glow.onPointerLeave}
-  >
-    <span className="dsh-ssh-border-glow-edge" aria-hidden="true" />
-    <div className="dsh-ssh-border-glow-inner">{children}</div>
-  </div>
 }

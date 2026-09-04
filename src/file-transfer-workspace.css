@@ -126,7 +126,13 @@
 .dsh-ssh-pane-heading strong { color: var(--ssh-text); font-size: var(--ssh-type-body); font-weight: 650; }
 .dsh-ssh-pane-endpoint small,
 .dsh-ssh-pane-heading small { color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); font-weight: 400; }
-.dsh-ssh-file-pane.is-connections { grid-template-rows: 58px minmax(0, 1fr) 42px; }
+.dsh-ssh-file-pane.is-connections {
+  grid-template-rows: 58px minmax(0, 1fr) 42px;
+  background: var(--ssh-list-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 var(--ssh-card-highlight);
+}
 .dsh-ssh-file-pane.is-connections > header { grid-template-columns: minmax(0, 1fr) auto; padding-inline: 13px 10px; }
 .dsh-ssh-pane-manage-button { appearance: none; min-height: var(--ssh-control-height); padding: 0 var(--ssh-control-padding); border: 1px solid var(--ssh-border); border-radius: 9px; color: var(--ssh-text-muted); background: var(--ssh-surface); background-image: none; font: 600 var(--ssh-type-label)/1 var(--ssh-font-sans); cursor: pointer; }
 .dsh-ssh-pane-manage-button:hover { color: var(--ssh-text); border-color: var(--ssh-border); background: var(--ssh-hover); background-image: none; }

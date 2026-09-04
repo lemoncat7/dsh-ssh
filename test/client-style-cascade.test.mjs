@@ -113,3 +113,35 @@ test('profile metadata pickers, password visibility, and host groups use owned a
   assert.match(css, /\.dsh-ssh-suggestion-menu\s*\{[\s\S]*?background:\s*var\(--ssh-modal-surface-raised\);/)
   assert.match(css, /\.dsh-ssh-password-input > button\s*\{[\s\S]*?min-width:\s*44px;/)
 })
+
+test('profile validation and connection chooser use quiet owned surfaces', async () => {
+  const [css, adaptiveCss, transferCss, remoteTreeCss, profileSource, uiSource] = await Promise.all([
+    readFile(stylesheetUrl, 'utf8'),
+    readFile(adaptiveStylesheetUrl, 'utf8'),
+    readFile(transferStylesheetUrl, 'utf8'),
+    readFile(remoteTreeStylesheetUrl, 'utf8'),
+    readFile(profileEditorSourceUrl, 'utf8'),
+    readFile(uiComponentsSourceUrl, 'utf8'),
+  ])
+
+  assert.match(profileSource, /DUPLICATE_PROFILE_ENDPOINT/)
+  assert.match(profileSource, /aria-invalid=\{endpointValidationMessage/)
+  assert.match(css, /\.dsh-ssh-field small\.dsh-ssh-field-error\s*\{[\s\S]*?color:\s*var\(--ssh-danger\);/)
+  assert.match(css, /\.dsh-ssh-form-section\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/)
+  assert.match(adaptiveCss, /\.dsh-ssh-workspace\.is-transfer \.dsh-ssh-adaptive-content\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?backdrop-filter:\s*none;/)
+  assert.match(css, /--ssh-list-surface:\s*#f4f4f4;/)
+  assert.match(remoteTreeCss, /\.dsh-ssh-remote-tree\s*\{[\s\S]*?background:\s*var\(--ssh-chrome-surface\);[\s\S]*?backdrop-filter:\s*var\(--ssh-glass-filter\);/)
+  assert.match(transferCss, /\.dsh-ssh-file-pane\.is-connections\s*\{[\s\S]*?background:\s*var\(--ssh-list-surface\);[\s\S]*?backdrop-filter:\s*none;/)
+  const rimSelector = css.match(/:is\(([\s\S]*?)\)::after\s*\{[\s\S]*?box-shadow:\s*[\s\S]*?var\(--ssh-glass-rim-shadow\);/)
+  assert.ok(rimSelector, 'shared surface rim selector should remain available')
+  assert.doesNotMatch(rimSelector[1], /\.dsh-ssh-dialog(?:\s|,|$)/)
+  assert.doesNotMatch(uiSource, /GlareHover/)
+  assert.doesNotMatch(uiSource, /BorderGlow/)
+})
+
+test('client style installation replaces stale styles during plugin reloads', async () => {
+  const clientSource = await readFile(new URL('../src/client.tsx', import.meta.url), 'utf8')
+  assert.match(clientSource, /document\.getElementById\(STYLE_ID\)\?\.remove\(\)/)
+  assert.match(clientSource, /document\.getElementById\(STYLE_ID\) === style/)
+  assert.doesNotMatch(clientSource, /if \(previous !== null\) return/)
+})

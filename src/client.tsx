@@ -14,7 +14,6 @@ import { AdaptiveWorkspace } from './adaptive-workspace.js'
 import adaptiveUiCss from './adaptive-workspace.css'
 import borderGlowCss from './border-glow.css'
 import { useBorderGlowSurface } from './border-glow.js'
-import glareHoverCss from './glare-hover.css'
 import interactiveSurfacesCss from './interactive-surfaces.css'
 import { activatePluginWorkspace, observePluginWorkspace } from './workspace-ownership.js'
 import {
@@ -343,7 +342,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const notice = error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button onClick={() => setError(undefined)} aria-label="关闭"><IconCloseOutline16 size={16} /></button></div>
   return <>
     <AdaptiveWorkspace
-      className="dsh-ssh-workspace"
+      className={`dsh-ssh-workspace${view === 'transfer' ? ' is-transfer' : ''}`}
       toolbar={toolbar}
       notice={notice}
       navigationLabel="主机"
@@ -883,11 +882,13 @@ function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
 function forwardState(status?: ForwardStatus): string { return status?.state === 'running' ? `运行中 · ${status.connections}` : status?.state === 'starting' ? '启动中' : status?.state === 'error' ? '失败' : '已停止' }
 
 function installStyles(): () => void {
-  const previous = document.getElementById(STYLE_ID)
-  if (previous !== null) return () => {}
+  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${fileTransferCss}\n${interactiveSurfacesCss}`
+  document.getElementById(STYLE_ID)?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID
-  style.textContent = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${glareHoverCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${fileTransferCss}\n${interactiveSurfacesCss}`
+  style.textContent = text
   document.head.append(style)
-  return () => style.remove()
+  return () => {
+    if (document.getElementById(STYLE_ID) === style) style.remove()
+  }
 }

@@ -47,6 +47,7 @@
   --ssh-surface: rgba(246, 247, 250, 0.17);
   --ssh-surface-raised: rgba(255, 255, 255, 0.38);
   --ssh-chrome-surface: var(--ssh-panel);
+  --ssh-list-surface: #f4f4f4;
   --ssh-card-surface: rgba(255, 255, 255, 0.24);
   --ssh-card-highlight: rgba(255, 255, 255, 0.58);
   --ssh-control-surface: var(--ssh-control);
@@ -145,6 +146,7 @@ body[data-ds-dark-theme] :is(
   --ssh-surface: rgb(16 23 25 / 92%);
   --ssh-surface-raised: rgb(32 41 43 / 94%);
   --ssh-chrome-surface: var(--ssh-panel);
+  --ssh-list-surface: #182022;
   --ssh-card-surface: rgb(32 41 43 / 90%);
   --ssh-card-highlight: rgba(255, 255, 255, 0.11);
   --ssh-control-surface: var(--ssh-control);
@@ -206,7 +208,6 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-transfer-header,
   .dsh-ssh-transfer-tabbar,
   .dsh-ssh-activity-header,
-  .dsh-ssh-dialog,
   .dsh-ssh-preview-modal
 ) {
   position: relative;
@@ -220,7 +221,6 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-transfer-header,
   .dsh-ssh-transfer-tabbar,
   .dsh-ssh-activity-header,
-  .dsh-ssh-dialog,
   .dsh-ssh-preview-modal
 )::after {
   position: absolute;
@@ -1713,16 +1713,18 @@ body[data-ds-dark-theme] :is(
     transparent
   );
   display: grid;
-  gap: 15px;
+  gap: 22px;
   padding: 20px 18px 18px;
 }
 .dsh-ssh-form-section {
   display: grid;
   gap: 13px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--ssh-border) 78%, transparent);
-  border-radius: var(--ssh-radius-surface);
-  background: color-mix(in srgb, var(--ssh-modal-surface-raised) 74%, transparent);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
 }
 .dsh-ssh-form-section-heading {
   display: grid;
@@ -1773,6 +1775,10 @@ body[data-ds-dark-theme] :is(
   font-size: var(--ssh-type-caption);
   line-height: 1.4;
   font-weight: 400;
+}
+.dsh-ssh-field small.dsh-ssh-field-error {
+  color: var(--ssh-danger);
+  font-weight: 500;
 }
 .dsh-ssh-suggestion-input,
 .dsh-ssh-password-input {
@@ -2147,6 +2153,7 @@ body[data-ds-dark-theme] :is(
     --ssh-control: #ffffff;
     --ssh-control-surface: #ffffff;
     --ssh-chrome-surface: #f2f3f7;
+    --ssh-list-surface: #f2f3f7;
     --ssh-modal-surface: #f8f8fa;
     --ssh-modal-surface-raised: #ffffff;
     --ssh-activity-surface: #f2f3f7;
@@ -2168,6 +2175,7 @@ body[data-ds-dark-theme] :is(
     --ssh-control: #273235;
     --ssh-control-surface: #273235;
     --ssh-chrome-surface: #182022;
+    --ssh-list-surface: #182022;
     --ssh-modal-surface: #182022;
     --ssh-modal-surface-raised: #20292b;
     --ssh-activity-surface: #101719;

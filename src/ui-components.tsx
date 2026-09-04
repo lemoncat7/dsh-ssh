@@ -3,8 +3,6 @@ import {
   type InputHTMLAttributes, type KeyboardEvent, type MouseEvent, type ReactNode,
 } from 'react'
 import { IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconDataOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import { BorderGlow } from './border-glow.js'
-import { GlareHover } from './glare-hover.js'
 import { useActiveControlMotion, useDialogMotion, useStaggeredEntrance } from './motion.js'
 
 interface DialogProps {
@@ -28,14 +26,10 @@ export function Dialog({ title, subtitle, className, onClose, children }: Dialog
   }
 
   return <Modal open onClose={closeWithMotion} title={title} headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
-    <BorderGlow>
-      <GlareHover>
-        <section ref={surfaceRef} className={`dsh-ssh-dialog dsh-ssh-scroll-surface${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>
-          <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={closeWithMotion} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
-          {children}
-        </section>
-      </GlareHover>
-    </BorderGlow>
+    <section ref={surfaceRef} className={`dsh-ssh-dialog dsh-ssh-scroll-surface${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>
+      <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={closeWithMotion} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
+      {children}
+    </section>
   </Modal>
 }
 

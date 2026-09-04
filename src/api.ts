@@ -26,6 +26,7 @@ import { remoteName } from './remote-files.js'
 import { scanRemoteTree } from './remote-tree-scan.js'
 import { streamRemoteTar } from './remote-tar-download.js'
 import { GistSyncService } from './gist-sync.js'
+import { findDuplicateProfileEndpoint } from './profile-endpoint.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -301,6 +302,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const secrets = { ...previousSecrets, ...normalizeSecrets(body.secrets) }
       const now = Date.now()
       const profile: SshProfile = { ...draft, id: profileId, port: draft.port ?? 22, proxy: draft.proxy ?? { type: 'none' }, keepAliveIntervalMs: draft.keepAliveIntervalMs ?? 15_000, connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, terminalType: draft.terminalType ?? 'xterm-256color', tags: draft.tags ?? [], createdAt: now, updatedAt: now }
+      assertProfileEndpointAvailable(runtime.store.profiles(), profile, body.profileId === undefined ? undefined : profileId)
       try {
         const connection = await runtime.connector.connectDraft(profile, secrets)
         connection.close()
@@ -318,7 +320,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const now = Date.now()
       const profile: SshProfile = { ...draft, id: createId('host'), port: draft.port ?? 22, proxy: draft.proxy ?? { type: 'none' }, keepAliveIntervalMs: draft.keepAliveIntervalMs ?? 15_000, connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, terminalType: draft.terminalType ?? 'xterm-256color', tags: draft.tags ?? [], createdAt: now, updatedAt: now }
       if (profile.credentialId === undefined) await runtime.credentials.replace(profile.id, secrets)
-      try { await runtime.store.update(state => { state.profiles.push(profile) }) }
+      try { await runtime.store.update(state => { assertProfileEndpointAvailable(state.profiles, profile); state.profiles.push(profile) }) }
       catch (error) { if (profile.credentialId === undefined) await runtime.credentials.delete(profile.id).catch(() => {}); throw error }
       return sendJson(res, 201, await profileView(runtime, profile))
     }
@@ -399,7 +401,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (draft.group === undefined) delete next.group
       const previousSecrets = await runtime.credentials.read(id)
       if (Object.keys(secrets).length > 0) await runtime.credentials.write(id, secrets)
-      try { await runtime.store.update(state => { state.profiles = state.profiles.map(profile => profile.id === id ? next : profile) }) }
+      try { await runtime.store.update(state => { assertProfileEndpointAvailable(state.profiles, next, id); state.profiles = state.profiles.map(profile => profile.id === id ? next : profile) }) }
       catch (error) { await runtime.credentials.replace(id, previousSecrets).catch(() => {}); throw error }
       return sendJson(res, 200, await profileView(runtime, next))
     }
@@ -968,6 +970,12 @@ function optionalInteger(value: unknown, min: number, max: number): number | und
 }
 
 function httpError(status: number, message: string): Error { return Object.assign(new Error(message), { status }) }
+
+function assertProfileEndpointAvailable(profiles: readonly SshProfile[], candidate: Pick<SshProfile, 'host' | 'port'>, excludeId?: string): void {
+  const duplicate = findDuplicateProfileEndpoint(profiles, candidate, excludeId)
+  if (duplicate === undefined) return
+  throw Object.assign(new Error(`该主机地址和端口已存在：${duplicate.name}`), { status: 409, code: 'DUPLICATE_PROFILE_ENDPOINT' })
+}
 
 async function streamSftpFile(res: ServerResponse, url: URL, runtime: SshApiRuntime, profileId: string, requestedPath: string): Promise<void> {
   const file = await openSftpFile(runtime.connector, profileId, requestedPath)
