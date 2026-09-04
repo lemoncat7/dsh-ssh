@@ -47,7 +47,6 @@
   --ssh-surface: rgba(246, 247, 250, 0.17);
   --ssh-surface-raised: rgba(255, 255, 255, 0.38);
   --ssh-chrome-surface: var(--ssh-panel);
-  --ssh-list-surface: #f4f4f4;
   --ssh-card-surface: rgba(255, 255, 255, 0.24);
   --ssh-card-highlight: rgba(255, 255, 255, 0.58);
   --ssh-control-surface: var(--ssh-control);
@@ -94,17 +93,6 @@
   --ssh-terminal-border: rgba(255, 255, 255, 0.12);
   --ssh-terminal-text: #f5f5f7;
   --ssh-terminal-muted: #98989d;
-  --ssh-file-canvas: #ebebeb;
-  --ssh-file-panel: #f4f4f4;
-  --ssh-file-card: #fafafa;
-  --ssh-file-surface: #f4f4f4;
-  --ssh-file-raised: #fafafa;
-  --ssh-file-control: #ffffff;
-  --ssh-file-hover: rgb(118 118 128 / 9%);
-  --ssh-file-selected: rgb(57 127 131 / 11%);
-  --ssh-file-accent: #397f83;
-  --ssh-file-accent-strong: #245f63;
-  --ssh-file-border: rgb(60 60 67 / 14%);
   --ssh-radius-control: 9px;
   --ssh-radius-surface: 13px;
   --ssh-motion-fast: 120ms;
@@ -146,7 +134,6 @@ body[data-ds-dark-theme] :is(
   --ssh-surface: rgb(16 23 25 / 92%);
   --ssh-surface-raised: rgb(32 41 43 / 94%);
   --ssh-chrome-surface: var(--ssh-panel);
-  --ssh-list-surface: #182022;
   --ssh-card-surface: rgb(32 41 43 / 90%);
   --ssh-card-highlight: rgba(255, 255, 255, 0.11);
   --ssh-control-surface: var(--ssh-control);
@@ -188,17 +175,6 @@ body[data-ds-dark-theme] :is(
   --ssh-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
   --ssh-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.34);
   --ssh-shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.48);
-  --ssh-file-canvas: #101719;
-  --ssh-file-panel: #182022;
-  --ssh-file-card: #20292b;
-  --ssh-file-surface: #182022;
-  --ssh-file-raised: #20292b;
-  --ssh-file-control: #273235;
-  --ssh-file-hover: rgb(105 182 186 / 9%);
-  --ssh-file-selected: rgb(105 182 186 / 14%);
-  --ssh-file-accent: #69b6ba;
-  --ssh-file-accent-strong: #8aced0;
-  --ssh-file-border: rgb(184 204 205 / 10%);
   color-scheme: dark;
 }
 :is(
@@ -206,7 +182,7 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-remote-tree,
   .dsh-ssh-workbench-heading,
   .dsh-ssh-transfer-header,
-  .dsh-ssh-transfer-tabbar,
+  .dsh-ssh-transfer-stage,
   .dsh-ssh-activity-header,
   .dsh-ssh-preview-modal
 ) {
@@ -219,7 +195,7 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-remote-tree,
   .dsh-ssh-workbench-heading,
   .dsh-ssh-transfer-header,
-  .dsh-ssh-transfer-tabbar,
+  .dsh-ssh-transfer-stage,
   .dsh-ssh-activity-header,
   .dsh-ssh-preview-modal
 )::after {
@@ -2153,7 +2129,6 @@ body[data-ds-dark-theme] :is(
     --ssh-control: #ffffff;
     --ssh-control-surface: #ffffff;
     --ssh-chrome-surface: #f2f3f7;
-    --ssh-list-surface: #f2f3f7;
     --ssh-modal-surface: #f8f8fa;
     --ssh-modal-surface-raised: #ffffff;
     --ssh-activity-surface: #f2f3f7;
@@ -2175,7 +2150,6 @@ body[data-ds-dark-theme] :is(
     --ssh-control: #273235;
     --ssh-control-surface: #273235;
     --ssh-chrome-surface: #182022;
-    --ssh-list-surface: #182022;
     --ssh-modal-surface: #182022;
     --ssh-modal-surface-raised: #20292b;
     --ssh-activity-surface: #101719;

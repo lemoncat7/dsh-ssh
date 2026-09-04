@@ -55,7 +55,7 @@ test('shared interactive surface contract owns themed hover and selection states
 })
 
 test('all SSH workspaces share one cool-charcoal material and typography contract', async () => {
-  const [css, adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss, terminalSource] = await Promise.all([
+  const [css, adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss, terminalSource, transferSource] = await Promise.all([
     readFile(stylesheetUrl, 'utf8'),
     readFile(adaptiveStylesheetUrl, 'utf8'),
     readFile(transferStylesheetUrl, 'utf8'),
@@ -63,6 +63,7 @@ test('all SSH workspaces share one cool-charcoal material and typography contrac
     readFile(remoteTreeStylesheetUrl, 'utf8'),
     readFile(interactiveStylesheetUrl, 'utf8'),
     readFile(terminalSourceUrl, 'utf8'),
+    readFile(transferSourceUrl, 'utf8'),
   ])
   const featureCss = [adaptiveCss, transferCss, workbenchCss, remoteTreeCss, interactiveCss].join('\n')
   const readableCss = [css, featureCss].join('\n')
@@ -75,7 +76,7 @@ test('all SSH workspaces share one cool-charcoal material and typography contrac
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-panel:\s*rgb\(25 33 35 \/ 90%\);/)
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-surface:\s*rgb\(16 23 25 \/ 92%\);/)
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-accent:\s*#69b6ba;/)
-  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-file-surface:\s*#182022;/)
+  assert.doesNotMatch(css, /--ssh-file-/)
   assert.doesNotMatch(css, /#182427|#223235|#26373a|#2c3e41/)
   assert.match(terminalSource, /background: '#101719'/)
   assert.match(terminalSource, /selectionBackground: '#69b6ba40'/)
@@ -85,8 +86,13 @@ test('all SSH workspaces share one cool-charcoal material and typography contrac
   assert.match(adaptiveCss, /\.dsh-ssh-adaptive-content\s*\{[\s\S]*?background:\s*var\(--ssh-surface\);[\s\S]*?backdrop-filter:\s*var\(--ssh-content-filter\);/)
   assert.match(adaptiveCss, /prefers-reduced-transparency:\s*reduce[\s\S]*?\.dsh-ssh-adaptive-content,[\s\S]*?backdrop-filter:\s*none;/)
   assert.match(transferCss, /\.dsh-ssh-transfer-workspace\s*\{[\s\S]*?background:\s*var\(--ssh-canvas\);/)
-  assert.doesNotMatch(transferCss, /\.dsh-ssh-transfer-workspace\s*\{[\s\S]*?--ssh-canvas:\s*var\(--ssh-file-canvas\);/)
-  assert.match(transferCss, /\.dsh-ssh-transfer-panes,[\s\S]*?--ssh-card-surface:\s*var\(--ssh-file-card\);/)
+  assert.doesNotMatch(transferCss, /--ssh-file-/)
+  assert.match(transferCss, /\.dsh-ssh-transfer-stage\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;[\s\S]*?border:\s*1px solid var\(--ssh-glass-border\);[\s\S]*?border-radius:\s*18px;[\s\S]*?background:\s*var\(--ssh-chrome-surface\);[\s\S]*?backdrop-filter:\s*var\(--ssh-glass-filter\);[\s\S]*?box-shadow:\s*var\(--ssh-glass-shadow\);/)
+  assert.match(transferCss, /\.dsh-ssh-transfer-panes\s*\{[\s\S]*?gap:\s*0;[\s\S]*?background:\s*transparent;/)
+  assert.match(transferCss, /\.dsh-ssh-file-pane \+ \.dsh-ssh-file-pane\s*\{\s*border-left:\s*1px solid var\(--ssh-glass-separator\);/)
+  assert.match(transferCss, /\.dsh-ssh-transfer-tabbar\s*\{[\s\S]*?border-bottom:\s*1px solid var\(--ssh-glass-separator\);/)
+  assert.match(transferCss, /\.dsh-ssh-transfer-queue\s*\{[\s\S]*?border-top:\s*1px solid var\(--ssh-glass-separator\);/)
+  assert.match(transferSource, /dsh-ssh-transfer-stage dsh-ssh-border-surface/)
   assert.match(transferCss, /\.dsh-ssh-file-table-head button\s*\{[\s\S]*?appearance:\s*none;/)
   assert.match(transferCss, /\.dsh-ssh-file-row-download\s*\{[\s\S]*?appearance:\s*none;/)
   assert.doesNotMatch(featureCss, /#[\da-f]{3,8}\b|rgba?\(/i)
@@ -129,9 +135,12 @@ test('profile validation and connection chooser use quiet owned surfaces', async
   assert.match(css, /\.dsh-ssh-field small\.dsh-ssh-field-error\s*\{[\s\S]*?color:\s*var\(--ssh-danger\);/)
   assert.match(css, /\.dsh-ssh-form-section\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;/)
   assert.match(adaptiveCss, /\.dsh-ssh-workspace\.is-transfer \.dsh-ssh-adaptive-content\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?backdrop-filter:\s*none;/)
-  assert.match(css, /--ssh-list-surface:\s*#f4f4f4;/)
   assert.match(remoteTreeCss, /\.dsh-ssh-remote-tree\s*\{[\s\S]*?background:\s*var\(--ssh-chrome-surface\);[\s\S]*?backdrop-filter:\s*var\(--ssh-glass-filter\);/)
-  assert.match(transferCss, /\.dsh-ssh-file-pane\.is-connections\s*\{[\s\S]*?background:\s*var\(--ssh-list-surface\);[\s\S]*?backdrop-filter:\s*none;/)
+  assert.match(transferCss, /\.dsh-ssh-file-pane\s*\{[\s\S]*?background:\s*transparent;/)
+  assert.match(transferCss, /\.dsh-ssh-file-pane\.is-connections\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?backdrop-filter:\s*none;[\s\S]*?box-shadow:\s*none;/)
+  assert.match(transferCss, /\.dsh-ssh-file-pathbar\s*\{[^}]*background:\s*transparent;/)
+  assert.match(transferCss, /\.dsh-ssh-file-table-head\s*\{[^}]*background:\s*transparent;/)
+  assert.match(transferCss, /\.dsh-ssh-file-pane > footer\s*\{[^}]*background:\s*transparent;/)
   const rimSelector = css.match(/:is\(([\s\S]*?)\)::after\s*\{[\s\S]*?box-shadow:\s*[\s\S]*?var\(--ssh-glass-rim-shadow\);/)
   assert.ok(rimSelector, 'shared surface rim selector should remain available')
   assert.doesNotMatch(rimSelector[1], /\.dsh-ssh-dialog(?:\s|,|$)/)

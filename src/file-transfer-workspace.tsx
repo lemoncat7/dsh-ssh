@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent } from 'react'
-import { IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   cancelFileTransfer, deleteFileEndpointEntries, fileEndpointDownloadUrl, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
   type FileEndpointView, type FtpProfileView, type ProxyEntryView, type SftpDirectoryView, type SftpEntryView, type TransferJobView, type VaultEntryView,
@@ -14,6 +14,7 @@ import {
 import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
 import { sortFileEntries, type FileEntrySortDirection, type FileEntrySortKey } from './file-entry-sort.js'
+import { useBorderGlowSurface } from './border-glow.js'
 
 interface PaneState { id: string; endpointId: string; path: string }
 interface TransferTab { id: string; name: string; panes: PaneState[] }
@@ -23,6 +24,7 @@ const FILE_ROW_HEIGHT = 38
 const transferClockFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
 export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries, access, onProfilesChanged }: { ftpProfiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; access: SessionAccessState; onProfilesChanged(): void }): JSX.Element {
+  const stageGlow = useBorderGlowSurface<HTMLElement>()
   const [endpoints, setEndpoints] = useState<FileEndpointView[]>([])
   const [jobs, setJobs] = useState<TransferJobView[]>([])
   const [tabs, setTabs] = useState<TransferTab[]>(() => restoreTabs())
@@ -107,16 +109,18 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
       <div className="dsh-ssh-transfer-actions"><button type="button" data-ssh-interactive="control" className="dsh-ssh-secondary-button" onClick={() => setAccessOpen(true)}>会话访问 · {access.value?.fileEndpointIds.length ?? 0}</button><button type="button" data-ssh-interactive="control" className="dsh-ssh-secondary-button" onClick={() => setConnectionsOpen(true)}>FTP 管理</button></div>
     </header>
     {error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label="关闭"><IconCloseOutline16 size={16} /></button></div>}
-    <div className="dsh-ssh-transfer-tabbar" role="tablist" aria-label="文件传输任务页">
-      <div className="dsh-ssh-transfer-tabs">{tabs.map(tab => <span data-ssh-interactive="choice" className={`dsh-ssh-transfer-tab${tab.id === active?.id ? ' is-active' : ''}`} key={tab.id}><button type="button" role="tab" aria-selected={tab.id === active?.id} onClick={() => setActiveTabId(tab.id)}>{tab.name}</button>{tabs.length > 1 && <button type="button" className="is-close" aria-label={`关闭 ${tab.name}`} onClick={() => closeTab(tab.id)}><IconCloseOutline16 size={13} /></button>}</span>)}<button type="button" data-ssh-interactive="control" className="is-add" aria-label="新建传输任务页" onClick={addTab}><IconPlusOutline16 size={15} /></button></div>
-      <div className="dsh-ssh-pane-layout" aria-label="窗格数量">{[2, 3, 4].map(count => <button key={count} type="button" data-ssh-interactive="choice" aria-pressed={active?.panes.length === count} className={active?.panes.length === count ? 'is-active' : ''} onClick={() => setPaneCount(count)}>{count} 栏</button>)}</div>
-    </div>
-    {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>还没有可用文件连接</strong><p>新建 FTP/FTPS 连接，或先添加一台 SSH 主机使用 SFTP。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>新建 FTP 连接</button></div>
-      : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map((pane, index) => {
-        const destination = active.panes[(index + 1) % active.panes.length]
-        return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, pane.path, paths, target.endpointId, target.path) }} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />
-      })}</div>}
-    <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
+    <section ref={stageGlow.ref} onPointerMove={stageGlow.onPointerMove} onPointerLeave={stageGlow.onPointerLeave} className="dsh-ssh-transfer-stage dsh-ssh-border-surface">
+      <div className="dsh-ssh-transfer-tabbar" role="tablist" aria-label="文件传输任务页">
+        <div className="dsh-ssh-transfer-tabs">{tabs.map(tab => <span data-ssh-interactive="choice" className={`dsh-ssh-transfer-tab${tab.id === active?.id ? ' is-active' : ''}`} key={tab.id}><button type="button" role="tab" aria-selected={tab.id === active?.id} onClick={() => setActiveTabId(tab.id)}>{tab.name}</button>{tabs.length > 1 && <button type="button" className="is-close" aria-label={`关闭 ${tab.name}`} onClick={() => closeTab(tab.id)}><IconCloseOutline16 size={13} /></button>}</span>)}<button type="button" data-ssh-interactive="control" className="is-add" aria-label="新建传输任务页" onClick={addTab}><IconPlusOutline16 size={15} /></button></div>
+        <div className="dsh-ssh-pane-layout" aria-label="窗格数量">{[2, 3, 4].map(count => <button key={count} type="button" data-ssh-interactive="choice" aria-pressed={active?.panes.length === count} className={active?.panes.length === count ? 'is-active' : ''} onClick={() => setPaneCount(count)}>{count} 栏</button>)}</div>
+      </div>
+      {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>还没有可用文件连接</strong><p>新建 FTP/FTPS 连接，或先添加一台 SSH 主机使用 SFTP。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>新建 FTP 连接</button></div>
+        : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map((pane, index) => {
+          const destination = active.panes[(index + 1) % active.panes.length]
+          return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, pane.path, paths, target.endpointId, target.path) }} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />
+        })}</div>}
+      <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
+    </section>
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
     {accessOpen && <FileAccessDialog endpoints={endpoints} access={access} onClose={() => setAccessOpen(false)} />}
     {conflictJob && <ConflictDialog job={conflictJob} onClose={() => setConflictJob(undefined)} onRetry={async conflictPolicy => { try { const next = await startFileTransfer({ ...conflictJob.request, conflictPolicy }); setJobs(current => [next, ...current]); setConflictJob(undefined) } catch (reason) { setError(errorMessage(reason)) } }} />}
@@ -242,7 +246,7 @@ function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: Transf
   const [open, setOpen] = useState(true)
   const active = jobs.filter(job => job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring')
   return <section className={`dsh-ssh-transfer-queue${open ? ' is-open' : ''}`}>
-    <button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-queue-heading" aria-expanded={open} onClick={() => setOpen(value => !value)}><span><strong>传输任务</strong><small>{active.length > 0 ? `${active.length} 个进行中` : jobs.length > 0 ? '最近任务' : '暂无任务'}</small></span><span>{open ? '收起' : '展开'}</span></button>
+    <button type="button" className="dsh-ssh-transfer-queue-heading" aria-expanded={open} title={open ? '收起传输任务' : '展开传输任务'} onClick={() => setOpen(value => !value)}><span><strong>传输任务</strong><small>{active.length > 0 ? `${active.length} 个进行中` : jobs.length > 0 ? '最近任务' : '暂无任务'}</small></span><span className="dsh-ssh-transfer-queue-disclosure" aria-hidden="true"><IconChevronDownOutline14 size={14} /></span></button>
     {open && <div className="dsh-ssh-transfer-job-list">{jobs.length === 0 ? <p>从一个窗格拖到另一个窗格，或选中文件后点击“传送到下一栏”。</p> : jobs.slice(0, 12).map(job => {
       const progress = job.totalBytes > 0 ? Math.min(100, job.transferredBytes / job.totalBytes * 100) : job.state === 'completed' ? 100 : 0
       return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label="取消传输" onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : job.state === 'failed' && job.error?.includes('destination already contains') ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>处理</button> : null}</article>
