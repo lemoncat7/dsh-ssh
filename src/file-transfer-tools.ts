@@ -1,6 +1,6 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
-import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import type { TransferConflictPolicy } from './file-transfer-manager.js'
 import { FileTransferManager } from './file-transfer-manager.js'
@@ -47,7 +47,7 @@ function directoryListTool(store: SshStore, files: RemoteFileSystems): ToolDefin
 function transferStartTool(store: SshStore, transfers: FileTransferManager): ToolDefinition {
   return tool('file_transfer_start', 'Preferred tool for copying files between two authorized FTP, FTPS, or SFTP endpoints. Never replace it with an SSH command, temporary HTTP server, open port, base64 stream, or terminal pipe. Use fail as the default conflict policy unless the user explicitly chose another policy.', {
     sourceEndpointId: { type: 'string', required: true },
-    sourcePaths: { type: 'array', required: true, items: { type: 'string' }, minItems: 1, maxItems: 100 },
+    sourcePaths: { type: 'array', required: true, items: { type: 'string' }, description: 'One to 100 source paths.' },
     destinationEndpointId: { type: 'string', required: true },
     destinationDirectory: { type: 'string', required: true },
     conflictPolicy: { type: 'string', enum: ['fail', 'skip', 'overwrite', 'rename'], description: 'Defaults to fail.' },
@@ -83,13 +83,12 @@ function transferCancelTool(store: SshStore, transfers: FileTransferManager): To
   })
 }
 
-function tool(name: string, description: string, properties: Record<string, Record<string, unknown>>, execute: (args: unknown, exec: ToolRunContext) => Promise<string>, concurrencySafe = false): ToolDefinition {
-  const required = Object.entries(properties).filter(([, schema]) => schema.required === true).map(([key]) => key)
-  const schemaProperties = Object.fromEntries(Object.entries(properties).map(([key, schema]) => { const { required: _required, ...rest } = schema; return [key, rest] }))
-  return {
-    name, description, parameters: { type: 'object', additionalProperties: false, properties: schemaProperties, required }, output, execute,
+function tool(name: string, description: string, properties: ParameterSchemaSpec, execute: (args: unknown, exec: ToolRunContext) => Promise<string>, concurrencySafe = false): ToolDefinition {
+  return defineTool({
+    name, description, parameters: properties, output,
+    execute: (args, exec) => execute(args, exec),
     isConcurrencySafe: () => concurrencySafe, presentCall: args => ({ card: 'terminal', title: presentTitle(name, args) }),
-  }
+  })
 }
 
 function requireFileInjection(store: SshStore, exec: ToolRunContext) {

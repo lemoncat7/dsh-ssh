@@ -27,7 +27,7 @@ export function Dialog({ title, subtitle, className, onClose, children }: Dialog
     closeWithMotion()
   }
 
-  return <Modal open onClose={closeWithMotion} title={title} closeLabel="关闭" headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
+  return <Modal open onClose={closeWithMotion} title={title} headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
     <BorderGlow>
       <GlareHover>
         <section ref={surfaceRef} className={`dsh-ssh-dialog dsh-ssh-scroll-surface${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>

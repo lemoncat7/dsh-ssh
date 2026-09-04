@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ISessions, IWorkspaces } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -102,7 +105,7 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
     selected: () => selected,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener) },
     async createProjectSession(workspaceId, project, permission, requireCommandApproval) {
-      const sessionId = await runtime.workspaces.connectWorkspace(workspaceId as never)
+      const sessionId = await runtime.sessions.create({ workspaceId: workspaceId as WorkspaceId })
       await saveSessionAccess({ ...emptyAccess(String(sessionId)), profileIds: [project.profileId], permission, requireCommandApproval, workingDirectories: { [project.profileId]: project.path }, workingProjectIds: { [project.profileId]: project.id } })
       runtime.sessions.open(sessionId)
       return String(sessionId)
@@ -209,7 +212,7 @@ function normalizeSessionId(value: unknown): string | undefined {
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {
   const ref = useRef<HTMLElement>(null)
   useWorkspaceTopAnchor(ref)
-  const sessionId = props.useSessions(state => state.current)
+  const sessionId = props.useSessions((state: SessionListState) => state.current)
   const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [injection, setInjection] = useState<InjectionView | null>(null)
@@ -287,8 +290,8 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
 
 function RemoteWorkspace(props: ConversationProps & { controller: RemoteController }): JSX.Element {
   const toolbarGlow = useBorderGlowSurface<HTMLElement>()
-  const sessionId = props.useSessions(state => state.current)
-  const workspaceList = props.useWorkspaces(state => state)
+  const sessionId = props.useSessions((state: SessionListState) => state.current)
+  const workspaceList = props.useWorkspaces((state: WorkspaceSnapshot) => state)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
   const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
@@ -325,7 +328,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === target?.profileId)
-  const currentWorkspaceId = workspaceList.items.find(item => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
+  const currentWorkspaceId = workspaceList.items.find((item: WorkspaceView) => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
   const toolbar = <header ref={toolbarGlow.ref} onPointerMove={toolbarGlow.onPointerMove} onPointerLeave={toolbarGlow.onPointerLeave} className="dsh-ssh-toolbar dsh-ssh-border-surface">
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>SSH 工作台</strong><small>{view === 'transfer' ? 'FTP · FTPS · SFTP' : selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" role="tablist" aria-label="SSH 工作台视图">

@@ -1,7 +1,7 @@
 import type { TerminalSignal } from '@deepseek-ai/dsh-terminal'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
-import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import { executeSshCommand } from './exec.js'
 import { sessionDirectory, setSessionDirectory } from './directory.js'
@@ -192,23 +192,18 @@ function forwardStopTool(store: SshStore, forwards: ForwardManager): ToolDefinit
 function tool(
   name: string,
   description: string,
-  properties: Record<string, Record<string, unknown>>,
+  properties: ParameterSchemaSpec,
   execute: (args: unknown, exec: ToolRunContext) => Promise<string>,
   concurrencySafe = false,
 ): ToolDefinition {
-  const required = Object.entries(properties).filter(([, value]) => value.required === true).map(([key]) => key)
-  const schemaProperties = Object.fromEntries(Object.entries(properties).map(([key, value]) => {
-    const { required: _required, ...schema } = value
-    return [key, schema]
-  }))
-  return {
+  return defineTool({
     name, description,
-    parameters: { type: 'object', additionalProperties: false, properties: schemaProperties, required },
+    parameters: properties,
     output: textOutput,
-    execute,
+    execute: (args, exec) => execute(args, exec),
     isConcurrencySafe: () => concurrencySafe,
     presentCall: args => ({ card: 'terminal', title: presentTitle(name, args) }),
-  }
+  })
 }
 
 function presentTitle(name: string, value: unknown): string {

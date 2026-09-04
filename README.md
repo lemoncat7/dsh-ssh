@@ -4,6 +4,10 @@
 
 浏览器 UI、服务端运行时、会话授权边界和终端生命周期的职责说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
 
+## 兼容性
+
+正式版 `1.4.0` 针对 DeepSeek Harness `0.1.2-rc.1` 构建并完成部署验证，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+
 ## 安装
 
 ```bash

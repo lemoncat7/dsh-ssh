@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { IconCloseOutline16, IconFolderClose16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ProfileView, RemoteProjectView } from './client-api.js'
 
@@ -38,7 +38,7 @@ export function ProjectSessionDialog({ profile, project, workspaces, currentWork
     try { await onCreate(project, workspaceId) } catch (reason) { setError(message(reason)); setCreating(false) }
   }
 
-  return <Modal open onClose={close} title="选择会话归属空间" closeLabel="关闭" headless className="dsh-ssh-session-create-modal">
+  return <Modal open onClose={close} title="选择会话归属空间" headless className="dsh-ssh-session-create-modal">
     <section className="dsh-ssh-session-create-shell" onKeyDown={trapDialogFocus}>
       <header><span><h2>新建远端会话</h2><p>选择这个会话在 DSH 中归属的本地项目</p></span><button ref={closeButtonRef} type="button" className="dsh-ssh-icon-button" disabled={creating} onClick={close} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
       <form onSubmit={event => { void submit(event) }}>

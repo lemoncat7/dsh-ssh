@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import type { WorkspaceView } from '@deepseek-ai/dsh-client-runtime/client'
+import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconEditOutline16, IconFolderClose16,
   IconFolderOpenOutline16, IconPlusOutline16, IconTrashOutline16,
