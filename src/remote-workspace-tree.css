@@ -86,7 +86,7 @@
   font-weight: 600;
   text-align: left;
   cursor: pointer;
-  transition: color 140ms ease, background 140ms ease;
+  transition: color 140ms ease, background-color 140ms ease;
 }
 
 .dsh-ssh-tree-group > h3 > button:hover {
@@ -126,7 +126,7 @@
   border: 1px solid transparent;
   border-radius: 11px;
   overflow: hidden;
-  transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
 
 .dsh-ssh-tree-host-row:hover {
@@ -214,7 +214,7 @@
   white-space: nowrap;
   cursor: pointer;
   overflow: hidden;
-  transition: color 140ms ease, border-color 140ms ease, background 140ms ease, opacity 140ms ease;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease, opacity 140ms ease;
 }
 
 .dsh-ssh-tree-mount:hover:not(:disabled) {
@@ -280,7 +280,7 @@
   background: transparent;
   opacity: .25;
   cursor: pointer;
-  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
 }
 
 .dsh-ssh-tree-add {
@@ -347,7 +347,7 @@
   border: 1px solid transparent;
   border-radius: 9px;
   overflow: hidden;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
 
 .dsh-ssh-tree-project-row:hover {
@@ -485,14 +485,14 @@
 
 .dsh-ssh-access-segments button:hover:not(:disabled):not(.is-active) {
   color: var(--ssh-text-muted);
-  background: var(--ssh-hover);
+  background-color: var(--ssh-hover);
   background-image: none;
 }
 
 .dsh-ssh-access-segments button.is-active {
   border-color: transparent;
   color: var(--ssh-text);
-  background: var(--ssh-selected);
+  background-color: var(--ssh-selected);
   background-image: none;
   box-shadow: inset 0 1px 0 var(--ssh-glass-highlight);
 }
@@ -537,7 +537,7 @@
   border: 1px solid color-mix(in srgb, var(--ssh-text-muted) 22%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--ssh-text) 8%, transparent);
-  transition: border-color 150ms ease, background 150ms ease;
+  transition: border-color 150ms ease, background-color 150ms ease;
 }
 
 .dsh-ssh-access-approval > i::after {
@@ -629,7 +629,7 @@
   font: 500 var(--ssh-type-label)/1.3 var(--ssh-font-sans);
   text-align: left;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
 }
 
 .dsh-ssh-remote-path-options > button:hover:not(:disabled) {
@@ -812,7 +812,7 @@
   border: 1px solid var(--ssh-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--ssh-surface-raised) 76%, transparent);
-  transition: border-color 140ms ease, background 140ms ease;
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
 
 .dsh-ssh-workspace-option:hover > span {

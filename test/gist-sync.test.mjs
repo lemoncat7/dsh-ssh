@@ -164,6 +164,30 @@ test('recovers from damaged local sync metadata without preventing SSH startup',
   assert.equal((await readdir(fixture.directory)).some(name => name.startsWith('gist.json.corrupt.')), true)
 })
 
+test('invalid GitHub authorization is cleared and reported without discarding the encryption password', async t => {
+  const fixture = await createFixture(t, 'invalid-github-authorization')
+  const metadataPath = join(fixture.directory, 'gist.json')
+  const unauthorized = async () => json({ message: 'Bad credentials' }, 401)
+  const service = await GistSyncService.open(
+    fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), metadataPath,
+    token => new GitHubGistClient(token, unauthorized),
+  )
+  t.after(() => service.close())
+  await service.configure({
+    settings: { autoSync: false, strategy: 'smart', backupRetention: 2, gistId: '' },
+    token: 'github-token-value-for-tests', encryptionPassphrase: 'portable secret phrase',
+  })
+
+  await assert.rejects(service.sync(), /GitHub 授权已失效，请重新连接 GitHub/)
+  const view = await service.view()
+  assert.equal(view.tokenConfigured, false)
+  assert.equal(view.encryptionConfigured, true)
+  assert.equal(view.githubLogin, undefined)
+  assert.equal(view.lastError, 'GitHub 授权已失效，请重新连接 GitHub')
+  const persisted = JSON.parse(await readFile(metadataPath, 'utf8'))
+  assert.equal(persisted.lastError, 'GitHub 授权已失效，请重新连接 GitHub')
+})
+
 test('loads legacy FTP profiles without tags and persists the normalized metadata', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-ssh-legacy-ftp-tags-'))
   t.after(() => rm(directory, { recursive: true, force: true }))

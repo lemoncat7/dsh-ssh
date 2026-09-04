@@ -2,7 +2,6 @@ import { randomBytes } from 'node:crypto'
 
 const DEVICE_CODE_URL = 'https://github.com/login/device/code'
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
-const MAX_PENDING_FLOWS = 5
 
 export interface GitHubDeviceFlowStart {
   id: string
@@ -38,7 +37,9 @@ export class GitHubDeviceAuthService {
 
   async start(): Promise<GitHubDeviceFlowStart> {
     this.prune()
-    if (this.pending.size >= MAX_PENDING_FLOWS) throw new Error('等待中的 GitHub 授权过多，请稍后重试')
+    const now = Date.now()
+    const existing = this.pending.values().next().value as PendingFlow | undefined
+    if (existing !== undefined) return this.startView(existing, now)
     const clientId = normalizeClientId(this.clientId())
     const value = await this.form(DEVICE_CODE_URL, { client_id: clientId, scope: 'gist' })
     const deviceCode = requiredText(value.device_code, 'GitHub device_code', 20, 512)
@@ -46,7 +47,6 @@ export class GitHubDeviceAuthService {
     const verificationUri = trustedVerificationUri(value.verification_uri)
     const expiresIn = boundedInteger(value.expires_in, 'GitHub expires_in', 60, 1_800)
     const intervalMs = boundedInteger(value.interval ?? 5, 'GitHub interval', 1, 60) * 1_000
-    const now = Date.now()
     const flow: PendingFlow = {
       id: randomBytes(18).toString('hex'), clientId, deviceCode, userCode, verificationUri,
       expiresAt: now + expiresIn * 1_000, intervalMs, nextPollAt: now,

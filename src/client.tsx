@@ -624,6 +624,7 @@ function SettingsPane(): JSX.Element {
   const [busy, setBusy] = useState<'save' | 'test' | 'sync' | 'oauth' | 'disconnect' | 'network'>()
   const [notice, setNotice] = useState<string>()
   const [error, setError] = useState<string>()
+  const githubAuthError = gist?.tokenConfigured === false && gist.lastError?.startsWith('GitHub 授权已失效') === true ? gist.lastError : undefined
   useEffect(() => {
     void Promise.all([api<SettingsView>('/settings'), api<GistSyncView>('/gist-sync')])
       .then(([nextSettings, nextGist]) => { setSettings(nextSettings); setGist(nextGist) })
@@ -694,7 +695,11 @@ function SettingsPane(): JSX.Element {
       }
       const synced = await api<GistSyncView>('/gist-sync/run', { method: 'POST' })
       setGist(synced); setNotice(syncResultLabel(synced.lastResult)); return synced
-    } catch (reason) { setError(message(reason)); return undefined } finally { setBusy(undefined) }
+    } catch (reason) {
+      setError(message(reason))
+      try { setGist(await api('/gist-sync')) } catch {}
+      return undefined
+    } finally { setBusy(undefined) }
   }
   const connectGitHub = async (): Promise<void> => {
     setBusy('oauth'); setError(undefined); setNotice(undefined)
@@ -716,11 +721,11 @@ function SettingsPane(): JSX.Element {
     <div className="dsh-ssh-settings-stack">
       {gist && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-gist-title">
         <div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-gist-title">GitHub Gist 同步</strong><small>主机、FTP/FTPS、项目目录、代理与密钥库端到端加密同步</small></span><SyncStatus view={gist} /></div>
-        <div className="dsh-ssh-github-auth">
+        <div className={`dsh-ssh-github-auth${githubAuthError === undefined ? '' : ' is-invalid'}`}>
           <span className="dsh-ssh-github-mark" aria-hidden="true">GH</span>
-          <span><strong>{gist.tokenConfigured ? `已连接 ${gist.githubLogin ?? 'GitHub'}` : '连接 GitHub'}</strong><small>{gist.tokenConfigured ? '授权凭据安全保存在当前 DSH' : '通过 GitHub 设备授权获取 Gist 访问权限'}</small></span>
+          <span><strong>{gist.tokenConfigured ? `已连接 ${gist.githubLogin ?? 'GitHub'}` : githubAuthError === undefined ? '连接 GitHub' : 'GitHub 授权已失效'}</strong><small>{gist.tokenConfigured ? '授权凭据安全保存在当前 DSH' : githubAuthError ?? '通过 GitHub 设备授权获取 Gist 访问权限'}</small></span>
           <span className="dsh-ssh-github-auth-actions">
-            <button type="button" className={gist.tokenConfigured ? 'dsh-ssh-secondary-button' : 'dsh-ssh-primary-button'} disabled={busy !== undefined || !gist.oauthClientId} onClick={() => { void connectGitHub() }}>{busy === 'oauth' ? '连接中…' : gist.tokenConfigured ? '重新连接' : '连接 GitHub'}</button>
+            <button type="button" className={gist.tokenConfigured ? 'dsh-ssh-secondary-button' : 'dsh-ssh-primary-button'} disabled={busy !== undefined || oauthFlow !== undefined || !gist.oauthClientId} onClick={() => { void connectGitHub() }}>{busy === 'oauth' ? '连接中…' : oauthFlow !== undefined ? '等待授权…' : gist.tokenConfigured ? '重新连接' : '连接 GitHub'}</button>
             {gist.tokenConfigured && <button type="button" className="dsh-ssh-text-button" disabled={busy !== undefined} onClick={() => { void disconnectGitHub() }}>{busy === 'disconnect' ? '断开中…' : '断开'}</button>}
           </span>
         </div>
@@ -746,7 +751,7 @@ function SettingsPane(): JSX.Element {
           <p>没有 OAuth App？<a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer">前往 GitHub 创建</a>，创建后在应用设置中启用 Device Flow。</p>
         </div>}
         <p className="dsh-ssh-sync-scope"><strong>同步内容：</strong>主机、FTP/FTPS、固定项目目录、代理库、密钥库，以及其中的密码和私钥。敏感字段上传前会加密。<br /><strong>仅保留本机：</strong>当前会话授权、端口转发、公开绑定与命令限制。GitHub Token 和同步加密密码也始终只保存在本机 DSH 凭据服务。</p>
-        {gist.lastError && <p className="dsh-ssh-inline-error" role="alert">上次同步失败：{gist.lastError}</p>}
+        {gist.lastError && githubAuthError === undefined && <p className="dsh-ssh-inline-error" role="alert">上次同步失败：{gist.lastError}</p>}
         <div className="dsh-ssh-settings-actions">
           {gist.gistUrl && <a className="dsh-ssh-secondary-button" href={gist.gistUrl} target="_blank" rel="noreferrer">打开 Gist</a>}
           <button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void persistGist('test') }}>{busy === 'test' ? '测试中…' : '测试连接'}</button>

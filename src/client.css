@@ -35,8 +35,8 @@
   --ssh-text: #1d1d1f;
   --ssh-text-muted: #515154;
   --ssh-text-subtle: #747478;
-  --ssh-hover: rgba(118, 118, 128, 0.09);
-  --ssh-selected: rgba(60, 60, 67, 0.085);
+  --ssh-hover: rgba(60, 60, 67, 0.12);
+  --ssh-selected: rgba(60, 60, 67, 0.16);
   --ssh-control: rgba(255, 255, 255, 0.27);
   --ssh-accent: #6e6e73;
   --ssh-accent-strong: #2c2c2e;
@@ -56,6 +56,7 @@
   --ssh-activity-surface: rgba(246, 247, 250, 0.82);
   --ssh-activity-surface-raised: rgba(255, 255, 255, 0.72);
   --ssh-border: rgba(60, 60, 67, 0.14);
+  --ssh-border-strong: rgba(60, 60, 67, 0.24);
   --ssh-host-border: var(--ssh-border);
   --ssh-separator: rgba(60, 60, 67, 0.11);
   --ssh-focus-ring: rgba(60, 60, 67, 0.46);
@@ -122,8 +123,8 @@ body[data-ds-dark-theme] :is(
   --ssh-text: #e3eaeb;
   --ssh-text-muted: #bbc9cc;
   --ssh-text-subtle: #95a7ab;
-  --ssh-hover: rgb(105 182 186 / 9%);
-  --ssh-selected: rgb(105 182 186 / 14%);
+  --ssh-hover: rgb(105 182 186 / 13%);
+  --ssh-selected: rgb(105 182 186 / 18%);
   --ssh-control: rgb(39 50 53 / 92%);
   --ssh-accent: #69b6ba;
   --ssh-accent-strong: #8aced0;
@@ -143,6 +144,7 @@ body[data-ds-dark-theme] :is(
   --ssh-activity-surface: rgb(16 23 25 / 96%);
   --ssh-activity-surface-raised: rgb(25 33 35 / 94%);
   --ssh-border: rgb(184 204 205 / 11%);
+  --ssh-border-strong: rgb(184 204 205 / 18%);
   --ssh-host-border: var(--ssh-border);
   --ssh-separator: rgb(184 204 205 / 8%);
   --ssh-focus-ring: rgb(105 182 186 / 72%);
@@ -700,13 +702,13 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-segments button:hover:not(:disabled) {
   color: var(--ssh-text);
-  background: var(--ssh-hover);
+  background-color: var(--ssh-hover);
   background-image: none;
 }
 .dsh-ssh-segments button.is-active {
   border-color: transparent;
   color: var(--ssh-text);
-  background: var(--ssh-selected);
+  background-color: var(--ssh-selected);
   background-image: none;
   box-shadow: inset 0 1px 0 var(--ssh-glass-highlight);
 }
@@ -796,7 +798,7 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-activity-panel .dsh-ssh-secondary-button:hover:not(:disabled) {
   border-color: var(--ssh-glass-border);
   color: var(--ssh-text);
-  background: var(--ssh-glass-thick);
+  background-color: var(--ssh-glass-thick);
   background-image: none;
 }
 .dsh-ssh-danger-button {
@@ -1235,6 +1237,12 @@ body[data-ds-dark-theme] :is(
   border-radius: 12px;
   background: var(--ssh-control-surface);
 }
+.dsh-ssh-github-auth.is-invalid {
+  border-color: color-mix(in srgb, var(--ssh-danger) 34%, var(--ssh-border));
+}
+.dsh-ssh-github-auth.is-invalid > span:nth-child(2) small {
+  color: var(--ssh-danger);
+}
 .dsh-ssh-github-mark {
   display: grid;
   width: 38px;
@@ -1495,12 +1503,13 @@ body[data-ds-dark-theme] :is(
   border-color: var(--ssh-border-strong);
   color: var(--ssh-text);
   background: var(--ssh-hover);
+  box-shadow: inset 0 1px 0 var(--ssh-glass-highlight), var(--ssh-shadow-sm);
 }
 .dsh-ssh-sync-strategy button.is-active {
   border-color: color-mix(in srgb, var(--ssh-accent) 42%, var(--ssh-border));
   color: var(--ssh-text);
   background: var(--ssh-selected);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ssh-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ssh-accent) 12%, transparent), inset 0 1px 0 var(--ssh-glass-highlight), var(--ssh-shadow-sm);
 }
 .dsh-ssh-sync-strategy button strong {
   font-size: var(--ssh-type-caption);
@@ -2304,13 +2313,13 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-activity-tabs button:hover {
   color: var(--ssh-text);
-  background: var(--ssh-hover);
+  background-color: var(--ssh-hover);
   background-image: none;
 }
 .dsh-ssh-activity-tabs button.is-active {
   border-color: transparent;
   color: var(--ssh-text);
-  background: var(--ssh-selected);
+  background-color: var(--ssh-selected);
   background-image: none;
   box-shadow: inset 0 1px 0 var(--ssh-glass-highlight);
 }
@@ -3029,13 +3038,13 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-terminal-switcher button:hover {
   color: var(--ssh-text);
-  background: var(--ssh-hover);
+  background-color: var(--ssh-hover);
   background-image: none;
 }
 .dsh-ssh-terminal-switcher button.is-active {
   border-color: transparent;
   color: var(--ssh-text);
-  background: var(--ssh-selected);
+  background-color: var(--ssh-selected);
   background-image: none;
   box-shadow: inset 0 1px 0 var(--ssh-glass-highlight);
 }

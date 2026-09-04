@@ -97,6 +97,13 @@ interface SyncMetadata {
 interface GistFile { filename: string; content?: string; raw_url?: string; truncated?: boolean }
 interface GistDocument { id: string; html_url: string; public: false; version?: string; files: Record<string, GistFile> }
 
+export class GitHubApiError extends Error {
+  constructor(readonly status: number, readonly detail: string) {
+    super(`GitHub Gist 请求失败：${detail}`)
+    this.name = 'GitHubApiError'
+  }
+}
+
 export class GistTokenVault {
   constructor(private readonly provider: CredentialProvider) {}
 
@@ -197,7 +204,7 @@ export class GitHubGistClient {
       const detail = typeof value === 'object' && value !== null && typeof (value as { message?: unknown }).message === 'string'
         ? (value as { message: string }).message
         : `HTTP ${response.status}`
-      throw new Error(`GitHub Gist 请求失败：${detail}`)
+      throw new GitHubApiError(response.status, detail)
     }
     return value
   }
@@ -328,21 +335,26 @@ export class GistSyncService {
   }
 
   async testConnection(): Promise<{ login: string; gistId?: string }> {
-    const client = await this.client()
-    const identity = await client.identify()
-    const gistId = this.metadata.settings.gistId
-    if (gistId !== undefined) {
-      const gist = await client.get(gistId)
-      if (gist.version !== undefined) this.metadata.lastCloudVersion = gist.version
-      const content = await client.content(gist)
-      if (content !== undefined) {
-        const snapshot = parsePortableSnapshot(content)
-        await decryptSecretRecords(snapshot.secrets, await this.encryptionPassphrase())
+    try {
+      const client = await this.client()
+      const identity = await client.identify()
+      const gistId = this.metadata.settings.gistId
+      if (gistId !== undefined) {
+        const gist = await client.get(gistId)
+        if (gist.version !== undefined) this.metadata.lastCloudVersion = gist.version
+        const content = await client.content(gist)
+        if (content !== undefined) {
+          const snapshot = parsePortableSnapshot(content)
+          await decryptSecretRecords(snapshot.secrets, await this.encryptionPassphrase())
+        }
       }
+      this.metadata.githubLogin = identity.login
+      delete this.metadata.lastError
+      await this.persist()
+      return { login: identity.login, ...(gistId === undefined ? {} : { gistId }) }
+    } catch (error) {
+      throw await this.recordFailure(error)
     }
-    this.metadata.githubLogin = identity.login
-    await this.persist()
-    return { login: identity.login, ...(gistId === undefined ? {} : { gistId }) }
   }
 
   startOAuth(): Promise<GitHubDeviceFlowStart> { return this.oauth.start() }
@@ -416,9 +428,7 @@ export class GistSyncService {
       await this.persist()
       return this.view()
     } catch (error) {
-      this.metadata.lastError = error instanceof Error ? error.message : String(error)
-      await this.persist().catch(() => {})
-      throw error
+      throw await this.recordFailure(error)
     } finally {
       this.running = false
     }
@@ -426,8 +436,22 @@ export class GistSyncService {
 
   private async client(): Promise<GitHubGistClient> {
     const token = await this.vault.readToken()
-    if (token === undefined) throw new Error('请先在设置中保存 GitHub Token')
+    if (token === undefined) throw new Error('GitHub 未连接，请先重新授权或保存有效 Token')
     return this.clientFactory(token)
+  }
+
+  private async recordFailure(error: unknown): Promise<Error> {
+    const authenticationFailure = error instanceof GitHubApiError && error.status === 401
+    const failure = authenticationFailure
+      ? new Error('GitHub 授权已失效，请重新连接 GitHub', { cause: error })
+      : error instanceof Error ? error : new Error(String(error))
+    if (authenticationFailure) {
+      await this.vault.clearToken().catch(() => {})
+      delete this.metadata.githubLogin
+    }
+    this.metadata.lastError = failure.message
+    await this.persist().catch(() => {})
+    return failure
   }
 
   private async encryptionPassphrase(): Promise<string> {
@@ -536,7 +560,7 @@ export class GistSyncService {
     if (this.autoTimer !== undefined) clearTimeout(this.autoTimer)
     this.autoTimer = setTimeout(() => {
       this.autoTimer = undefined
-      void this.sync().catch(() => {})
+      void this.runAutomaticSync().catch(() => {})
     }, delay)
     this.autoTimer.unref?.()
   }
@@ -545,8 +569,14 @@ export class GistSyncService {
     if (this.pullTimer !== undefined) clearInterval(this.pullTimer)
     this.pullTimer = undefined
     if (!this.metadata.settings.autoSync) return
-    this.pullTimer = setInterval(() => { void this.sync().catch(() => {}) }, AUTO_PULL_INTERVAL_MS)
+    this.pullTimer = setInterval(() => { void this.runAutomaticSync().catch(() => {}) }, AUTO_PULL_INTERVAL_MS)
     this.pullTimer.unref?.()
+  }
+
+  private async runAutomaticSync(): Promise<void> {
+    const configured = await this.vault.configured()
+    if (!configured.token || !configured.encryption) return
+    await this.sync()
   }
 
   private persist(): Promise<void> {

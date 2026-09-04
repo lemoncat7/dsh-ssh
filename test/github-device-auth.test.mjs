@@ -25,6 +25,10 @@ test('completes GitHub Device Flow without returning the access token to the bro
   assert.equal(started.userCode, 'ABCD-EFGH')
   assert.equal(started.verificationUri, 'https://github.com/login/device')
   assert.match(requests[0].body, /scope=gist/)
+  const resumed = await service.start()
+  assert.equal(resumed.id, started.id)
+  assert.equal(resumed.userCode, started.userCode)
+  assert.equal(requests.length, 1)
 
   const completed = await service.poll(started.id)
   assert.deepEqual(completed, { state: 'complete', login: 'device-user' })
