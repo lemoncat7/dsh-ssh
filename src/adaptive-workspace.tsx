@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 export interface AdaptiveWorkspaceControls {
@@ -21,7 +22,7 @@ interface AdaptiveWorkspaceProps {
   children: ReactNode
 }
 
-export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navigationLabel, navigationIcon, inspector, inspectorLabel = '详情', inspectorIcon, children }: AdaptiveWorkspaceProps): JSX.Element {
+export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navigationLabel, navigationIcon, inspector, inspectorLabel = t("Details"), inspectorIcon, children }: AdaptiveWorkspaceProps): JSX.Element {
   const [panel, setPanel] = useState<AdaptivePanel>()
   const navigationRef = useRef<HTMLElement>(null)
   const inspectorRef = useRef<HTMLElement>(null)
@@ -50,7 +51,7 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
   return <main className={`dsh-ssh-adaptive-workspace${className === undefined ? '' : ` ${className}`}`} data-panel={panel ?? 'none'} data-has-inspector={inspector === undefined ? 'false' : 'true'}>
     {toolbar}
     {notice}
-    <nav className="dsh-ssh-mobile-actions" aria-label="工作区面板">
+    <nav className="dsh-ssh-mobile-actions" aria-label={t("Workspace panel")}>
       <button type="button" data-ssh-interactive="choice" aria-pressed={panel === 'navigation'} aria-controls="dsh-ssh-adaptive-navigation" aria-expanded={panel === 'navigation'} onClick={() => panel === 'navigation' ? closePanel() : setPanel('navigation')}>{navigationIcon}<span>{navigationLabel}</span></button>
       {inspector !== undefined && <button type="button" data-ssh-interactive="choice" aria-pressed={panel === 'inspector'} aria-controls="dsh-ssh-adaptive-inspector" aria-expanded={panel === 'inspector'} onClick={() => panel === 'inspector' ? closePanel() : setPanel('inspector')}>{inspectorIcon}<span>{inspectorLabel}</span></button>}
     </nav>
@@ -58,7 +59,7 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
       <aside ref={navigationRef} id="dsh-ssh-adaptive-navigation" className="dsh-ssh-adaptive-navigation" aria-label={navigationLabel}>{renderSlot(navigation, controls)}</aside>
       <section className="dsh-ssh-adaptive-content">{children}</section>
       {inspector !== undefined && <aside ref={inspectorRef} id="dsh-ssh-adaptive-inspector" className="dsh-ssh-adaptive-inspector" aria-label={inspectorLabel}>{renderSlot(inspector, controls)}</aside>}
-      <button type="button" className="dsh-ssh-adaptive-backdrop" aria-label="关闭面板" tabIndex={panel === undefined ? -1 : 0} onClick={closePanel} />
+      <button type="button" className="dsh-ssh-adaptive-backdrop" aria-label={t("Close panel")} tabIndex={panel === undefined ? -1 : 0} onClick={closePanel} />
     </div>
   </main>
 }

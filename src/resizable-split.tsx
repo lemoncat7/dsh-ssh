@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import {
   useRef,
   useState,
@@ -111,7 +112,7 @@ export function ResizableSplit({ primary, secondary, storageKey, label }: Resiza
     if (event.key === 'ArrowLeft') requested = secondaryWidth + step
     if (event.key === 'ArrowRight') requested = secondaryWidth - step
     if (event.key === 'Home') requested = MIN_SECONDARY_WIDTH
-    if (event.key === 'End') requested = MAX_SECONDARY_WIDTH
+    if (event.key === t("End")) requested = MAX_SECONDARY_WIDTH
     if (requested === undefined) return
     const next = applyWidth(requested)
     setSecondaryWidth(next)
@@ -138,7 +139,7 @@ export function ResizableSplit({ primary, secondary, storageKey, label }: Resiza
       aria-valuemax={MAX_SECONDARY_WIDTH}
       aria-valuenow={Math.round(secondaryWidth)}
       tabIndex={0}
-      title="拖动调整宽度，双击恢复默认"
+      title={t("Drag to resize, double-click to reset")}
       onDoubleClick={resetWidth}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}

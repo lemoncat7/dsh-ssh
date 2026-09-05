@@ -1,3 +1,4 @@
+import { tx } from './i18n.js'
 import ssh2, { type Client as SshClient, type ConnectConfig, type ClientChannel } from 'ssh2'
 import type { Duplex } from 'node:stream'
 import { connectHttpProxy, connectSocks5Proxy } from './proxy.js'
@@ -8,7 +9,7 @@ import { SshStore } from './store.js'
 export class HostKeyRequiredError extends Error {
   readonly code = 'HOST_KEY_REQUIRED'
   constructor(readonly profileId: string, readonly fingerprint: string) {
-    super(`Host key confirmation required for ${profileId}: ${fingerprint}`)
+    super(tx`Host key confirmation required for ${profileId}: ${fingerprint}`)
     this.name = 'HostKeyRequiredError'
   }
 }

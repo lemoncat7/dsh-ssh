@@ -1,6 +1,7 @@
+import { t, tx } from './i18n.js'
 import { ProxyAgent, fetch as undiciFetch } from 'undici'
 
-const REQUEST_TIMEOUT_MESSAGE = 'GitHub 请求超时'
+const REQUEST_TIMEOUT_MESSAGE = t("GitHub request timed out.")
 
 export interface GitHubHttpTransport {
   readonly request: typeof fetch
@@ -59,12 +60,12 @@ export function createGitHubHttpTransport(
 
 export function normalizeGitHubProxy(value: string): string {
   const raw = value.trim()
-  if (raw.length === 0 || raw.length > 2_048) throw new Error('GitHub 代理地址格式无效')
+  if (raw.length === 0 || raw.length > 2_048) throw new Error(t("Invalid GitHub proxy address format."))
   let parsed: URL
-  try { parsed = new URL(raw) } catch { throw new Error('GitHub 代理地址格式无效') }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('GitHub 代理仅支持 HTTP 或 HTTPS 地址')
-  if (parsed.hostname.length === 0 || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('GitHub 代理地址格式无效')
-  if (parsed.username || parsed.password) throw new Error('设置页暂不保存代理账号密码；认证代理请使用 DSH_SSH_GITHUB_PROXY 环境变量')
+  try { parsed = new URL(raw) } catch { throw new Error(t("Invalid GitHub proxy address format.")) }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error(t("The GitHub proxy supports HTTP or HTTPS addresses only."))
+  if (parsed.hostname.length === 0 || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error(t("Invalid GitHub proxy address format."))
+  if (parsed.username || parsed.password) throw new Error(t("The settings page does not save proxy credentials; for an authenticated proxy use the DSH_SSH_GITHUB_PROXY environment variable."))
   return parsed.toString()
 }
 
@@ -76,16 +77,16 @@ function firstProxy(...values: Array<string | undefined>): string | undefined {
 function normalizeEnvironmentProxy(value: string): string {
   const raw = value.trim()
   let parsed: URL
-  try { parsed = new URL(raw) } catch { throw new Error('GitHub 代理环境变量格式无效') }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('GitHub 代理环境变量仅支持 HTTP 或 HTTPS 地址')
+  try { parsed = new URL(raw) } catch { throw new Error(t("Invalid GitHub proxy environment variable format.")) }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error(t("The GitHub proxy environment variable supports HTTP or HTTPS addresses only."))
   return parsed.toString()
 }
 
 function githubConnectionError(error: unknown, proxied: boolean): Error {
-  if (error instanceof Error && error.message.startsWith('无法')) return error
+  if (error instanceof Error && error.message.startsWith(t("Unable to "))) return error
   const reason = networkReason(error)
-  const route = proxied ? '通过已配置的代理连接' : '直连'
-  return new Error(`无法${route} GitHub：${reason}。请检查“SSH 设置 → GitHub 出站代理”`, { cause: error })
+  const route = proxied ? t("connect through the configured proxy") : t("Direct")
+  return new Error(tx`Unable to ${route} GitHub: ${reason}. Check “SSH settings → GitHub outbound proxy”`, { cause: error })
 }
 
 function networkReason(error: unknown): string {
@@ -99,5 +100,5 @@ function networkReason(error: unknown): string {
     if (error.name === 'AbortError' || error.name === 'TimeoutError') return REQUEST_TIMEOUT_MESSAGE
     if (error.message && error.message !== 'fetch failed') return error.message
   }
-  return '网络请求失败'
+  return t("Network request failed.")
 }

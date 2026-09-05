@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import net, { type Server, type Socket } from 'node:net'
 import type { Client, ClientChannel, TcpConnectionDetails } from 'ssh2'
 import { SshConnector, type ManagedSshConnection } from './connector.js'
@@ -182,7 +183,7 @@ async function handleSocksClient(socket: Socket, client: Client): Promise<void> 
     const request = await socketRead(socket, 4)
     if (request[0] !== 5 || request[1] !== 1) throw new Error('unsupported SOCKS5 request')
     let host: string
-    if (request[3] === 1) host = [...await socketRead(socket, 4)].join('.')
+    if (request[3] === 1) host = [...await socketRead(socket, 4)].join(t("."))
     else if (request[3] === 3) { const length = (await socketRead(socket, 1))[0] ?? 0; host = (await socketRead(socket, length)).toString('utf8') }
     else throw new Error('unsupported SOCKS5 address')
     const portBuffer = await socketRead(socket, 2)

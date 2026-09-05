@@ -1,3 +1,4 @@
+import { t, tx } from './i18n.js'
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -99,7 +100,7 @@ interface GistDocument { id: string; html_url: string; public: false; version?: 
 
 export class GitHubApiError extends Error {
   constructor(readonly status: number, readonly detail: string) {
-    super(`GitHub Gist 请求失败：${detail}`)
+    super(tx`GitHub Gist request failed: ${detail}`)
     this.name = 'GitHubApiError'
   }
 }
@@ -118,13 +119,13 @@ export class GistTokenVault {
   private async readRecord(): Promise<{ token?: string; encryptionPassphrase?: string }> {
     const record = await this.provider.readRecord(credentialKey(GIST_CREDENTIAL_SCOPE, 'default'))
     if (record === undefined) return {}
-    if (record.kind !== 'grant') throw new Error('Gist 同步凭据格式无效')
+    if (record.kind !== 'grant') throw new Error(t("Invalid Gist sync credential format."))
     return parseGistCredentialPayload(record.payload)
   }
 
   async write(value: { token?: string; encryptionPassphrase?: string }): Promise<void> {
     await this.provider.modifyRecord(credentialKey(GIST_CREDENTIAL_SCOPE, 'default'), async current => {
-      if (current !== undefined && current.kind !== 'grant') throw new Error('Gist 同步凭据格式无效')
+      if (current !== undefined && current.kind !== 'grant') throw new Error(t("Invalid Gist sync credential format."))
       const previous = current === undefined ? {} : parseGistCredentialPayload(current.payload)
       const payload = {
         ...previous,
@@ -143,7 +144,7 @@ export class GistTokenVault {
     const key = credentialKey(GIST_CREDENTIAL_SCOPE, 'default')
     const current = await this.provider.readRecord(key)
     if (current === undefined) return
-    if (current.kind !== 'grant') throw new Error('Gist 同步凭据格式无效')
+    if (current.kind !== 'grant') throw new Error(t("Invalid Gist sync credential format."))
     const previous = parseGistCredentialPayload(current.payload)
     if (previous.encryptionPassphrase === undefined) {
       await this.provider.deleteRecord(key)
@@ -160,7 +161,7 @@ export class GitHubGistClient {
 
   async identify(): Promise<{ login: string }> {
     const value = await this.json('https://api.github.com/user') as Record<string, unknown>
-    if (typeof value.login !== 'string') throw new Error('GitHub 未返回有效账号')
+    if (typeof value.login !== 'string') throw new Error(t("GitHub did not return a valid account."))
     return { login: value.login }
   }
 
@@ -186,10 +187,10 @@ export class GitHubGistClient {
     if (file === undefined) return undefined
     if (file.truncated !== true && typeof file.content === 'string') return boundedContent(file.content)
     if (typeof file.raw_url !== 'string' || !file.raw_url.startsWith('https://gist.githubusercontent.com/')) {
-      throw new Error(`Gist 文件 ${filename} 缺少可信下载地址`)
+      throw new Error(tx`Gist file ${filename} has no trusted download URL.`)
     }
     const response = await this.request(file.raw_url, { headers: this.headers(), signal: AbortSignal.timeout(15_000) })
-    if (!response.ok) throw new Error(`读取 Gist 文件失败（HTTP ${response.status}）`)
+    if (!response.ok) throw new Error(tx`Failed to read Gist file (HTTP ${response.status})`)
     return boundedContent(await response.text())
   }
 
@@ -287,7 +288,7 @@ export class GistSyncService {
       headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-ssh-github-network-test' },
       signal: AbortSignal.timeout(15_000),
     })
-    if (!response.ok) throw new Error(`GitHub 网络测试失败（HTTP ${response.status}）`)
+    if (!response.ok) throw new Error(tx`GitHub network test failed (HTTP ${response.status})`)
     await response.body?.cancel()
     return { route: this.githubHttp.route() }
   }
@@ -311,7 +312,7 @@ export class GistSyncService {
   }
 
   async configure(value: unknown): Promise<GistSyncView> {
-    const input = asRecord(value, 'Gist 同步设置')
+    const input = asRecord(value, t("Gist sync settings"))
     const previousGistId = this.metadata.settings.gistId
     const settings = normalizeSettings(input.settings ?? input)
     const credentialUpdate: { token?: string; encryptionPassphrase?: string } = {}
@@ -436,14 +437,14 @@ export class GistSyncService {
 
   private async client(): Promise<GitHubGistClient> {
     const token = await this.vault.readToken()
-    if (token === undefined) throw new Error('GitHub 未连接，请先重新授权或保存有效 Token')
+    if (token === undefined) throw new Error(t("GitHub is not connected; reauthorize or save a valid Token first"))
     return this.clientFactory(token)
   }
 
   private async recordFailure(error: unknown): Promise<Error> {
     const authenticationFailure = error instanceof GitHubApiError && error.status === 401
     const failure = authenticationFailure
-      ? new Error('GitHub 授权已失效，请重新连接 GitHub', { cause: error })
+      ? new Error(t("GitHub authorization expired; reconnect GitHub"), { cause: error })
       : error instanceof Error ? error : new Error(String(error))
     if (authenticationFailure) {
       await this.vault.clearToken().catch(() => {})
@@ -456,7 +457,7 @@ export class GistSyncService {
 
   private async encryptionPassphrase(): Promise<string> {
     const passphrase = await this.vault.readEncryptionPassphrase()
-    if (passphrase === undefined) throw new Error('请先在设置中保存同步加密密码')
+    if (passphrase === undefined) throw new Error(t("Save the sync encryption passphrase in Settings first."))
     return passphrase
   }
 
@@ -477,7 +478,7 @@ export class GistSyncService {
     const existing = Object.keys(gist.files).filter(name => name.startsWith(BACKUP_PREFIX)).sort().reverse()
     if (retention > 0) {
       const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '')
-      const filename = `${BACKUP_PREFIX}${stamp}.${this.metadata.deviceId.slice(0, 8)}.${randomBytes(3).toString('hex')}.json`
+      const filename = tx`${BACKUP_PREFIX}${stamp}.${this.metadata.deviceId.slice(0, 8)}.${randomBytes(3).toString('hex')}.json`
       files[filename] = { content: serializeSnapshot(snapshot) }
       for (const stale of existing.slice(Math.max(0, retention - 1))) files[stale] = null
     } else {
@@ -636,9 +637,9 @@ export async function createEncryptedPortableSnapshot(
 
 export function parsePortableSnapshot(content: string): PortableSshSnapshot {
   const value = JSON.parse(boundedContent(content)) as unknown
-  const input = asRecord(value, 'Gist 配置')
-  if (input.schemaVersion !== 1) throw new Error(`不支持的 Gist 配置版本：${String(input.schemaVersion)}`)
-  const collections = asRecord(input.collections, 'Gist 配置集合')
+  const input = asRecord(value, t("Gist config"))
+  if (input.schemaVersion !== 1) throw new Error(tx`Unsupported Gist config version: ${String(input.schemaVersion)}`)
+  const collections = asRecord(input.collections, t("Gist config collection"))
   const result: PortableSshSnapshot = {
     schemaVersion: 1,
     exportedAt: timestamp(input.exportedAt, 'exportedAt'),
@@ -706,12 +707,12 @@ export function resolveSyncDecision(
 }
 
 function normalizeSettings(value: unknown): GistSyncSettings {
-  const input = asRecord(value, 'Gist 同步设置')
+  const input = asRecord(value, t("Gist sync settings"))
   const strategy = input.strategy
-  if (strategy !== 'smart' && strategy !== 'local-first' && strategy !== 'cloud-first') throw new Error('同步策略无效')
+  if (strategy !== 'smart' && strategy !== 'local-first' && strategy !== 'cloud-first') throw new Error(t("Invalid sync policy."))
   const backupRetention = input.backupRetention
   if (!Number.isSafeInteger(backupRetention) || (backupRetention as number) < 0 || (backupRetention as number) > 50) {
-    throw new Error('备份保留数量必须是 0 到 50')
+    throw new Error(t("Backup retention must be between 0 and 50."))
   }
   const gistId = input.gistId === undefined || input.gistId === null || input.gistId === '' ? undefined : normalizeGistId(input.gistId)
   const oauthClientId = input.oauthClientId === undefined || input.oauthClientId === null || input.oauthClientId === '' ? undefined : normalizeOAuthClientId(input.oauthClientId)
@@ -739,8 +740,8 @@ async function readMetadata(path: string): Promise<SyncMetadata> {
     throw error
   }
   try {
-    const input = asRecord(JSON.parse(content) as unknown, 'Gist 同步状态')
-    if (input.schemaVersion !== 1) throw new Error(`不支持的 Gist 同步状态版本：${String(input.schemaVersion)}`)
+    const input = asRecord(JSON.parse(content) as unknown, t("Gist sync status"))
+    if (input.schemaVersion !== 1) throw new Error(tx`Unsupported Gist sync state version: ${String(input.schemaVersion)}`)
     return {
       schemaVersion: 1,
       deviceId: text(input.deviceId, 'deviceId', 8, 100),
@@ -757,7 +758,7 @@ async function readMetadata(path: string): Promise<SyncMetadata> {
     const backupPath = `${path}.corrupt.${Date.now()}`
     const preserved = await rename(path, backupPath).then(() => true, () => false)
     const reason = error instanceof Error ? error.message : String(error)
-    return defaultMetadata(`本地 Gist 同步状态损坏，已安全重置${preserved ? '并保留原文件' : ''}：${reason}`)
+    return defaultMetadata(tx`Local Gist sync state was corrupted and has been safely reset${preserved ? t(" and keep the original file") : ''}: ${reason}`)
   }
 }
 
@@ -773,7 +774,7 @@ function defaultMetadata(lastError?: string): SyncMetadata {
 
 async function writeMetadata(path: string, value: SyncMetadata): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${process.pid}.${randomBytes(5).toString('hex')}.tmp`
+  const temporary = tx`${path}.${process.pid}.${randomBytes(5).toString('hex')}.tmp`
   const handle = await open(temporary, 'w', 0o600)
   try {
     await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`, 'utf8')
@@ -794,18 +795,18 @@ function serializeSnapshot(value: PortableSshSnapshot): string {
 }
 
 function boundedContent(content: string): string {
-  if (Buffer.byteLength(content, 'utf8') > MAX_GIST_BYTES) throw new Error('Gist 配置超过 1 MB 限制')
+  if (Buffer.byteLength(content, 'utf8') > MAX_GIST_BYTES) throw new Error(t("Gist config exceeds the 1 MB limit."))
   return content
 }
 
 function parseGist(value: unknown): GistDocument {
   const input = asRecord(value, 'GitHub Gist')
-  if (typeof input.public !== 'boolean') throw new Error('GitHub 未返回 Gist 可见性')
-  if (input.public) throw new Error('为避免暴露主机配置，SSH 同步只支持私有 Gist')
+  if (typeof input.public !== 'boolean') throw new Error(t("GitHub did not return the Gist visibility."))
+  if (input.public) throw new Error(t("To avoid exposing host configs, SSH sync supports private Gists only."))
   const files = asRecord(input.files, 'GitHub Gist files')
   const parsedFiles: Record<string, GistFile> = {}
   for (const [name, raw] of Object.entries(files)) {
-    const file = asRecord(raw, `Gist file ${name}`)
+    const file = asRecord(raw, tx`Gist file ${name}`)
     parsedFiles[name] = {
       filename: typeof file.filename === 'string' ? file.filename : name,
       ...(typeof file.content === 'string' ? { content: file.content } : {}),
@@ -867,7 +868,7 @@ function parseProxyEntry(value: unknown): ProxyEntry {
 function parseEncryptedSecretRecord(value: unknown): EncryptedSecretRecord {
   const input = asRecord(value, 'encrypted secret')
   const scope = input.scope
-  if (scope !== 'ssh-profile' && scope !== 'ftp-profile' && scope !== 'vault-entry' && scope !== 'proxy-entry') throw new Error('加密凭据作用域无效')
+  if (scope !== 'ssh-profile' && scope !== 'ftp-profile' && scope !== 'vault-entry' && scope !== 'proxy-entry') throw new Error(t("Invalid encrypted credential scope."))
   const record = {
     scope,
     id: text(input.id, 'secret.id', 1, 100),
@@ -917,10 +918,10 @@ async function decryptSecretRecords(records: EncryptedSecretRecord[], passphrase
     decipher.setAuthTag(Buffer.from(record.authTag, 'base64'))
     let plaintext: Buffer
     try { plaintext = Buffer.concat([decipher.update(Buffer.from(record.ciphertext, 'base64')), decipher.final()]) }
-    catch { throw new Error('无法解密 Gist 密钥数据，请检查同步加密密码') }
-    if (createHash('sha256').update(plaintext).digest('hex') !== record.contentHash) throw new Error('Gist 密钥数据完整性校验失败')
+    catch { throw new Error(t("Cannot decrypt the Gist key data. Check the sync encryption passphrase.")) }
+    if (createHash('sha256').update(plaintext).digest('hex') !== record.contentHash) throw new Error(t("Gist key data integrity check failed."))
     let value: unknown
-    try { value = JSON.parse(plaintext.toString('utf8')) as unknown } catch { throw new Error('Gist 密钥数据不是有效 JSON') }
+    try { value = JSON.parse(plaintext.toString('utf8')) as unknown } catch { throw new Error(t("Gist key data is not valid JSON.")) }
     output.set(secretKey(record.scope, record.id), parseSecretPayload(value))
   }
   return output
@@ -965,7 +966,7 @@ function parseSecretPayload(value: unknown): SshCredentialPayload {
   for (const field of ['password', 'privateKey', 'passphrase', 'proxyPassword'] as const) {
     const candidate = input[field]
     if (candidate === undefined) continue
-    if (typeof candidate !== 'string' || candidate.length === 0 || candidate.length > (field === 'privateKey' ? 512_000 : 16_384)) throw new Error(`凭据字段 ${field} 无效`)
+    if (typeof candidate !== 'string' || candidate.length === 0 || candidate.length > (field === 'privateKey' ? 512_000 : 16_384)) throw new Error(tx`Credential field ${field} is invalid.`)
     output[field] = candidate
   }
   return output
@@ -984,11 +985,11 @@ function parseTombstones(value: unknown): PortableSshSnapshot['tombstones'] {
 function assertUniqueIds(snapshot: PortableSshSnapshot): void {
   for (const name of COLLECTION_NAMES) {
     const ids = snapshot.collections[name].map(item => item.id)
-    if (new Set(ids).size !== ids.length) throw new Error(`Gist 配置包含重复的 ${name} ID`)
+    if (new Set(ids).size !== ids.length) throw new Error(tx`Gist config contains duplicate ${name} ID`)
   }
   const secretIds = snapshot.secrets.map(item => secretKey(item.scope, item.id))
-  if (new Set(secretIds).size !== secretIds.length) throw new Error('Gist 配置包含重复的加密凭据')
-  if (snapshot.secrets.some(item => !secretOwnerExists(item, snapshot.collections))) throw new Error('Gist 配置包含无归属的加密凭据')
+  if (new Set(secretIds).size !== secretIds.length) throw new Error(t("Gist config contains duplicate encrypted credentials."))
+  if (snapshot.secrets.some(item => !secretOwnerExists(item, snapshot.collections))) throw new Error(t("Gist config contains encrypted credentials with no owner."))
 }
 
 function assertPortableReferences(collections: PortableSshSnapshot['collections']): void {
@@ -996,15 +997,15 @@ function assertPortableReferences(collections: PortableSshSnapshot['collections'
   const credentials = new Set(collections.credentialEntries.map(item => item.id))
   const proxies = new Set(collections.proxyEntries.map(item => item.id))
   for (const profile of collections.profiles) {
-    if (profile.credentialId !== undefined && !credentials.has(profile.credentialId)) throw new Error(`主机 ${profile.name} 引用了缺失的凭据条目`)
-    if (profile.proxy.type === 'saved' && !proxies.has(profile.proxy.proxyId)) throw new Error(`主机 ${profile.name} 引用了缺失的代理`)
-    if (profile.proxy.type === 'jump' && profile.proxy.profileIds.some(id => !profiles.has(id) || id === profile.id)) throw new Error(`主机 ${profile.name} 的跳板链无效`)
+    if (profile.credentialId !== undefined && !credentials.has(profile.credentialId)) throw new Error(tx`Host ${profile.name} references a missing credential entry.`)
+    if (profile.proxy.type === 'saved' && !proxies.has(profile.proxy.proxyId)) throw new Error(tx`Host ${profile.name} references a missing proxy.`)
+    if (profile.proxy.type === 'jump' && profile.proxy.profileIds.some(id => !profiles.has(id) || id === profile.id)) throw new Error(tx`Host ${profile.name} has an invalid jump host chain.`)
   }
   for (const profile of collections.ftpProfiles) {
-    if (profile.credentialId !== undefined && !credentials.has(profile.credentialId)) throw new Error(`FTP ${profile.name} 引用了缺失的凭据条目`)
-    if (profile.proxy.type === 'saved' && !proxies.has(profile.proxy.proxyId)) throw new Error(`FTP ${profile.name} 引用了缺失的代理`)
+    if (profile.credentialId !== undefined && !credentials.has(profile.credentialId)) throw new Error(tx`FTP ${profile.name} references a missing credential entry.`)
+    if (profile.proxy.type === 'saved' && !proxies.has(profile.proxy.proxyId)) throw new Error(tx`FTP ${profile.name} references a missing proxy.`)
   }
-  for (const project of collections.remoteProjects) if (!profiles.has(project.profileId)) throw new Error(`远端项目 ${project.name} 引用了缺失的主机`)
+  for (const project of collections.remoteProjects) if (!profiles.has(project.profileId)) throw new Error(tx`Remote project ${project.name} references a missing host.`)
 }
 
 function repairReferences(snapshot: PortableSshSnapshot, deletedAt: number): void {
@@ -1053,30 +1054,30 @@ function stableValue(value: unknown): unknown {
 
 function normalizeToken(value: string): string {
   const token = value.trim()
-  if (token.length < 20 || token.length > 512 || /\s/.test(token)) throw new Error('GitHub Token 格式无效')
+  if (token.length < 20 || token.length > 512 || /\s/.test(token)) throw new Error(t("Invalid GitHub Token format."))
   return token
 }
 function normalizeEncryptionPassphrase(value: string): string {
-  if (value.length < 6 || value.length > 512) throw new Error('同步加密密码必须包含 6 到 512 个字符')
+  if (value.length < 6 || value.length > 512) throw new Error(t("The sync encryption passphrase must be 6 to 512 characters."))
   return value
 }
 function parseGistCredentialPayload(value: unknown): { token?: string; encryptionPassphrase?: string } {
-  const payload = asRecord(value, 'Gist 同步凭据')
+  const payload = asRecord(value, t("Gist sync credentials"))
   const token = payload.token
   const encryptionPassphrase = payload.encryptionPassphrase
-  if (token !== undefined && (typeof token !== 'string' || token.length < 20 || token.length > 512)) throw new Error('Gist Token 格式无效')
-  if (encryptionPassphrase !== undefined && (typeof encryptionPassphrase !== 'string' || encryptionPassphrase.length < 6 || encryptionPassphrase.length > 512)) throw new Error('同步加密密码格式无效')
+  if (token !== undefined && (typeof token !== 'string' || token.length < 20 || token.length > 512)) throw new Error(t("Invalid Gist Token format."))
+  if (encryptionPassphrase !== undefined && (typeof encryptionPassphrase !== 'string' || encryptionPassphrase.length < 6 || encryptionPassphrase.length > 512)) throw new Error(t("Invalid sync encryption passphrase format."))
   return {
     ...(typeof token === 'string' ? { token } : {}),
     ...(typeof encryptionPassphrase === 'string' ? { encryptionPassphrase } : {}),
   }
 }
 function normalizeGistId(value: unknown): string {
-  if (typeof value !== 'string' || !/^[a-fA-F0-9]{5,64}$/.test(value.trim())) throw new Error('Gist ID 格式无效')
+  if (typeof value !== 'string' || !/^[a-fA-F0-9]{5,64}$/.test(value.trim())) throw new Error(t("Invalid Gist ID format."))
   return value.trim().toLowerCase()
 }
 function normalizeOAuthClientId(value: unknown): string {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9._-]{10,128}$/.test(value.trim())) throw new Error('GitHub OAuth Client ID 格式无效')
+  if (typeof value !== 'string' || !/^[A-Za-z0-9._-]{10,128}$/.test(value.trim())) throw new Error(t("Invalid GitHub OAuth Client ID format."))
   return value.trim()
 }
 function parseGistVersion(input: Record<string, unknown>): { version?: string } {
@@ -1087,34 +1088,34 @@ function parseGistVersion(input: Record<string, unknown>): { version?: string } 
   return typeof value === 'string' ? { version: revision(value) } : {}
 }
 function revision(value: string): string {
-  if (!/^[a-fA-F0-9]{7,64}$/.test(value)) throw new Error('Gist 云端版本格式无效')
+  if (!/^[a-fA-F0-9]{7,64}$/.test(value)) throw new Error(t("Invalid Gist cloud version format."))
   return value.toLowerCase()
 }
 function asRecord(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${label}必须是对象`)
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(tx`${label} must be an object`)
   return value as Record<string, unknown>
 }
 function array(value: unknown, label: string): unknown[] {
-  if (!Array.isArray(value) || value.length > 10_000) throw new Error(`${label} 必须是有效数组`)
+  if (!Array.isArray(value) || value.length > 10_000) throw new Error(tx`${label} must be a valid array`)
   return value
 }
 function text(value: unknown, label: string, min: number, max: number): string {
-  if (typeof value !== 'string' || value.length < min || value.length > max) throw new Error(`${label} 格式无效`)
+  if (typeof value !== 'string' || value.length < min || value.length > max) throw new Error(tx`${label} has an invalid format`)
   return value
 }
 function timestamp(value: unknown, label: string): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error(`${label} 格式无效`)
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error(tx`${label} has an invalid format`)
   return value
 }
 function hexDigest(value: unknown, label: string): string {
-  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) throw new Error(`${label} 格式无效`)
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) throw new Error(tx`${label} has an invalid format`)
   return value
 }
 function base64(value: unknown, label: string, exactBytes?: number, maxBytes = exactBytes): string {
-  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) throw new Error(`${label} 格式无效`)
+  if (typeof value !== 'string' || value.length === 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) throw new Error(tx`${label} has an invalid format`)
   const decoded = Buffer.from(value, 'base64')
-  if (exactBytes !== undefined && decoded.length !== exactBytes) throw new Error(`${label} 长度无效`)
-  if (maxBytes !== undefined && decoded.length > maxBytes) throw new Error(`${label} 超出大小限制`)
-  if (decoded.toString('base64') !== value) throw new Error(`${label} 编码无效`)
+  if (exactBytes !== undefined && decoded.length !== exactBytes) throw new Error(tx`${label} has an invalid length`)
+  if (maxBytes !== undefined && decoded.length > maxBytes) throw new Error(tx`${label} exceeds the size limit`)
+  if (decoded.toString('base64') !== value) throw new Error(tx`${label} has invalid encoding`)
   return value
 }

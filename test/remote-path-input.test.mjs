@@ -19,7 +19,7 @@ test('fixed remote projects keep free-form paths with debounced remote suggestio
   assert.match(inputSource, /onChange=\{event => onChange\(event\.target\.value\)\}/)
   assert.match(inputSource, /directory\.entries\.filter\(isNavigableRemoteEntry\)/)
   assert.match(inputSource, /aria-invalid=\{lookup\.kind === 'error'/)
-  assert.match(inputSource, /仍可按当前输入保存/)
+  assert.match(inputSource, /You can still save with the current input/)
   assert.match(treeSource, /<RemotePathInput profileId=\{profile\.id\} value=\{path\}/)
   assert.match(treeSource, /const \[path, setPath\] = useState\(project\?\.path \?\? ''\)/)
   assert.match(treeSource, /className="dsh-ssh-primary-button" disabled=\{saving\}/)

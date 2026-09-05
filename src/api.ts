@@ -1,3 +1,4 @@
+import { t, tx } from './i18n.js'
 import { randomBytes } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
@@ -531,27 +532,27 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'GET' && segments[1] === 'local-directory' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, t("No working directory is available for the current session."))
       return sendJson(res, 200, await listLocalWorkspace(cwd, url.searchParams.get('path') ?? undefined))
     }
     if (method === 'GET' && segments[1] === 'local-file' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, t("No working directory is available for the current session."))
       return sendJson(res, 200, await readLocalWorkspacePreview(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
     }
     if (method === 'POST' && segments[1] === 'local-delete' && segments.length === 2) {
       requireMutationHeader(req)
       const request = parseLocalDeleteRequest(await readObject(req))
       const cwd = runtime.sessionCwd(request.sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, t("No working directory is available for the current session."))
       await deleteLocalWorkspaceEntries(cwd, request.directory, request.paths)
       return sendJson(res, 204, undefined)
     }
     if (method === 'GET' && segments[1] === 'local-download' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)
-      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      if (cwd === undefined) throw httpError(404, t("No working directory is available for the current session."))
       return streamLocalFile(res, url, await openLocalWorkspaceFile(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
     }
     if (method === 'GET' && segments[1] === 'events' && segments.length === 2) {
@@ -909,7 +910,7 @@ function parseFileMoveRequest(value: Record<string, unknown>) {
 
 function assertDeletableRemotePath(value: string): void {
   const normalized = value.trim().replaceAll('\\', '/').replace(/\/+$/, '') || '/'
-  if (normalized === '/' || normalized === '.' || normalized === '~' || /^[A-Za-z]:$/.test(normalized)) throw httpError(400, 'refusing to delete a remote filesystem root')
+  if (normalized === '/' || normalized === t(".") || normalized === '~' || /^[A-Za-z]:$/.test(normalized)) throw httpError(400, 'refusing to delete a remote filesystem root')
 }
 
 function defaultFtpPort(protocol: FtpProfile['protocol']): number { return protocol === 'ftps-implicit' ? 990 : 21 }
@@ -955,12 +956,12 @@ function requireRawText(value: unknown, label: string, max: number): string {
 
 function requireRemoteFilename(value: unknown): string {
   const filename = requireText(value, 'name', 255)
-  if (filename === '.' || filename === '..' || filename.includes('/') || filename.includes('\\')) throw httpError(400, 'name must be a single remote filename')
+  if (filename === t(".") || filename === '..' || filename.includes('/') || filename.includes('\\')) throw httpError(400, 'name must be a single remote filename')
   return filename
 }
 
 function requireInteger(value: unknown, label: string, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw httpError(400, `${label} must be an integer between ${min} and ${max}`)
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw httpError(400, tx`${label} must be an integer between ${min} and ${max}`)
   return value
 }
 
@@ -974,7 +975,7 @@ function httpError(status: number, message: string): Error { return Object.assig
 function assertProfileEndpointAvailable(profiles: readonly SshProfile[], candidate: Pick<SshProfile, 'host' | 'port'>, excludeId?: string): void {
   const duplicate = findDuplicateProfileEndpoint(profiles, candidate, excludeId)
   if (duplicate === undefined) return
-  throw Object.assign(new Error(`该主机地址和端口已存在：${duplicate.name}`), { status: 409, code: 'DUPLICATE_PROFILE_ENDPOINT' })
+  throw Object.assign(new Error(tx`This host address and port already exist: ${duplicate.name}`), { status: 409, code: 'DUPLICATE_PROFILE_ENDPOINT' })
 }
 
 async function streamSftpFile(res: ServerResponse, url: URL, runtime: SshApiRuntime, profileId: string, requestedPath: string): Promise<void> {
