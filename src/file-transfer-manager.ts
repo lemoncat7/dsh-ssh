@@ -1,3 +1,4 @@
+import { t, tx } from './i18n.js'
 import { randomBytes } from 'node:crypto'
 import { Transform } from 'node:stream'
 import type { RemoteFileSystemSession } from './remote-files.js'
@@ -96,7 +97,7 @@ export class FileTransferManager {
       if (job === undefined || job.view.state !== 'queued') continue
       job.controller.abort(new Error('file transfer service is stopping'))
       job.view.state = 'cancelled'
-      job.view.error = '传输服务已停止'
+      job.view.error = t("Transfer service stopped")
       job.view.completedAt = Date.now()
       this.emit(job.view)
     }
@@ -151,7 +152,7 @@ export class FileTransferManager {
     } catch (error) {
       delete job.view.currentPath
       job.view.state = signal.aborted ? 'cancelled' : 'failed'
-      job.view.error = signal.aborted ? '传输已取消' : errorMessage(error)
+      job.view.error = signal.aborted ? t("Transfer canceled") : errorMessage(error)
       job.view.completedAt = Date.now(); this.emit(job.view)
     } finally {
       source?.close(); destination?.close()
@@ -197,7 +198,7 @@ async function transferFile(source: RemoteFileSystemSession, destination: Remote
 
 function transferEndpointError(operation: 'read' | 'write', value: string, cause: unknown): Error {
   const message = cause instanceof Error ? cause.message : String(cause)
-  return new Error(`could not ${operation} remote path ${value}: ${message}`, { cause })
+  return new Error(tx`could not ${operation} remote path ${value}: ${message}`, { cause })
 }
 
 async function resolveConflict(destination: RemoteFileSystemSession, value: string, policy: TransferConflictPolicy, signal: AbortSignal): Promise<string | undefined> {
@@ -208,11 +209,11 @@ async function resolveConflict(destination: RemoteFileSystemSession, value: stri
   if (policy === 'fail') throw Object.assign(new Error(`destination already contains ${value}`), { status: 409 })
   const name = remoteName(value)
   const directory = parentPath(value)
-  const dot = name.lastIndexOf('.')
+  const dot = name.lastIndexOf(t("."))
   const base = dot > 0 ? name.slice(0, dot) : name
   const extension = dot > 0 ? name.slice(dot) : ''
   for (let index = 1; index <= 999; index += 1) {
-    const candidate = remoteJoin(directory, `${base} (${index})${extension}`)
+    const candidate = remoteJoin(directory, tx`${base} (${index})${extension}`)
     if (!await pathExists(destination, candidate, signal)) return candidate
   }
   throw new Error(`could not choose a unique name for ${value}`)

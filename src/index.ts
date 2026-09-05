@@ -17,6 +17,24 @@ import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager } from './file-transfer-manager.js'
 import { EndpointSessionManager } from './endpoint-session-manager.js'
 import { GistSyncService, GistTokenVault } from './gist-sync.js'
+import { zh } from './locales/zh.js'
+import { setTranslator } from './i18n.js'
+
+/**
+ * Resolve the host-half language once at startup: the harness `locale.preference`
+ * setting when readable, then `LANG`/`LC_ALL`, then English. Host-side copy is
+ * mostly error messages and tool descriptions; tool descriptions are registered
+ * at startup, so a language switch takes effect for them after a restart.
+ */
+function initHostLocale(context: Context): void {
+  let preference: string | undefined
+  try {
+    const settings = (context as { get?: (key: string) => unknown }).get?.('settings') as { get?: (ns: string) => { preference?: string } } | undefined
+    preference = settings?.get?.('locale')?.preference
+  } catch { /* namespace not registered yet */ }
+  if (preference === undefined) preference = /zh|cn/i.test(`${process.env.LANG ?? ''}${process.env.LC_ALL ?? ''}`) ? 'zh' : 'en'
+  if (preference === 'zh') setTranslator(key => zh[key] ?? key)
+}
 
 export const Config = ConfigSchema
 export type Config = SshConfig
@@ -32,6 +50,7 @@ type RuntimeContext = Context & {
 
 export function apply(context: Context, config: SshConfig): void {
   const ctx = context as RuntimeContext
+  initHostLocale(context)
   const resolved = resolveConfig(config)
   ctx.effect(async () => {
     const store = await SshStore.open(resolved.statePath, {

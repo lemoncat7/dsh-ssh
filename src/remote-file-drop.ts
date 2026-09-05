@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import { moveFileEndpointEntries, startFileTransfer, type TransferJobView } from './client-api.js'
 import { remoteDropOperation, type RemoteFilesDragPayload } from './file-transfer-intent.js'
 
@@ -16,7 +17,7 @@ export interface RemoteDropResult {
 export async function executeRemoteFileDrop(source: RemoteFilesDragPayload, destination: RemoteDropDestination): Promise<RemoteDropResult> {
   const operation = remoteDropOperation(source, destination)
   if (operation === 'none') return { operation }
-  if (operation === 'invalid') throw new Error('不能把目录移动到自身或其子目录')
+  if (operation === 'invalid') throw new Error(t("You can't move a directory into itself or one of its subdirectories."))
   if (operation === 'move') {
     await moveFileEndpointEntries({
       paneId: destination.paneId,

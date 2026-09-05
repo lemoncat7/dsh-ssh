@@ -1,3 +1,4 @@
+import { t, tx } from './i18n.js'
 export type SshAuthType = 'password' | 'private-key' | 'agent'
 export type ProxyConfig =
   | { type: 'none' }
@@ -342,7 +343,7 @@ function normalizeFtpProxy(value: unknown): FtpProxyConfig {
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw bad(`${label} must be an object`)
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw bad(tx`${label} must be an object`)
   return value as Record<string, unknown>
 }
 
@@ -355,17 +356,17 @@ function text(value: unknown, label: string, min: number, max: number): string {
 
 function optionalText(value: unknown, label: string, min: number, max: number): { [key: string]: string } {
   if (value === undefined || value === null || value === '') return {}
-  return { [label.split('.').at(-1) ?? label]: text(value, label, min, max) }
+  return { [label.split(t(".")).at(-1) ?? label]: text(value, label, min, max) }
 }
 
 function integer(value: unknown, label: string, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw bad(`${label} must be an integer between ${min} and ${max}`)
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw bad(tx`${label} must be an integer between ${min} and ${max}`)
   return value
 }
 
 function stringArray(value: unknown, label: string, maxItems: number, maxLength: number): string[] {
   if (value === undefined) return []
-  if (!Array.isArray(value) || value.length > maxItems) throw bad(`${label} must be an array with at most ${maxItems} items`)
+  if (!Array.isArray(value) || value.length > maxItems) throw bad(tx`${label} must be an array with at most ${maxItems} items`)
   return [...new Set(value.map((item, index) => text(item, `${label}[${index}]`, 1, maxLength)))]
 }
 

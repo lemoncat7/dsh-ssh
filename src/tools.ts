@@ -1,3 +1,4 @@
+import { t, tx } from './i18n.js'
 import type { TerminalSignal } from '@deepseek-ai/dsh-terminal'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
@@ -43,7 +44,7 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
     if (sessionId === undefined) return next()
     const injection = store.injection(sessionId)
     if (injection?.requireCommandApproval !== true) return next()
-    return { kind: 'ask', reason: `SSH access to an injected remote host was requested by ${exec.name}.` }
+    return { kind: 'ask', reason: tx`SSH access to an injected remote host was requested by ${exec.name}.` }
   })
   const disposeVisibility = installModeToolVisibility(ctx, store)
   const disposeFileTools = files === undefined || transfers === undefined ? () => {} : registerFileTransferTools(ctx, store, files, transfers)
@@ -82,7 +83,7 @@ function cwdTool(store: SshStore, connector: SshConnector): ToolDefinition {
 }
 
 function execTool(store: SshStore, connector: SshConnector): ToolDefinition {
-  return tool('ssh_exec', 'Run one non-interactive command only when this conversation is injected in exec mode. This tool is not for file upload, download, or transfer; use the dedicated file_* tools or direct the user to SSH → 文件传输. If ssh_list reports terminal permission, use ssh_terminal_open and ssh_terminal_send instead so activity remains visible.', {
+  return tool('ssh_exec', t("Run one non-interactive command only when this conversation is injected in exec mode. This tool is not for file upload, download, or transfer; use the dedicated file_* tools or direct the user to SSH → File Transfer. If ssh_list reports terminal permission, use ssh_terminal_open and ssh_terminal_send instead so activity remains visible."), {
     profileId: { type: 'string', required: true, description: 'Exact injected profile id returned by ssh_list.' },
     command: { type: 'string', required: true, description: 'Command to execute on the remote host.' },
     timeoutMs: { type: 'integer', description: 'Optional timeout between 1000 and 300000 milliseconds.' },
@@ -98,7 +99,7 @@ function execTool(store: SshStore, connector: SshConnector): ToolDefinition {
 }
 
 function terminalOpenTool(store: SshStore, terminals: AiTerminalManager): ToolDefinition {
-  return tool('ssh_terminal_open', 'Open or reuse an interactive terminal on an SSH connection injected with terminal permission. Do not open a terminal for file upload, download, or transfer; use the dedicated file_* tools or direct the user to SSH → 文件传输. Repeated calls for the same conversation, connection, and working directory are idempotent; exited duplicates are removed automatically. Returns an owner-scoped terminal id and whether it was reused.', {
+  return tool('ssh_terminal_open', t("Open or reuse an interactive terminal on an SSH connection injected with terminal permission. Do not open a terminal for file upload, download, or transfer; use the dedicated file_* tools or direct the user to SSH → File Transfer. Repeated calls for the same conversation, connection, and working directory are idempotent; exited duplicates are removed automatically. Returns an owner-scoped terminal id and whether it was reused."), {
     profileId: { type: 'string', required: true, description: 'Exact injected profile id returned by ssh_list.' },
     name: { type: 'string', description: 'Optional terminal display name.' },
   }, async (raw, exec) => {
@@ -217,7 +218,7 @@ function requireInjection(store: SshStore, exec: ToolRunContext) {
   const sessionId = exec.agent?.session.id
   if (sessionId === undefined) throw new Error('SSH tools require an owning DSH session')
   const injection = store.injection(sessionId)
-  if (injection === undefined || injection.profileIds.length === 0) throw new Error('No SSH connection is injected into this DSH session. Ask the user to open 远端 and inject one.')
+  if (injection === undefined || injection.profileIds.length === 0) throw new Error(t("No SSH connection is injected into this DSH session. Ask the user to open Remote and inject one."))
   return injection
 }
 
@@ -264,7 +265,7 @@ function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
     })
     attached.set(agent, dispose)
     void ensureInheritedAccess(agent).catch(error => {
-      ctx.logger.warn(`dsh-ssh: failed to inherit access for session ${String(agent.session.id)}: ${String(error)}`)
+      ctx.logger.warn(tx`dsh-ssh: failed to inherit access for session ${String(agent.session.id)}: ${String(error)}`)
     })
   }
   for (const agent of ctx.agents.list()) attach(agent)
@@ -315,7 +316,7 @@ function rawString(value: unknown, name: string, max: number): string {
 }
 
 function integer(value: unknown, name: string, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw new Error(`${name} must be an integer between ${min} and ${max}`)
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < min || value > max) throw new Error(tx`${name} must be an integer between ${min} and ${max}`)
   return value
 }
 

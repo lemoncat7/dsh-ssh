@@ -1,3 +1,4 @@
+import { tx } from './i18n.js'
 import { randomBytes } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -81,7 +82,7 @@ export class SshStore {
 
   private async persist(state: SshState): Promise<void> {
     const directory = dirname(this.path)
-    const temporary = `${this.path}.${process.pid}.${randomBytes(5).toString('hex')}.tmp`
+    const temporary = tx`${this.path}.${process.pid}.${randomBytes(5).toString('hex')}.tmp`
     const handle = await open(temporary, 'w', 0o600)
     try {
       await handle.writeFile(`${JSON.stringify(state, null, 2)}\n`, 'utf8')

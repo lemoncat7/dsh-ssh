@@ -44,5 +44,5 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
   await promptHandler(assembly, {}, async () => assembly)
   const fileContext = assembly.contexts.find(context => context.name === 'dsh-ssh:file-access')
   assert.match(fileContext.text, /Never start an HTTP or other file server/)
-  assert.match(fileContext.text, /下载到本地/)
+  assert.match(fileContext.text, /Download to local/)
 })

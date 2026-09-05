@@ -1,3 +1,4 @@
+import { tx } from './i18n.js'
 import { randomUUID } from 'node:crypto'
 import type { ClientChannel } from 'ssh2'
 import type {
@@ -26,7 +27,7 @@ export class SshTerminalBackend implements TerminalBackend {
     const connection = await this.connector.connect(profileId, spec.signal)
     try {
       const channel = await openShell(connection, 120, 32)
-      return new SshTerminalSession(connection, channel, `Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
+      return new SshTerminalSession(connection, channel, tx`Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
     } catch (error) {
       connection.close()
       throw error
@@ -265,7 +266,7 @@ export class AiTerminalManager {
     try {
       const channel = await openShell(connection, 120, 32)
       const terminalId = randomUUID()
-      const session = new SshTerminalSession(connection, channel, `Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
+      const session = new SshTerminalSession(connection, channel, tx`Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
       const record: AiTerminalRecord = {
         terminalId,
         profileId,

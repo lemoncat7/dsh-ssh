@@ -5,9 +5,9 @@ import { createGitHubHttpTransport, normalizeGitHubProxy } from '../lib/github-h
 test('normalizes safe local GitHub proxies and rejects unsafe setting values', () => {
   assert.equal(normalizeGitHubProxy(' http://host.docker.internal:7893 '), 'http://host.docker.internal:7893/')
   assert.equal(normalizeGitHubProxy('https://proxy.example:8443'), 'https://proxy.example:8443/')
-  assert.throws(() => normalizeGitHubProxy('socks5://127.0.0.1:1080'), /仅支持 HTTP 或 HTTPS/)
-  assert.throws(() => normalizeGitHubProxy('http://user:secret@proxy.example:8080'), /不保存代理账号密码/)
-  assert.throws(() => normalizeGitHubProxy('http://proxy.example:8080/path'), /格式无效/)
+  assert.throws(() => normalizeGitHubProxy('socks5://127.0.0.1:1080'), /supports HTTP or HTTPS/)
+  assert.throws(() => normalizeGitHubProxy('http://user:secret@proxy.example:8080'), /does not save proxy credentials/)
+  assert.throws(() => normalizeGitHubProxy('http://proxy.example:8080/path'), /Invalid GitHub proxy/)
 })
 
 test('resolves the local setting before environment proxy fallbacks', async () => {

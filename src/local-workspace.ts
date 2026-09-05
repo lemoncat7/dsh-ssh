@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import { createReadStream } from 'node:fs'
 import { lstat, open, readdir, realpath, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -10,7 +11,7 @@ export async function listLocalWorkspace(root: string, requestedPath?: string): 
   const boundary = await realpath(root)
   const target = await resolveInside(boundary, requestedPath ?? boundary)
   const targetStat = await stat(target)
-  if (!targetStat.isDirectory()) throw httpError(400, '工作区路径不是目录')
+  if (!targetStat.isDirectory()) throw httpError(400, t("Workspace path is not a directory."))
   const entries = await Promise.all((await readdir(target, { withFileTypes: true })).map(async entry => {
     const entryPath = path.join(target, entry.name)
     const attributes = await lstat(entryPath)
@@ -34,7 +35,7 @@ export async function readLocalWorkspacePreview(root: string, requestedPath: str
   const boundary = await realpath(root)
   const target = await resolveInside(boundary, requestedPath)
   const attributes = await stat(target)
-  if (!attributes.isFile()) throw httpError(400, '工作区路径不是文件')
+  if (!attributes.isFile()) throw httpError(400, t("Workspace path is not a file."))
   const mimeType = mimeTypeFor(target)
   const kind = previewKind(mimeType)
   const base = { path: target, name: path.basename(target), size: attributes.size, mimeType, kind }
@@ -52,24 +53,24 @@ export async function openLocalWorkspaceFile(root: string, requestedPath: string
   const boundary = await realpath(root)
   const target = await resolveInside(boundary, requestedPath)
   const attributes = await stat(target)
-  if (!attributes.isFile()) throw httpError(400, '工作区路径不是文件')
+  if (!attributes.isFile()) throw httpError(400, t("Workspace path is not a file."))
   return { path: target, size: attributes.size, mimeType: mimeTypeFor(target), stream: createReadStream(target) }
 }
 
 export async function deleteLocalWorkspaceEntries(root: string, directory: string, requestedPaths: string[]): Promise<void> {
   const boundary = await realpath(root)
   const currentDirectory = await resolveInside(boundary, directory || boundary)
-  if (!(await stat(currentDirectory)).isDirectory()) throw httpError(400, '当前路径不是目录')
+  if (!(await stat(currentDirectory)).isDirectory()) throw httpError(400, t("Current path is not a directory."))
 
   const targets = await Promise.all(requestedPaths.map(async requestedPath => {
     const candidate = path.resolve(currentDirectory, requestedPath)
     const relativeToDirectory = path.relative(currentDirectory, candidate)
     if (relativeToDirectory.length === 0 || path.isAbsolute(relativeToDirectory) || relativeToDirectory.startsWith(`..${path.sep}`) || relativeToDirectory.includes(path.sep)) {
-      throw httpError(400, '只能删除当前目录的直接子项')
+      throw httpError(400, t("Only direct children of the current directory can be deleted."))
     }
     const relativeToBoundary = path.relative(boundary, candidate)
     if (path.isAbsolute(relativeToBoundary) || relativeToBoundary === '..' || relativeToBoundary.startsWith(`..${path.sep}`)) {
-      throw httpError(403, '不能删除当前会话工作区之外的内容')
+      throw httpError(403, t("Cannot delete content outside the current session workspace."))
     }
     const attributes = await lstat(candidate)
     return { path: candidate, recursive: attributes.isDirectory() }
@@ -82,9 +83,9 @@ async function resolveInside(boundary: string, requestedPath: string): Promise<s
   const candidate = path.isAbsolute(requestedPath) ? requestedPath : path.join(boundary, requestedPath)
   let resolved: string
   try { resolved = await realpath(candidate) }
-  catch { throw httpError(404, '工作区路径不存在') }
+  catch { throw httpError(404, t("Workspace path does not exist.")) }
   const relative = path.relative(boundary, resolved)
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw httpError(403, '不能访问当前会话工作区之外的路径')
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw httpError(403, t("Cannot access paths outside the current session workspace."))
   return resolved
 }
 

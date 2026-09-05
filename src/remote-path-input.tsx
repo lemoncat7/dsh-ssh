@@ -1,3 +1,4 @@
+import { t, tx } from './i18n.js'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { IconChevronRightOutline14, IconFolderClose16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { loadFileEndpointDirectory, type SftpDirectoryView } from './client-api.js'
@@ -53,17 +54,17 @@ export function RemotePathInput({ profileId, value, disabled, onChange }: Remote
   }, [endpointId, value])
 
   const feedback = lookup.kind === 'idle'
-    ? '可直接输入；停止输入后会自动检查远端路径。'
+    ? t("Type directly; the remote path is checked automatically after you stop typing.")
     : lookup.kind === 'checking'
-      ? '正在检查远端路径…'
+      ? t("Checking the remote path…")
       : lookup.kind === 'error'
-        ? `路径不存在或无法访问：${lookup.message}。仍可按当前输入保存。`
+        ? tx`The path does not exist or cannot be accessed: ${lookup.message}. You can still save with the current input.`
         : folders.length === 0
-          ? '路径可访问，当前没有子目录。'
-          : `路径可访问，找到 ${folders.length} 个子目录。`
+          ? t("The path is accessible; no subdirectories yet.")
+          : tx`The path is accessible; found ${folders.length} subdirectories.`
 
   return <div className="dsh-ssh-field dsh-ssh-remote-path-field">
-    <label htmlFor={inputId}>远端路径</label>
+    <label htmlFor={inputId}>{t("Remote path")}</label>
     <input
       id={inputId}
       required
@@ -81,12 +82,12 @@ export function RemotePathInput({ profileId, value, disabled, onChange }: Remote
       className={`dsh-ssh-remote-path-feedback is-${lookup.kind}`}
       role={lookup.kind === 'error' ? 'alert' : 'status'}
     >{feedback}</small>
-    {lookup.kind === 'ready' && folders.length > 0 && <div className="dsh-ssh-remote-path-options" aria-label="可选择的远端子目录">
+    {lookup.kind === 'ready' && folders.length > 0 && <div className="dsh-ssh-remote-path-options" aria-label={t("Selectable remote subdirectories")}>
       {folders.map(folder => <button
         type="button"
         key={folder.path}
         disabled={disabled}
-        title={`选择 ${folder.path}`}
+        title={tx`Select ${folder.path}`}
         onClick={() => onChange(folder.path)}
       ><IconFolderClose16 size={15} aria-hidden="true" /><span>{folder.name}</span><IconChevronRightOutline14 size={13} aria-hidden="true" /></button>)}
     </div>}

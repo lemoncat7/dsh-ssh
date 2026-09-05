@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import path from 'node:path'
 import { Transform, type Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -54,7 +55,7 @@ export async function openSftpFileSystemSession(
   const connection = await connector.connect(profileId, signal)
   try {
     const sftp = await openSftp(connection.client, signal)
-    const home = await realpath(sftp, '.')
+    const home = await realpath(sftp, t("."))
     return new ReusableSftpSession(endpoint, connection, sftp, home)
   } catch (error) {
     connection.close()
@@ -76,7 +77,7 @@ class ReusableSftpSession implements RemoteFileSystemSession {
     return this.run(async () => {
       const resolved = await realpath(this.sftp, expandHome(requestedPath.trim() || '~', this.home))
       const entries = (await readdir(this.sftp, resolved))
-        .filter(entry => entry.filename !== '.' && entry.filename !== '..')
+        .filter(entry => entry.filename !== t(".") && entry.filename !== '..')
         .map(entry => viewEntry(resolved, entry))
         .sort((left, right) => {
           if (left.kind === 'directory' && right.kind !== 'directory') return -1
@@ -175,7 +176,7 @@ export async function statSftpPath(
   let sftp: SFTPWrapper | undefined
   try {
     sftp = await openSftp(connection.client, signal)
-    const home = await realpath(sftp, '.')
+    const home = await realpath(sftp, t("."))
     const resolved = await realpath(sftp, expandHome(requestedPath.trim() || '~', home))
     const attributes = await stat(sftp, resolved)
     const fileType = attributes.mode & 0o170000
@@ -213,7 +214,7 @@ export async function ensureSftpDirectory(
   let sftp: SFTPWrapper | undefined
   try {
     sftp = await openSftp(connection.client, signal)
-    const home = await realpath(sftp, '.')
+    const home = await realpath(sftp, t("."))
     const target = expandHome(requestedPath.trim() || '~', home).replaceAll('\\', '/')
     const absolute = target.startsWith('/')
     const parts = target.split('/').filter(Boolean)
@@ -240,11 +241,11 @@ export async function listSftpDirectory(
   let sftp: SFTPWrapper | undefined
   try {
     sftp = await openSftp(connection.client, signal)
-    const home = await realpath(sftp, '.')
+    const home = await realpath(sftp, t("."))
     const target = expandHome(requestedPath.trim() || '~', home)
     const resolved = await realpath(sftp, target)
     const entries = (await readdir(sftp, resolved))
-      .filter(entry => entry.filename !== '.' && entry.filename !== '..')
+      .filter(entry => entry.filename !== t(".") && entry.filename !== '..')
       .map(entry => viewEntry(resolved, entry))
       .sort((left, right) => {
         if (left.kind === 'directory' && right.kind !== 'directory') return -1
@@ -347,7 +348,7 @@ export async function uploadSftpFile(
   let sftp: SFTPWrapper | undefined
   try {
     sftp = await openSftp(connection.client)
-    const home = await realpath(sftp, '.')
+    const home = await realpath(sftp, t("."))
     const directory = await realpath(sftp, expandHome(requestedDirectory.trim() || '~', home))
     const target = remoteJoin(directory, filename)
     if (!options.overwrite && await sftpPathExists(sftp, target)) throw Object.assign(new Error('A file with this name already exists'), { status: 409 })
@@ -383,7 +384,7 @@ async function removeSftpEntry(sftp: SFTPWrapper, value: string, recursive: bool
   if (!recursive) throw Object.assign(new Error('remote path is a directory'), { status: 409 })
   const entries = await readdir(sftp, value)
   for (const entry of entries) {
-    if (entry.filename === '.' || entry.filename === '..') continue
+    if (entry.filename === t(".") || entry.filename === '..') continue
     await removeSftpEntry(sftp, remoteJoin(value, entry.filename), true, signal, counter, depth + 1)
   }
   await rmdirSftp(sftp, value)

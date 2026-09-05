@@ -1,165 +1,168 @@
 # dsh-ssh
 
-面向 DeepSeek Harness 的远端工作插件。它把 SSH 会话管理、浏览器终端、FTP/FTPS/SFTP 文件传输、代理、端口转发和 AI 会话授权放在同一个 DSH 工作区里。
+A remote-work plugin for DeepSeek Harness. It brings SSH session management, a browser terminal, FTP/FTPS/SFTP file transfer, proxies, port forwarding, and AI session authorization into a single DSH workspace.
 
-浏览器 UI、服务端运行时、会话授权边界和终端生命周期的职责说明见 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+For the responsibility breakdown of the browser UI, server-side runtime, session authorization boundary, and terminal lifecycle, see [ARCHITECTURE.md](./ARCHITECTURE.md). 简体中文文档见 [README.zh.md](./README.zh.md)。
 
-## 兼容性
+## Language
 
-正式版 `1.4.0` 针对 DeepSeek Harness `0.1.2-rc.1` 构建并完成部署验证，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+All UI copy is bilingual and follows the DSH display language (Settings → General → Language): choose **English** or **中文**. English is the source text baked into the components; the Chinese dictionary (`src/locales/zh.ts`) is bound through the harness locale service, and any key missing from it falls back to English — a switch never leaves a blank label. AI tool descriptions and host-side error messages resolve once at DSH startup, so switching language takes effect for them after a restart.
 
-## 安装
+## Compatibility
+
+The stable `1.4.0` release is built against DeepSeek Harness `0.1.2-rc.1` and deployment-verified; it requires Node.js `22.19+` or `24+`. The Agent, Session/Workspace Controller, Credentials, Tools, and client UI interfaces all target `0.1.2-rc.1`.
+## Installation
 
 ```bash
 dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 ```
 
-安装或升级后重启对应的 DSH Profile。桌面端与 Docker 部署使用相同的插件包。
+Restart the corresponding DSH Profile after installing or upgrading. Desktop and Docker deployments use the same plugin package.
 
-## 1.2.0 更新
+## 1.2.0 Updates
 
-- 浏览器端按活动侧栏、连接编辑、主机树、SFTP、终端和共享 UI 分层；弹窗统一支持焦点锁定、Escape 关闭和焦点归还。
-- SSH 活动与端口转发状态改为完成后调度，后台页面自动降频，避免慢请求造成轮询重叠。
-- 新建与编辑连接按「连接信息 / 身份认证 / 连接路径」分组，并统一按钮、焦点、按压反馈和减少动态效果。
-- SSH 面板改为「主机 / 固定项目目录」树，主工作区同时展示左侧终端和右侧 SFTP。
-- 主机前的授权选择与底部「当前会话权限」共同控制 AI 可见范围，不再使用独立的会话注入检查器。
-- 每台主机可以保存多个固定远端目录；当前会话最多显式绑定其中一个，终端、SFTP 和 AI 命令共享该工作目录。选中后目录项会明确显示当前会话已固定到该路径。
-- 从固定远端目录新建会话时，会先选择会话归属的 DSH 本地项目；默认使用当前项目，其次使用最近项目，并明确区分本地项目路径与 SSH 远端工作目录。
-- 固定目录后的新增按钮通过 DSH 官方 Workspace 接口创建并直接打开新会话，同时写入对应主机、目录与权限绑定；成功后自动关闭 SSH 管理面板，目录下不展示历史会话清单。
-- 撤销主机访问会关闭该会话在对应主机上的 AI 终端；降级为仅命令会关闭全部交互终端。
+- The browser side is now layered into the activity sidebar, connection editing, host tree, SFTP, terminal, and shared UI; dialogs uniformly support focus trapping, closing with Escape, and focus restoration.
+- SSH activity and port-forwarding status are now scheduled after completion; background pages automatically reduce polling frequency to avoid overlapping polls caused by slow requests.
+- The new-connection and edit-connection forms are grouped into "Connection Info / Authentication / Connection Path", with unified buttons, focus handling, press feedback, and reduced-motion support.
+- The SSH panel is now a "Host / Pinned Project Directory" tree, and the main workspace shows the terminal on the left and SFTP on the right at the same time.
+- The authorization selector in front of each host, together with the "Current Session Permissions" control at the bottom, jointly determines the AI-visible scope; the standalone session injection inspector is gone.
+- Each host can store multiple pinned remote directories; the current session explicitly binds at most one of them, and the terminal, SFTP, and AI commands share that working directory. Once selected, the directory item clearly shows that the current session is pinned to that path.
+- When creating a session from a pinned remote directory, you first choose which DSH local project the session belongs to; it defaults to the current project, then the most recent project, and clearly distinguishes the local project path from the SSH remote working directory.
+- The add button after a pinned directory creates and directly opens a new session through the official DSH Workspace API, writing the corresponding host, directory, and permission bindings at the same time; on success the SSH management panel closes automatically, and no historical session list is shown under the directory.
+- Revoking host access closes that session's AI terminals on the corresponding host; downgrading to commands-only closes all interactive terminals.
 
-## 能力
+## Capabilities
 
-- SSH 密码、私钥和 SSH Agent 认证
-- HTTP CONNECT、SOCKS5 和 SSH 跳板代理
-- 本地转发（`-L`）、远程转发（`-R`）和动态 SOCKS5 转发（`-D`）
-- 浏览器交互终端，支持输入、增量输出、窗口尺寸同步和主动断开
-- 当前会话右侧栏支持多个 AI 终端切换与键盘输入
-- SSH 活动右栏按会话分别保持展开状态、页签和所选主机；切换到未展开过的会话时不会自动打开，切回原会话会恢复
-- AI 调用 `ssh_terminal_open` 创建终端时，当前会话会自动展开 SSH 右栏并切换到新终端
-- SFTP 文件浏览、文本/图片/PDF 预览和流式下载；支持拖放上传、目录内移动、行末删除，并可从内嵌预览打开独立放大窗口
-- 独立「文件传输」工作区，支持 2～4 个 FTP、FTPS 或 SFTP 窗格与多个任务页
-- FTP、显式 FTPS、隐式 FTPS；FTP 控制连接与每条被动数据连接统一支持 HTTP CONNECT 和 SOCKS5 代理
-- FTP/FTPS/SFTP 跨协议流式互传，不把完整文件暂存到 DSH 磁盘；支持多文件、递归目录、冲突策略、进度、取消和失败状态
-- 有序多主机跳板链，兼容已有单跳板配置
-- 独立密钥库集中保存常用用户名、密码和私钥，SSH 连接仅保存引用
-- 独立代理库集中保存 HTTP CONNECT 与 SOCKS5 代理，多台主机可复用同一连接路径
-- 按 DSH 会话授权连接；未勾选的主机对 AI 完全不可见
-- 普通分叉会话继承来源会话的 SSH、文件端点、权限和固定目录；运行中的终端与传输任务仍归原会话所有，子代理不会隐式继承用户授权
-- 保存固定远端项目目录，并从目录直接创建和打开新 DSH 会话
-- AI 可执行一次性命令，或打开、读取、操作和关闭独立的交互终端
-- 左侧远端区域提供右侧栏开关；目录页使用真实 SFTP 浏览远端文件，终端页使用单一终端画面观察并操作 AI 终端
-- 插件服务与 Web 客户端兼容 Windows、macOS 和 Linux，不依赖本机 `ssh` 或 `sftp` 命令
-- 首次连接主机指纹确认、输出上限、命令超时和公开端口绑定保护
-- GitHub Gist 跨设备配置同步，支持智能、本地优先和云端优先策略；主机、FTP/FTPS、项目目录、代理库、密钥库及其凭据均端到端加密
+- SSH password, private key, and SSH Agent authentication
+- HTTP CONNECT, SOCKS5, and SSH jump-host proxying
+- Local forwarding (`-L`), remote forwarding (`-R`), and dynamic SOCKS5 forwarding (`-D`)
+- Interactive browser terminal with input, incremental output, window-size synchronization, and active disconnect
+- The current session's right sidebar supports switching among multiple AI terminals with keyboard input
+- The SSH activity right column keeps its expanded state, tab, and selected host per session; switching to a session that was never expanded does not open it automatically, and switching back restores it
+- When the AI calls `ssh_terminal_open` to create a terminal, the current session automatically expands the SSH right column and switches to the new terminal
+- SFTP file browsing, text/image/PDF preview, and streaming download; supports drag-and-drop upload, moving within a directory, per-row delete, and opening an independent enlarged window from the embedded preview
+- Standalone "File Transfer" workspace with 2–4 FTP, FTPS, or SFTP panes and multiple task tabs
+- FTP, explicit FTPS, and implicit FTPS; the FTP control connection and every passive data connection support HTTP CONNECT and SOCKS5 proxies
+- Cross-protocol streaming transfer among FTP/FTPS/SFTP without staging complete files on DSH disk; supports multiple files, recursive directories, conflict policies, progress, cancellation, and failure states
+- Ordered multi-host jump chain, compatible with existing single-jump configurations
+- A dedicated credential vault centrally stores common usernames, passwords, and private keys; SSH connections store references only
+- A dedicated proxy library centrally stores HTTP CONNECT and SOCKS5 proxies; multiple hosts can reuse the same connection path
+- Connections are authorized per DSH session; unchecked hosts are completely invisible to the AI
+- Ordinary forked sessions inherit the source session's SSH connections, file endpoints, permissions, and pinned directories; running terminals and transfer tasks still belong to the original session, and subagents never implicitly inherit user authorization
+- Store pinned remote project directories and create and open new DSH sessions directly from a directory
+- The AI can run one-off commands, or open, read, operate, and close independent interactive terminals
+- The left remote area provides a right-sidebar toggle; the directory page uses real SFTP to browse remote files, and the terminal page uses a single terminal view to observe and operate AI terminals
+- The plugin service and web client are compatible with Windows, macOS, and Linux, with no dependency on local `ssh` or `sftp` commands
+- First-connection host fingerprint confirmation, output caps, command timeouts, and public port bind protection
+- GitHub Gist cross-device configuration sync with smart, local-first, and cloud-first policies; hosts, FTP/FTPS connections, project directories, the proxy library, the credential vault, and their credentials are all end-to-end encrypted
 
-## 界面
+## Interface
 
-侧栏入口名为「远端」，通过官方 `sidebar.footer.action` 注册。浏览器兼容层只把这个入口锚定到官方 Workspace 区域上方；它不会替换 `sidebar.workspaces`，锚点失效时会自动留在官方 Footer。远端标题右侧按钮与折叠栏图标负责开关 SSH 右侧栏；展开后的第一项「SSH 面板」进入完整管理工作区，它下面只显示当前 DSH 会话已授权的 SSH 连接。点击其中一台主机会打开右侧栏并直接切换到该远端。切换到其他会话会自动退出管理工作区，也可以使用工作区左上角的返回按钮。
+The sidebar entry is named "Remote" and is registered through the official `sidebar.footer.action`. The browser compatibility layer only anchors this entry above the official Workspace area; it does not replace `sidebar.workspaces`, and automatically stays in the official Footer when the anchor is unavailable. The button to the right of the Remote title and the collapse-bar icon toggle the SSH right sidebar; the first item after expanding, "SSH Panel", opens the full management workspace, and beneath it only the SSH connections already authorized for the current DSH session are shown. Clicking a host opens the right sidebar and switches directly to that remote. Switching to another session automatically exits the management workspace; you can also use the back button at the top-left of the workspace.
 
-管理工作区分成两部分：
+The management workspace is split into two parts:
 
-1. 左侧远端树：点击主机只负责选中并展开固定目录，同时自动收起其他主机；右侧独立的「挂载 / 卸载」按钮决定当前 DSH 会话能否访问该主机，因此浏览终端不会意外改变 AI 权限。点击目录整行即可固定，再次点击已固定目录即可取消；每台主机最多固定一个目录。目录后的新增按钮直接创建并打开新会话。底部统一设置「仅命令 / 终端控制」与执行前确认。
-2. 右侧工作区：默认把终端与当前主机或项目目录的 SFTP 左右并排展示，不需要在两个页面之间切换；SFTP 会等终端首次连接成功后再读取远端目录。拖动两栏之间的分隔线可以调整 SFTP 宽度，双击恢复默认，比例会保存在当前浏览器。另可进入端口转发、密钥库、代理库和设置。SFTP 支持浏览、预览、下载、行末删除，以及拖放或文件选择器触发的多文件顺序上传；文件拖进同一主机的目录时使用原生重命名完成移动，跨端点拖放才创建复制任务，拖回原目录不会产生任务。同名文件逐项确认跳过或覆盖，单文件上限为 512 MB。内嵌文件预览可通过下载旁的放大按钮打开独立预览窗口。
+1. Left remote tree: clicking a host only selects it and expands its pinned directories while automatically collapsing other hosts; a separate "Mount / Unmount" button on the right decides whether the current DSH session can access that host, so browsing the terminal never accidentally changes AI permissions. Click a directory row anywhere to pin it; click an already-pinned directory again to unpin it; each host can pin at most one directory. The add button after a directory creates and opens a new session directly. The bottom uniformly sets "Commands Only / Terminal Control" and pre-execution confirmation.
+2. Right workspace: by default the terminal and the SFTP of the current host or project directory are shown side by side, with no need to switch between two pages; SFTP waits until the terminal's first successful connection before reading the remote directory. Drag the divider between the two columns to adjust the SFTP width, double-click to restore the default, and the ratio is saved in the current browser. You can also enter port forwarding, the credential vault, the proxy library, and settings. SFTP supports browsing, preview, download, per-row delete, and multi-file sequential upload triggered by drag-and-drop or the file picker; dragging a file into a directory on the same host completes the move via native rename, only cross-endpoint drag-and-drop creates a copy task, and dragging back into the original directory creates no task. Same-name files are confirmed one by one for skip or overwrite, with a 512 MB limit per file. The embedded file preview can open a standalone preview window via the enlarge button next to the download button.
 
-「文件传输」是独立工作区页签。每个任务页默认双窗格，可切换为 2～4 栏。每个窗格先显示统一的 SFTP、FTP、FTPS 连接列表，单击连接后才读取远端目录，并可随时返回连接列表。名称、大小和修改时间表头均可切换升降序，目录始终置顶。每个文件或目录行末在悬停或键盘聚焦时显示“下载到本地”和删除两个快捷按钮；文件直接流式下载，目录则实时归档为 `.tar`，两者都使用独立协议连接，不占用当前目录的浏览会话，也不会在 DSH 磁盘暂存完整内容。文件也可以拖到另一窗格或具体目录，或选中后使用“传送到下一栏”，因此键盘和触控环境不依赖拖拽。同一端点内拖入目录是移动，跨端点拖放是复制；目录不能移动到自身或子目录。浏览窗格复用自己的协议会话，传输任务使用独立连接，避免大文件占用目录浏览的控制通道；任务卡在执行时显示累计耗时，结束后固定显示总耗时和完成时刻。任务完成、失败或取消后只刷新对应目标目录，及时呈现完整或部分写入结果。每个文件或目录行末均可直接打开删除确认，目录采用有深度和数量上限的递归删除，且不会跟随符号链接。关闭页面不会中断服务端任务；DSH 进程停止时会统一取消并释放两端连接。
+"File Transfer" is a standalone workspace tab. Each task page defaults to two panes and can switch to 2–4 columns. Each pane first shows the unified SFTP, FTP, and FTPS connection list; the remote directory is read only after you click a connection, and you can return to the connection list at any time. The name, size, and modified-time headers all toggle between ascending and descending, and directories always stay on top. Each file or directory row shows two quick buttons — "Download to Local" and delete — on hover or keyboard focus; files download directly as a stream, directories are archived to `.tar` in real time, and both use independent protocol connections that neither occupy the current directory's browsing session nor stage full content on DSH disk. Files can also be dragged to another pane or a specific directory, or selected and sent with "Transfer to Next Pane", so keyboard and touch environments do not depend on dragging. Dragging into a directory within the same endpoint is a move; cross-endpoint drag-and-drop is a copy; directories cannot be moved into themselves or their own subdirectories. Browsing panes reuse their own protocol sessions while transfer tasks use independent connections, keeping large files off the directory-browsing control channel; task cards show accumulated elapsed time while running, then pin the total duration and completion time afterwards. After a task completes, fails, or is cancelled, only the corresponding target directory is refreshed, promptly presenting the complete or partially written result. A delete confirmation can be opened directly from the end of any file or directory row; directories use recursive deletion with depth and count caps that never follows symbolic links. Closing the page does not interrupt server-side tasks; when the DSH process stops, tasks are cancelled uniformly and both ends' connections are released.
 
-工作区使用插件内职责单一的自适应壳布局。宽容器使用双栏；窄于 820px 时远端树切换为左侧抽屉，窄于 520px 时进一步压缩 SFTP 次要信息和操作密度。响应式判断使用容器查询，因此手机、桌面分屏和 DSH 窄面板采用同一套行为。
+The workspace uses a single-responsibility adaptive shell layout within the plugin. Wide containers use two columns; below 820px the remote tree switches to a left drawer, and below 520px SFTP secondary information and action density are further compressed. Responsive decisions use container queries, so phones, desktop split-screen, and narrow DSH panels share one set of behavior.
 
-SSH 插件不会向聊天标题栏添加按钮。右侧栏统一从左侧「远端」区域打开；当前会话尚未授权主机时会显示引导。仅执行命令权限显示 SFTP 目录；终端控制权限同时显示 SFTP 目录和 AI 终端。多个终端通过紧凑标签切换，运行中的终端支持键盘输入。进入 SFTP 子目录时，该目录会同步成为后续 `ssh_exec` 与新终端的工作目录。
+The SSH plugin does not add buttons to the chat title bar. The right sidebar is opened uniformly from the left "Remote" area; when the current session has no authorized hosts yet, guidance is shown. The commands-only permission shows the SFTP directory; the terminal-control permission shows both the SFTP directory and AI terminals. Multiple terminals are switched via compact tabs, and running terminals accept keyboard input. When you enter an SFTP subdirectory, that directory synchronously becomes the working directory for subsequent `ssh_exec` calls and new terminals.
 
-新建和编辑连接的表单内提供「测试连接」。测试直接使用尚未保存的表单内容，可验证密钥库凭据、HTTP/SOCKS5 代理和有序跳板链；首次连接的主机指纹也在表单内确认。测试过程不会临时创建 Profile，也不会把凭据写入配置文件。
+The new-connection and edit-connection forms provide "Test Connection". The test uses the not-yet-saved form content directly and can validate credential-vault credentials, HTTP/SOCKS5 proxies, and the ordered jump chain; the host fingerprint on first connection is also confirmed inside the form. Testing never temporarily creates a Profile and never writes credentials into the configuration file.
 
-## AI 工具
+## AI Tools
 
-| 工具 | 用途 |
+| Tool | Purpose |
 | --- | --- |
-| `ssh_list` | 只列出当前 DSH 会话已授权的连接 |
-| `ssh_set_cwd` | 设置并验证当前会话在指定主机上的工作目录 |
-| `ssh_exec` | 执行一次性远端命令 |
-| `ssh_terminal_open` | 打开当前 Agent 独占的 SSH 终端 |
-| `ssh_terminal_send` | 向终端发送文本并等待输出稳定 |
-| `ssh_terminal_read` | 分页读取终端回滚缓冲区 |
-| `ssh_terminal_signal` | 发送允许的 POSIX 信号 |
-| `ssh_terminal_close` | 关闭终端 |
-| `ssh_forward_list` | 列出已授权连接的转发规则 |
-| `ssh_forward_start` | 启动已有转发规则 |
-| `ssh_forward_stop` | 停止已有转发规则 |
-| `file_endpoint_list` | 只列出当前 DSH 会话明确授权的 FTP/FTPS/SFTP 端点 |
-| `file_directory_list` | 浏览已授权端点中的远端目录 |
-| `file_transfer_start` | 启动端点之间的异步流式文件或目录传输 |
-| `file_transfer_status` | 查询当前会话拥有的传输任务进度 |
-| `file_transfer_cancel` | 取消当前会话拥有的传输任务 |
+| `ssh_list` | Lists only the connections authorized for the current DSH session |
+| `ssh_set_cwd` | Sets and verifies the working directory on a given host for the current session |
+| `ssh_exec` | Executes a one-off remote command |
+| `ssh_terminal_open` | Opens an SSH terminal exclusive to the current Agent |
+| `ssh_terminal_send` | Sends text to a terminal and waits for output to settle |
+| `ssh_terminal_read` | Reads the terminal scrollback buffer page by page |
+| `ssh_terminal_signal` | Sends an allowed POSIX signal |
+| `ssh_terminal_close` | Closes a terminal |
+| `ssh_forward_list` | Lists the forwarding rules of authorized connections |
+| `ssh_forward_start` | Starts an existing forwarding rule |
+| `ssh_forward_stop` | Stops an existing forwarding rule |
+| `file_endpoint_list` | Lists only the FTP/FTPS/SFTP endpoints explicitly authorized for the current DSH session |
+| `file_directory_list` | Browses remote directories on authorized endpoints |
+| `file_transfer_start` | Starts an asynchronous streaming file or directory transfer between endpoints |
+| `file_transfer_status` | Queries the progress of transfer tasks owned by the current session |
+| `file_transfer_cancel` | Cancels transfer tasks owned by the current session |
 
-工具始终从 `exec.agent.session.id` 解析会话授权关系。SSH 命令权限与文件权限独立：文件端点必须单独授权，并选择“仅浏览”或“允许跨端传输”。模型不能通过参数绕过授权，也不能枚举其他 DSH 会话的主机、文件端点、终端或传输任务。覆盖目标文件不会被默认推断；`file_transfer_start` 默认使用 `fail` 冲突策略。文件浏览和端点间传输必须优先使用 `file_*` 工具，不允许通过 SSH 临时启动 HTTP 服务、开放端口或使用终端编码传输。若用户要求下载到浏览器本地，模型会直接提示在「SSH → 文件传输」选择文件并点击“下载到本地”。
+Tools always resolve session authorization from `exec.agent.session.id`. SSH command permission and file permission are independent: file endpoints must be authorized separately, with a choice of "Browse Only" or "Allow Cross-Endpoint Transfer". The model cannot bypass authorization through parameters, nor enumerate the hosts, file endpoints, terminals, or transfer tasks of other DSH sessions. Overwriting a target file is never inferred by default; `file_transfer_start` uses the `fail` conflict policy by default. File browsing and cross-endpoint transfer must prefer the `file_*` tools; temporarily starting an HTTP service over SSH, opening ports, or encoding transfers through the terminal is not allowed. If the user asks to download to the local browser, the model directly prompts them to pick the file under "SSH → File Transfer" and click "Download to Local".
 
-「执行前确认」依赖 DSH 当前会话的审批策略：Workspace Write 的 Ask 策略会显示确认；Full Access 使用 Never 策略，不显示确认，并会直接拒绝被 SSH 插件标记为需要审批的操作。若希望在 Full Access 下直接执行 SSH，请关闭该开关。
+"Pre-execution Confirmation" depends on the approval policy of the current DSH session: the Ask policy of Workspace Write shows a confirmation; Full Access uses the Never policy, shows no confirmation, and rejects outright any operation the SSH plugin has flagged as requiring approval. To execute SSH directly under Full Access, turn this switch off.
 
-## 凭据与安全
+## Credentials & Security
 
-普通连接资料保存在 `statePath` 指定的原子 JSON 文件中。以下敏感字段只写入 DSH `ctx.credentials` 的 `dsh-ssh/<profile-id>` Grant Record：
+Ordinary connection profiles are stored in the atomic JSON file specified by `statePath`. The following sensitive fields are written only to the `dsh-ssh/<profile-id>` Grant Record in DSH `ctx.credentials`:
 
-- SSH 密码
-- 私钥
-- 私钥口令
-- 代理密码
-- FTP 密码
+- SSH passwords
+- Private keys
+- Private key passphrases
+- Proxy passwords
+- FTP passwords
 
-密钥库条目使用独立的 `dsh-ssh-vault/<credential-id>` Grant Record。SSH Profile 只保存 `credentialId`，不会复制或读回密钥库中的明文。仍被连接引用的密钥库条目不能删除。
+Credential-vault entries use their own `dsh-ssh-vault/<credential-id>` Grant Record. SSH Profiles store only a `credentialId` and never copy or read back plaintext from the vault. Vault entries still referenced by connections cannot be deleted.
 
-代理库条目保存在状态文件中，代理密码使用独立的 `dsh-ssh-proxy/<proxy-id>` Grant Record。SSH Profile 选择常用代理后只保存 `proxyId`；仍被主机引用的代理不能删除。原有内联 HTTP/SOCKS5 配置继续兼容。
+Proxy-library entries are stored in the state file, with proxy passwords kept in their own `dsh-ssh-proxy/<proxy-id>` Grant Record. After an SSH Profile selects a common proxy it stores only a `proxyId`; proxies still referenced by hosts cannot be deleted. Existing inline HTTP/SOCKS5 configurations remain compatible.
 
-FTP Profile 与 SSH Profile 分开保存。FTP Profile 自有密码使用 `dsh-ftp/<profile-id>` Grant Record，也可以引用已有的密码型密钥库条目。普通 FTP 会在界面中明确标记为未加密；FTPS 默认校验证书。FTP 仅使用被动模式，且忽略 PASV 响应中用于改变目标主机的地址，避免 FTP Bounce/SSRF。
+FTP Profiles are stored separately from SSH Profiles. An FTP Profile's own password uses the `dsh-ftp/<profile-id>` Grant Record, and it may also reference an existing password-type credential-vault entry. Plain FTP is clearly marked as unencrypted in the UI; FTPS validates certificates by default. FTP uses passive mode only and ignores addresses in PASV responses that would change the target host, avoiding FTP Bounce/SSRF.
 
-管理 API 和 Web UI只返回是否配置以及字段名，不返回任何凭据值。默认拒绝非回环地址的端口监听；若确实需要监听 `0.0.0.0`，必须在「远端 → 设置」中显式开启。
+The management API and Web UI return only whether a field is configured and its field name — never any credential value. Port listening on non-loopback addresses is denied by default; if listening on `0.0.0.0` is genuinely required, it must be explicitly enabled under "Remote → Settings".
 
-首次连接会拒绝未知主机密钥并展示 SHA-256 指纹。用户确认后才把指纹写入 Profile，后续连接严格比对。
+The first connection rejects unknown host keys and displays the SHA-256 fingerprint. Only after the user confirms is the fingerprint written into the Profile, and subsequent connections compare it strictly.
 
-## GitHub Gist 配置同步
+## GitHub Gist Configuration Sync
 
-所有同步选项都位于「远端 → SSH 面板 → 设置」。默认使用 GitHub OAuth Device Flow：点击“连接 GitHub”后，插件先在 DSH 内显示一次性设备代码和复制按钮，用户再从同一授权窗口打开 GitHub 官方设备授权页并粘贴代码；access token 由服务端直接写入 DSH 凭据服务，不经过浏览器，也不会出现在同步状态文件中。Personal Access Token 仅保留在“高级授权设置”中作为备用。
+All sync options live under "Remote → SSH Panel → Settings". GitHub OAuth Device Flow is used by default: after clicking "Connect GitHub", the plugin first shows a one-time device code and a copy button inside DSH, then the user opens GitHub's official device authorization page from the same authorization window and pastes the code; the access token is written directly into the DSH credential service by the server, never passing through the browser and never appearing in the sync state file. A Personal Access Token is kept only in "Advanced Authorization Settings" as a fallback.
 
-Device Flow 需要一个属于插件发布者的 GitHub OAuth App Client ID。Client ID 本身不是密钥，可公开分发；Client Secret 不得写入插件，而且此流程不需要 Client Secret。首次配置时：
+Device Flow requires a GitHub OAuth App Client ID belonging to the plugin publisher. The Client ID itself is not a secret and may be distributed publicly; the Client Secret must not be written into the plugin, and this flow does not need a Client Secret. On first setup:
 
-1. 在 GitHub Developer Settings 创建 OAuth App。
-2. 在 OAuth App 设置中启用 Device Flow。
-3. 将 Client ID 填入“高级授权设置”，保存后即可使用“连接 GitHub”。
+1. Create an OAuth App in GitHub Developer Settings.
+2. Enable Device Flow in the OAuth App settings.
+3. Fill the Client ID into "Advanced Authorization Settings"; after saving, "Connect GitHub" is ready to use.
 
-如果 DSH 所在网络不能直连 GitHub，可在同一页面的“本机运行设置”填写“GitHub 出站代理”并先执行网络测试。该地址只保存在本机 SSH 状态中，不参与 Gist 同步；支持 `http://` 与 `https://` 代理。留空时插件依次读取 `DSH_SSH_GITHUB_PROXY`、`HTTPS_PROXY` 和 `https_proxy`。设置页不会保存带账号密码的代理 URL，认证代理请通过 `DSH_SSH_GITHUB_PROXY` 环境变量配置。
+If the network where DSH runs cannot reach GitHub directly, fill in "GitHub Outbound Proxy" under "Local Runtime Settings" on the same page and run the network test first. That address is stored only in the local SSH state and does not participate in Gist sync; `http://` and `https://` proxies are supported. When left empty, the plugin reads `DSH_SSH_GITHUB_PROXY`, `HTTPS_PROXY`, and `https_proxy` in that order. The settings page does not save proxy URLs containing a username and password; configure authenticated proxies via the `DSH_SSH_GITHUB_PROXY` environment variable.
 
-授权只申请 `gist` scope。备用 classic personal access token 同样需要 `gist` scope；fine-grained token 是否可用取决于 GitHub 当前对 Gist 的权限支持。Gist ID 可以留空，首次同步时插件会自动创建一个私有 Gist。为避免主机地址等配置元数据公开，插件会拒绝公开 Gist。
+Authorization requests only the `gist` scope. The fallback classic personal access token also needs the `gist` scope; whether a fine-grained token works depends on GitHub's current permission support for Gists. The Gist ID may be left empty; on first sync the plugin automatically creates a private Gist. To keep configuration metadata such as host addresses from being exposed, the plugin rejects public Gists.
 
-同步范围：
+Sync scope:
 
-- SSH 主机、FTP/FTPS 连接与固定远端项目目录
-- 代理库及代理密码
-- 密钥库元数据，以及密码、私钥和私钥口令
-- 连接自身保存的 SSH/FTP 密码和内联代理密码
+- SSH hosts, FTP/FTPS connections, and pinned remote project directories
+- The proxy library and proxy passwords
+- Credential-vault metadata, plus passwords, private keys, and key passphrases
+- SSH/FTP passwords stored on the connections themselves and inline proxy passwords
 
-以下内容具有明确的本机边界，不会同步：
+The following have a clear local-machine boundary and are never synced:
 
-- 当前 DSH 会话的主机/文件授权、权限和工作目录
-- 本机端口转发规则
-- 公开端口绑定、命令超时和最大输出限制
-- GitHub Token 与同步加密密码本身
+- The current DSH session's host/file authorizations, permissions, and working directory
+- Local port-forwarding rules
+- Public port binds, command timeouts, and maximum output limits
+- The GitHub Token and the sync encryption password itself
 
-敏感字段在离开 DSH 前使用同步加密密码经 scrypt 派生密钥，并通过 AES-256-GCM 加密；Gist 中不包含明文密码或私钥。同步加密密码最少 6 个字符，仍建议使用 12 个以上字符的独立密码。该密码无法从 Gist 恢复，新设备必须输入相同密码，丢失后只能重新建立同步配置。
+Sensitive fields are encrypted before leaving DSH: a key is derived from the sync encryption password via scrypt, and data is sealed with AES-256-GCM; the Gist contains no plaintext passwords or private keys. The sync encryption password must be at least 6 characters; a dedicated password of 12 or more characters is still recommended. This password cannot be recovered from the Gist; a new device must enter the same password, and if it is lost you can only rebuild the sync configuration.
 
-三种策略只在两端同时发生变化时决定冲突方向：
+The three policies only decide the conflict direction when both sides have changed:
 
-- `智能`：按每条配置的更新时间合并，并使用删除墓碑避免旧设备复活已删除条目。
-- `本地优先`：双方都修改时使用当前设备配置。
-- `云端优先`：双方都修改时使用 Gist 配置。
+- `Smart`: merge by each entry's update time, using delete tombstones to prevent an old device from resurrecting deleted entries.
+- `Local First`: when both sides modified, use the current device's configuration.
+- `Cloud First`: when both sides modified, use the Gist configuration.
 
-空白新设备第一次连接已有 Gist 时始终先安全拉取云端，不会因为选择“本地优先”而覆盖已有配置。自动同步会在插件启动后、本地可同步配置变化约 3 秒后以及后台每 5 分钟运行；任务串行执行，避免并发覆盖。
+When a blank new device first connects to an existing Gist, it always safely pulls from the cloud first, and will not overwrite existing configuration just because "Local First" was chosen. Auto sync runs after plugin startup, about 3 seconds after locally syncable configuration changes, and in the background every 5 minutes; tasks execute serially to avoid concurrent overwrites.
 
-覆盖可能丢失的一侧之前，插件会在同一个 Gist 中创建显式备份文件，并按设置保留 0～50 份。该数量只控制 `dsh-ssh.backup.*.json` 文件；GitHub 自己维护的 Gist revision history 无法由插件裁剪。
+Before overwriting the side that may lose data, the plugin creates an explicit backup file in the same Gist and keeps 0–50 copies according to settings. That count controls only the `dsh-ssh.backup.*.json` files; the Gist revision history maintained by GitHub itself cannot be pruned by the plugin.
 
-设置页显示最近一次由 GitHub 返回的云端 Gist revision SHA（短格式展示，完整值保留在提示中）。创建、上传、下载、合并或连接测试都会刷新这个云端版本；它表示真实的 Gist 修订版本，不是固定的数据结构版本号。
+The settings page shows the cloud Gist revision SHA most recently returned by GitHub (displayed in short form, with the full value kept in the tooltip). Creating, uploading, downloading, merging, or running a connection test all refresh this cloud revision; it is the real Gist revision, not a fixed data-schema version number.
 
-## DSH 配置
+## DSH Configuration
 
-安装包后，bundle 会插入默认配置：
+After installing the package, the bundle inserts the default configuration:
 
 ```yaml
 - id: ssh
@@ -173,9 +176,9 @@ Device Flow 需要一个属于插件发布者的 GitHub OAuth App Client ID。Cl
     allowPublicBind: false
 ```
 
-插件依赖当前 DSH 的 `credentials` 和 `tools` 服务。浏览器管理还需要 Web Profile 的 `webServer`；浏览器终端和 AI 终端由插件内部按所有者隔离管理，不依赖 Host Root 中不存在的 `terminals` 服务。
+The plugin depends on the current DSH's `credentials` and `tools` services. Browser management additionally needs the Web Profile's `webServer`; browser terminals and AI terminals are managed internally by the plugin and isolated by owner, without depending on a `terminals` service that does not exist in the Host Root.
 
-## 开发与打包
+## Development & Packaging
 
 ```bash
 npm install
@@ -183,18 +186,18 @@ npm test
 npm pack --pack-destination dist
 ```
 
-运行时要求 Node.js 22.19+ 或 Node.js 24+，并与 DSH `0.1.1-rc.2` 接口对齐。
+The runtime requires Node.js 22.19+ or Node.js 24+, and is aligned with the DSH `0.1.1-rc.2` interfaces.
 
-## 终端隔离说明
+## Terminal Isolation Notes
 
-浏览器终端和 AI 终端共享同一个连接 Profile 与凭据，但不是同一个终端实例：
+Browser terminals and AI terminals share the same connection Profile and credentials, but are not the same terminal instance:
 
-- 浏览器终端由插件的同源管理 API 持有，页面关闭或空闲超时后清理。
-- AI 终端由插件按 `sessionId` 分区持有。Web Profile 的官方 Terminal 服务位于每个 Agent Preset 的私有 Realm，主机插件不能跨 Realm 注册 Backend，因此插件使用相同的 owner-scoped 规则实现 SSH 终端隔离，并在插件卸载或进程退出时统一清理。
-- 浏览器终端与右侧「SSH 活动」共用独立终端传输层。输出优先使用支持断线续传的 SSE 长连接实时推送，只有浏览器或反向代理不支持流式响应时才退回 cursor 增量轮询。
-- 键盘输入按序号并发发送，由服务端按序写入 TTY；临时网络失败会使用同一序号重试，既减少 HTTP 往返造成的排队延迟，也避免并发输入乱序。
-- AI 终端创建事件通过按会话隔离的 SSE 事件流通知 Web 客户端。首次订阅不重放旧终端，断线重连会按事件游标补发遗漏事件。
+- Browser terminals are held by the plugin's same-origin management API and cleaned up after the page closes or an idle timeout elapses.
+- AI terminals are held by the plugin, partitioned by `sessionId`. The Web Profile's official Terminal service lives in each Agent Preset's private Realm, and host plugins cannot register a Backend across Realms, so the plugin implements SSH terminal isolation using the same owner-scoped rules, cleaning up uniformly on plugin uninstall or process exit.
+- Browser terminals and the right-side "SSH Activity" share an independent terminal transport layer. Output prefers a resumable SSE long connection for real-time push, falling back to cursor-based incremental polling only when the browser or reverse proxy does not support streaming responses.
+- Keyboard input is sent concurrently with sequence numbers, and the server writes to the TTY in order; transient network failures retry with the same sequence number, reducing queueing delay from HTTP round trips while avoiding out-of-order concurrent input.
+- AI terminal creation events notify the Web client through a per-session isolated SSE event stream. The first subscription does not replay old terminals; reconnects resend missed events according to the event cursor.
 
-这种边界避免浏览器用户和模型同时争用同一个 TTY，也遵守 DSH 不允许跨 Agent 共享终端的所有权规则。
+This boundary keeps browser users and the model from contending for the same TTY, and also obeys DSH's ownership rule that terminals are not shared across Agents.
 
-会话授权模式会直接约束模型可见工具：选择「仅命令」时隐藏交互终端工具；选择「终端控制」时隐藏 `ssh_exec`，远端命令必须经 `ssh_terminal_open` / `ssh_terminal_send` 执行，因此输入和输出会显示在右侧 SSH 活动中。执行层会再次校验权限，不能通过直接调用绕过。
+The session authorization mode directly constrains the tools visible to the model: choosing "Commands Only" hides the interactive terminal tools; choosing "Terminal Control" hides `ssh_exec`, and remote commands must go through `ssh_terminal_open` / `ssh_terminal_send`, so input and output appear in the right-side SSH Activity. The execution layer validates permissions again; direct calls cannot bypass it.
