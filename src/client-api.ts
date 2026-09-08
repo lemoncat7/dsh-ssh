@@ -143,6 +143,15 @@ export function loadSftpDirectory(sessionId: string, profileId: string, path?: s
   if (path !== undefined) query.set('path', path)
   return api(`/activity/files?${query.toString()}`)
 }
+export function loadSftpPathEntry(sessionId: string, profileId: string, path: string): Promise<SftpEntryView> {
+  return api(`/activity/stat?${new URLSearchParams({ sessionId, profileId, path })}`)
+}
+export function loadLocalWorkspacePathEntry(sessionId: string, path: string): Promise<SftpEntryView> {
+  return api(`/activity/local-stat?${new URLSearchParams({ sessionId, path })}`)
+}
+export function loadProfileSftpPathEntry(profileId: string, path: string): Promise<SftpEntryView> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/stat?${new URLSearchParams({ path })}`)
+}
 export function loadLocalWorkspaceDirectory(sessionId: string, path?: string): Promise<SftpDirectoryView> {
   const query = new URLSearchParams({ sessionId })
   if (path !== undefined) query.set('path', path)

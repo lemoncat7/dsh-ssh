@@ -3,6 +3,7 @@ import net from 'node:net'
 import test from 'node:test'
 import { connectFtpProfile } from '../lib/ftp-adapter.js'
 import { connectSocket } from '../lib/proxy.js'
+import { scanRemoteTree } from '../lib/remote-tree-scan.js'
 
 test('FTP uses the routed dialer for both control and passive data connections', async t => {
   const server = await createFtpServer()
@@ -24,19 +25,61 @@ test('FTP uses the routed dialer for both control and passive data connections',
   t.after(() => session.close())
   const directory = await session.list('/')
   assert.equal(directory.path, '/')
-  assert.deepEqual(directory.entries.map(entry => [entry.name, entry.kind, entry.navigable ?? false, entry.size]), [['docs', 'directory', false, 0], ['hello.txt', 'file', false, 5], ['shortcut', 'symlink', true, 4]])
+  assert.deepEqual(directory.entries.map(entry => [entry.name, entry.kind, entry.navigable ?? false, entry.size]), [['docs', 'directory', false, 0], ['hello.txt', 'file', false, 5], ['shortcut', 'symlink', false, 4]])
   assert.deepEqual((await session.list('/docs')).entries.map(entry => [entry.name, entry.kind, entry.size]), [['readme.md', 'file', 7]])
   assert.equal(calls.length, 3)
   assert.equal(calls[0].port, server.port)
   assert.notEqual(calls[1].port, server.port)
+  assert.equal((await session.stat('/shortcut')).navigable, true)
+  assert.equal((await session.list('/shortcut')).path, '/docs')
   await session.move('/hello.txt', '/docs/hello.txt')
   assert.deepEqual((await session.list('/')).entries.map(entry => [entry.name, entry.kind]), [['docs', 'directory'], ['shortcut', 'symlink']])
   assert.deepEqual((await session.list('/docs')).entries.map(entry => [entry.name, entry.kind]), [['hello.txt', 'file'], ['readme.md', 'file']])
   await session.remove('/docs/hello.txt', true)
 })
 
-async function createFtpServer() {
+test('large FTP listings have constant command count and resolve only the requested link', async t => {
+  const rootListing = Array.from({ length: 3000 }, (_, i) => `-rw-r--r-- 1 test test 5 Jan 01 2026 file-${i}.txt\r\n`).join('')
+    + Array.from({ length: 1000 }, (_, i) => `lrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut-${i} -> docs\r\n`).join('')
+    + 'lrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut -> docs\r\n'
+  const server = await createFtpServer({ rootListing })
+  t.after(server.close)
+  const session = await connectFtpProfile({
+    id: 'large', name: 'Large', protocol: 'ftp', host: '127.0.0.1', port: server.port,
+    username: 'tester', proxy: { type: 'none' }, initialPath: '/', connectTimeoutMs: 3000,
+    createdAt: 0, updatedAt: 0,
+  }, 'secret', { connect: (host, port, _route, timeout, signal) => connectSocket(host, port, timeout, signal) })
+  t.after(() => session.close())
+  server.commands.length = 0
+  const directory = await session.list('/')
+  assert.equal(directory.entries.length, 4001)
+  assert.equal(directory.entries.find(entry => entry.name === 'shortcut').navigable, undefined)
+  assert.equal(server.commands.filter(command => command.startsWith('LIST')).length, 1)
+  assert.equal(server.commands.filter(command => command.startsWith('CWD')).length, 2)
+  assert.ok(server.commands.length <= 8, server.commands.join('\n'))
+
+  server.commands.length = 0
+  assert.equal((await session.stat('/shortcut')).navigable, true)
+  assert.deepEqual(server.commands.filter(command => command.startsWith('CWD /shortcut')), ['CWD /shortcut'])
+  server.commands.length = 0
+  assert.equal((await session.stat('/file-42.txt')).kind, 'file')
+  assert.equal(server.commands.filter(command => command.startsWith('CWD /shortcut')).length, 0)
+  assert.equal((await session.list('/shortcut')).path, '/docs')
+  await assert.rejects(session.list('/file-42.txt'), /Not a directory/)
+  assert.equal((await session.list('/docs')).path, '/docs', 'failed navigation restores control connection cwd')
+  const tasks = await scanRemoteTree(session, ['/'], new AbortController().signal)
+  assert.equal(tasks.length, 3001, 'recursive scans never follow links')
+  const aborted = new AbortController()
+  aborted.abort()
+  server.commands.length = 0
+  await assert.rejects(session.list('/', aborted.signal), /abort/i)
+  assert.deepEqual(server.commands, [], 'already cancelled work must not issue FTP commands')
+  assert.equal((await session.list('/docs')).path, '/docs')
+})
+
+async function createFtpServer({ rootListing } = {}) {
   const sockets = new Set()
+  const commands = []
   const passiveServers = new Set()
   let helloLocation = 'root'
   const control = net.createServer(socket => {
@@ -53,6 +96,7 @@ async function createFtpServer() {
       while (input.includes('\r\n')) {
         const end = input.indexOf('\r\n')
         const command = input.slice(0, end)
+        commands.push(command)
         input = input.slice(end + 2)
         const [verb] = command.split(' ', 1)
         if (verb === 'USER') socket.write('331 Password required\r\n')
@@ -77,7 +121,7 @@ async function createFtpServer() {
           const requested = command.slice(4).trim().split(/\s+/).filter(token => !token.startsWith('-')).at(-1) || cwd
           const root = `${helloLocation === 'root' ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}drwxr-xr-x 1 test test 0 Jan 01 2026 docs\r\nlrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut -> docs\r\n`
           const docs = `${helloLocation === 'docs' ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}-rw-r--r-- 1 test test 7 Jan 01 2026 readme.md\r\n`
-          passiveSocket?.end(requested === '/docs' ? docs : root)
+          passiveSocket?.end(requested === '/docs' ? docs : rootListing ?? root)
           setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive); passiveSocket = undefined }, 20)
         } else if (verb === 'RNFR') {
           socket.write(command.slice(5).trim() === '/hello.txt' && helloLocation === 'root' ? '350 Ready for destination\r\n' : '550 Not found\r\n')
@@ -94,6 +138,7 @@ async function createFtpServer() {
   await new Promise((resolve, reject) => { control.once('error', reject); control.listen(0, '127.0.0.1', resolve) })
   const address = control.address()
   return {
+    commands,
     port: address.port,
     close: async () => {
       for (const socket of sockets) socket.destroy()

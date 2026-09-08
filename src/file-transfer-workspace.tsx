@@ -215,6 +215,10 @@ function DownloadGlyph(): JSX.Element {
 
 function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, dropTarget, selected, selectedPaths, style, onSelect, onOpen, onDelete, onDirectoryTarget, onDropIntoDirectory, onDragSourceChange }: { entry: SftpEntryView; paneId: string; endpointId: string; sourceDirectory: string; dragSource?: TransferDragSource | undefined; dropTarget: boolean; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void; onDelete(): void; onDirectoryTarget(path?: string): void; onDropIntoDirectory(payload: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void }): JSX.Element {
   const directory = isNavigableRemoteEntry(entry)
+  // FTP defers unknown/link resolution until navigation; unverified entries
+  // must not become directory drop targets or recursive transfer roots.
+  const probeOnOpen = endpointId.startsWith('ftp:') && entry.navigable === undefined && (entry.kind === 'symlink' || entry.kind === 'other')
+  const canOpen = directory || probeOnOpen
   const acceptsDrop = directory && (dragSource === undefined || canTransferIntoRemoteDirectory(dragSource, dragSource.paths, { endpointId, directory: entry.path }))
   const dropIntoDirectory = (event: DragEvent): void => {
     if (!directory) return
@@ -228,12 +232,12 @@ function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, 
     data-ssh-context-row
     tabIndex={0}
     aria-selected={selected}
-    aria-label={`${entry.name}${directory ? '，目录，单击进入；可接收拖放' : ''}`}
+    aria-label={`${entry.name}${directory ? '，目录，单击进入；可接收拖放' : probeOnOpen ? '，单击尝试进入目录' : ''}`}
     draggable={entry.kind === 'file' || directory}
     className={`dsh-ssh-file-row is-${directory ? 'directory' : entry.kind}${selected ? ' is-selected' : ''}${dropTarget ? ' is-drop-target' : ''}`}
     style={style}
-    onClick={event => { if (directory && !event.ctrlKey && !event.metaKey && !event.shiftKey) onOpen(); else onSelect(event.ctrlKey || event.metaKey) }}
-    onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter' && directory) onOpen(); if (event.key === ' ') { event.preventDefault(); onSelect(event.ctrlKey || event.metaKey) } }}
+    onClick={event => { if (canOpen && !event.ctrlKey && !event.metaKey && !event.shiftKey) onOpen(); else onSelect(event.ctrlKey || event.metaKey) }}
+    onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter' && canOpen) onOpen(); if (event.key === ' ') { event.preventDefault(); onSelect(event.ctrlKey || event.metaKey) } }}
     onDragStart={event => { const paths = selected ? selectedPaths : [entry.path]; const source = { paneId, endpointId, directory: sourceDirectory, paths }; onDragSourceChange(source); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(REMOTE_FILES_DRAG_TYPE, JSON.stringify(source)) }}
     onDragEnd={() => onDragSourceChange(undefined)}
     onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && acceptsDrop) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = dragSource?.endpointId === endpointId ? 'move' : 'copy'; onDirectoryTarget(entry.path) } }}

@@ -21,7 +21,9 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - `src/sftp-adapter.ts` and `src/ftp-adapter.ts` implement that contract without leaking protocol details upward.
 - `src/network-dialer.ts` owns routed TCP creation for FTP control and passive data connections.
 - `src/endpoint-session-manager.ts` owns sequential, idle-reaped browser pane sessions.
+- FTP listing consumes LIST/MLSD metadata without per-entry CWD probes. Unknown/link navigability is resolved only on explicit navigation or single-entry stat; recursive transfers still skip links. Filename sorts share a reusable collator on each runtime, and browser panes retain virtualized rows for large directories. FTP must still receive the complete directory listing from the server; this is not wire-level pagination.
 - `src/file-transfer-manager.ts` owns bounded asynchronous jobs, recursive scans, stream backpressure, progress, cancellation, and cleanup.
+- `src/session-file-download.ts` owns bounded foreground downloads into the owning session directory. It reuses protocol adapters, validates local boundaries, streams into private staging files, and publishes with an exclusive hard link so existing targets are never overwritten. Tool visibility, approval and live session authorization stay in `src/file-transfer-tools.ts`; downloads are not background transfer jobs.
 - `src/connector.ts`, `src/terminal.ts`, `src/sftp.ts`, and `src/forwards.ts` retain SSH-specific resources and cleanup.
 
 ### Browser features

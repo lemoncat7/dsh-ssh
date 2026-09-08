@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -9,11 +9,13 @@ import {
   ApiError, deleteFileEndpointEntries, deleteLocalWorkspaceEntries, loadLocalWorkspaceDirectory, loadLocalWorkspaceFilePreview, loadProfileSftpDirectory, loadProfileSftpFilePreview,
   loadSftpDirectory, loadSftpFilePreview, localWorkspaceFileUrl, profileAddress, profileSftpFileUrl, sftpFileUrl,
   updateActivityDirectory, uploadProfileSftpFile,
+  loadLocalWorkspacePathEntry, loadProfileSftpPathEntry, loadSftpPathEntry,
   type ActivityProfileView, type ProfileView, type SftpDirectoryView, type SftpEntryView, type SftpFilePreviewView,
 } from './client-api.js'
 import { REMOTE_FILES_DRAG_TYPE, isNavigableRemoteEntry, parseRemoteFilesDragPayload, remoteDropOperation, type RemoteFilesDragPayload } from './file-transfer-intent.js'
 import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
+import { explorerInputPath } from './explorer-path.js'
 
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
@@ -23,6 +25,7 @@ interface SftpExplorerProps {
   workspace?: boolean
   loadDirectory(path: string, persist: boolean): Promise<SftpDirectoryView>
   loadPreview(path: string): Promise<SftpFilePreviewView>
+  loadPathEntry(path: string): Promise<SftpEntryView>
   fileUrl(path: string, inline?: boolean): string
   uploadFile?(directory: string, file: File, overwrite: boolean): Promise<unknown>
   operations?: RemoteFileOperations
@@ -48,14 +51,16 @@ interface PendingOverwriteUpload {
 }
 
 export function LocalWorkspaceBrowser({ sessionId }: { sessionId: string }): JSX.Element {
+  const loadPathEntry = useCallback((path: string) => loadLocalWorkspacePathEntry(sessionId, path), [sessionId])
   const loadDirectory = useCallback((path: string) => loadLocalWorkspaceDirectory(sessionId, path || undefined), [sessionId])
   const loadPreview = useCallback((path: string) => loadLocalWorkspaceFilePreview(sessionId, path), [sessionId])
   const fileUrl = useCallback((path: string, inline = false) => localWorkspaceFileUrl(sessionId, path, inline), [sessionId])
   const remove = useCallback((directory: string, paths: string[]) => deleteLocalWorkspaceEntries(sessionId, directory, paths), [sessionId])
-  return <SftpExplorer initialPath="" loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} deletion={{ locationName: '本地会话', locationKind: 'local', remove }} />
+  return <SftpExplorer key={sessionId} initialPath="" loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} deletion={{ locationName: '本地会话', locationKind: 'local', remove }} />
 }
 
 export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, onSaved }: { sessionId: string; profile: ActivityProfileView; profiles: ActivityProfileView[]; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
+  const loadPathEntry = useCallback((path: string) => loadSftpPathEntry(sessionId, profile.id, path), [sessionId, profile.id])
   const loadDirectory = useCallback(async (target: string, persist: boolean) => {
     const cwd = persist ? (await updateActivityDirectory(sessionId, profile.id, target)).cwd : target
     const directory = await loadSftpDirectory(sessionId, profile.id, cwd)
@@ -72,10 +77,11 @@ export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, o
     <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
     <label><span className="sr-only">选择远端主机</span><select value={profile.id} onChange={event => onProfile(event.target.value)}>{profiles.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><small>{profile.username}@{profile.host}:{profile.port}</small></label>
   </div>
-  return <SftpExplorer initialPath={profile.cwd} header={header} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
+  return <SftpExplorer key={`${sessionId}:${profile.id}`} initialPath={profile.cwd} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
 }
 
 export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean }): JSX.Element {
+  const loadPathEntry = useCallback((path: string) => loadProfileSftpPathEntry(profile.id, path), [profile.id])
   const loadDirectory = useCallback((path: string) => loadProfileSftpDirectory(profile.id, path), [profile.id])
   const loadPreview = useCallback((path: string) => loadProfileSftpFilePreview(profile.id, path), [profile.id])
   const fileUrl = useCallback((path: string, inline = false) => profileSftpFileUrl(profile.id, path, inline), [profile.id])
@@ -85,11 +91,13 @@ export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, 
   const remove = useCallback((directory: string, paths: string[]) => deleteFileEndpointEntries({ paneId, endpointId, directory, paths }), [endpointId, paneId])
   return <div className={`dsh-ssh-profile-sftp-pane${embedded ? ' is-embedded' : ''}`}>
     <div className="dsh-ssh-content-heading"><div><h1>{embedded ? 'SFTP' : `${profile.name} · SFTP`}</h1><p>{embedded ? initialPath : `${profileAddress(profile)} · ${initialPath}`}</p></div><div className="dsh-ssh-heading-actions">{onDelete && <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button>}{onEdit && <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button>}</div></div>
-    <SftpExplorer workspace initialPath={initialPath} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
+    <SftpExplorer key={profile.id} workspace initialPath={initialPath} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
   </div>
 }
 
-function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, loadPreview, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, loadPreview, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+  const navigationId = useRef(0)
+  const errorId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
   const [directory, setDirectory] = useState<SftpDirectoryView>()
@@ -105,14 +113,32 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
   const [operationMessage, setOperationMessage] = useState<string>()
   const [error, setError] = useState<string>()
   const browse = useCallback(async (target: string, persist: boolean) => {
+    const request = ++navigationId.current
     setLoading(true); setError(undefined); setOpenedFile(undefined); setPendingOverwrite(undefined)
     try {
       const next = await loadDirectory(target, persist)
+      if (request !== navigationId.current) return
       setDirectory(next); setPath(next.path)
-    } catch (reason) { setError(errorMessage(reason)) } finally { setLoading(false) }
+    } catch (reason) { if (request === navigationId.current) setError(errorMessage(reason)) } finally { if (request === navigationId.current) setLoading(false) }
   }, [loadDirectory])
-  useEffect(() => { void browse(initialPath, false) }, [browse, initialPath])
-  const submit = (event: FormEvent): void => { event.preventDefault(); void browse(path, true) }
+  useEffect(() => { void browse(initialPath, false); return () => { navigationId.current++ } }, [browse, initialPath])
+  const openEntry = (entry: SftpEntryView): void => {
+    if (isNavigableRemoteEntry(entry)) { void browse(entry.path, true); return }
+    navigationId.current++; setLoading(false); setError(undefined); setPath(directory?.path ?? initialPath); setOpenedFile(entry)
+  }
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault()
+    if (loading) return
+    const request = ++navigationId.current
+    setLoading(true); setError(undefined)
+    try {
+      const entry = await loadPathEntry(explorerInputPath(path, directory?.path ?? initialPath))
+      if (request !== navigationId.current) return
+      if (entry.kind !== 'directory' && entry.kind !== 'file') throw new Error('此路径不是普通文件或目录，请检查路径后重试')
+      openEntry(entry)
+    } catch (reason) { if (request === navigationId.current) setError(errorMessage(reason)) }
+    finally { if (request === navigationId.current) setLoading(false) }
+  }
   const uploadFiles = async (files: File[], targetDirectory = directory?.path, overwriteFirst = false): Promise<void> => {
     if (uploadFile === undefined || targetDirectory === undefined || files.length === 0) return
     const accepted = files.filter(file => file.size <= MAX_UPLOAD_BYTES)
@@ -188,15 +214,15 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
   return <div className={`dsh-ssh-sftp${workspace ? ' is-workspace' : ''}${draggingFiles ? ' is-dragging-files' : ''}`} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
     {header}
     {openedFile ? <SftpFilePreview entry={openedFile} loadPreview={loadPreview} fileUrl={fileUrl} onBack={() => setOpenedFile(undefined)} /> : <>
-      <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}`} onSubmit={submit}>
+      <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}`} aria-busy={loading} onSubmit={event => { void submit(event) }}>
         <button type="button" aria-label="返回上级目录" title="返回上级目录" disabled={directory?.parent == null || loading} onClick={() => { if (directory?.parent) void browse(directory.parent, true) }}><IconChevronLeftOutline14 size={14} /></button>
-        <input aria-label="当前远端目录" value={path} spellCheck={false} onChange={event => setPath(event.target.value)} />
+        <input aria-label="目录或文件路径" title="输入目录进入，输入文件路径打开预览；按 Enter 确认" placeholder="目录或文件路径，按 Enter 打开" value={path} readOnly={loading} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} spellCheck={false} onChange={event => { setPath(event.target.value); setError(undefined) }} onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault() }} />
         <button type="button" aria-label="刷新目录" title="刷新目录" disabled={loading} onClick={() => { void browse(directory?.path ?? path, false) }}><IconRefreshOutline16 size={15} /></button>
         {uploadFile !== undefined && <><input ref={fileInputRef} className="sr-only" type="file" multiple tabIndex={-1} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length > 0) void uploadFiles(files) }} /><button type="button" className="dsh-ssh-sftp-upload-button" disabled={directory === undefined || uploading !== undefined || pendingOverwrite !== undefined} onClick={() => fileInputRef.current?.click()}><IconSendOutline14 size={14} />{uploading === undefined ? '上传' : '上传中'}</button></>}
       </form>
       {pendingOverwrite !== undefined && <div className="dsh-ssh-upload-conflict" role="alert"><span><strong>同名文件已存在</strong><small>{pendingOverwrite.file.name}</small></span><span><button type="button" onClick={() => { const pending = pendingOverwrite; setPendingOverwrite(undefined); void uploadFiles(pending.remaining, pending.directory) }}>跳过</button><button type="button" className="is-primary" disabled={uploading !== undefined} onClick={() => { const pending = pendingOverwrite; void uploadFiles([pending.file, ...pending.remaining], pending.directory, true) }}>覆盖上传</button></span></div>}
       {operationMessage && <div className="dsh-ssh-sftp-operation-status" role="status"><span>{operationMessage}</span><button type="button" aria-label="关闭提示" onClick={() => setOperationMessage(undefined)}><IconCloseOutline16 size={14} /></button></div>}
-      {error && <p className="dsh-ssh-directory-error" role="alert">{error}</p>}
+      {error && <p id={errorId} className="dsh-ssh-directory-error" role="alert">{error}</p>}
       <div className="dsh-ssh-sftp-table dsh-ssh-scroll-surface" aria-busy={loading}>
         <div className="dsh-ssh-sftp-columns"><span>名称</span><span>大小</span><span>修改时间</span><span aria-hidden="true" /></div>
         {loading && directory === undefined ? <p className="dsh-ssh-sftp-state">正在读取远端目录…</p>
@@ -206,8 +232,8 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
               const dragOperation = remoteDragSource === undefined || operations === undefined ? undefined : remoteDropOperation(remoteDragSource, { endpointId: operations.endpointId, directory: entry.path })
               const acceptsRemoteDrop = directoryEntry && dragOperation !== 'none' && dragOperation !== 'invalid'
               return <div role="row" tabIndex={0} aria-label={`${entry.name}${directoryEntry ? '，目录，单击进入；可接收拖放' : '，文件，单击预览'}`} data-ssh-interactive="row" data-ssh-context-row draggable={operations !== undefined && (entry.kind === 'file' || directoryEntry)} className={`dsh-ssh-sftp-row is-${directoryEntry ? 'directory' : entry.kind}${remoteDropTarget === entry.path ? ' is-drop-target' : ''}`} key={entry.path}
-                onClick={() => { if (directoryEntry) void browse(entry.path, true); else setOpenedFile(entry) }}
-                onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === 'Enter') { if (directoryEntry) void browse(entry.path, true); else setOpenedFile(entry) } }}
+                onClick={() => openEntry(entry)}
+                onKeyDown={event => { if (event.target === event.currentTarget && event.key === 'Enter') openEntry(entry) }}
                 onDragStart={event => { if (operations === undefined || directory === undefined) return; const source = { paneId: operations.paneId, endpointId: operations.endpointId, directory: directory.path, paths: [entry.path] }; setRemoteDragSource(source); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(REMOTE_FILES_DRAG_TYPE, JSON.stringify(source)) }}
                 onDragEnd={() => { setRemoteDragSource(undefined); setRemoteDropTarget(undefined) }}
                 onDragOver={event => { const fileDrop = canDropFiles && isFileDrag(event); if (!directoryEntry || (!fileDrop && !isRemoteDrag(event)) || (!fileDrop && !acceptsRemoteDrop)) return; event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = fileDrop || dragOperation !== 'move' ? 'copy' : 'move'; setRemoteDropTarget(entry.path) }}

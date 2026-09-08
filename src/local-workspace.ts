@@ -2,9 +2,16 @@ import { createReadStream } from 'node:fs'
 import { lstat, open, readdir, realpath, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
-import { mimeTypeFor, previewKind, type SftpDirectoryView, type SftpFilePreview } from './sftp.js'
+import { mimeTypeFor, previewKind, type SftpDirectoryEntry, type SftpDirectoryView, type SftpFilePreview } from './sftp.js'
 
 const MAX_PREVIEW_BYTES = 1_048_576
+
+export async function statLocalWorkspacePath(root: string, requestedPath: string): Promise<SftpDirectoryEntry> {
+  const target = await resolveInside(await realpath(root), requestedPath)
+  const attributes = await stat(target)
+  return { path: target, name: path.basename(target), size: attributes.size, modifiedAt: attributes.mtimeMs,
+    kind: attributes.isDirectory() ? 'directory' : attributes.isFile() ? 'file' : 'other' }
+}
 
 export async function listLocalWorkspace(root: string, requestedPath?: string): Promise<SftpDirectoryView> {
   const boundary = await realpath(root)

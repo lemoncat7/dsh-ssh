@@ -1,3 +1,5 @@
+import { compareFileNames } from './file-name-compare.js'
+
 export type FileEntrySortKey = 'name' | 'size' | 'modifiedAt'
 export type FileEntrySortDirection = 'asc' | 'desc'
 
@@ -20,13 +22,13 @@ export function sortFileEntries<T extends SortableFileEntry>(entries: readonly T
 
     const compared = compareValue(left.entry, right.entry, key)
     if (compared !== 0) return compared * multiplier
-    const byName = left.entry.name.localeCompare(right.entry.name, undefined, { numeric: true, sensitivity: 'base' })
+    const byName = key === 'name' ? 0 : compareFileNames(left.entry.name, right.entry.name)
     if (byName !== 0) return byName
     return left.index - right.index
   }).map(item => item.entry)
 }
 
 function compareValue(left: SortableFileEntry, right: SortableFileEntry, key: FileEntrySortKey): number {
-  if (key === 'name') return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
+  if (key === 'name') return compareFileNames(left.name, right.name)
   return left[key] - right[key]
 }

@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { compareFileNames } from './file-name-compare.js'
 import type { Readable, Writable } from 'node:stream'
 
 export type RemoteEndpointKind = 'sftp' | 'ftp'
@@ -78,6 +79,6 @@ export function sortRemoteEntries(entries: RemoteFileEntry[]): RemoteFileEntry[]
   return entries.sort((left, right) => {
     if (left.kind === 'directory' && right.kind !== 'directory') return -1
     if (left.kind !== 'directory' && right.kind === 'directory') return 1
-    return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
+    return compareFileNames(left.name, right.name)
   })
 }

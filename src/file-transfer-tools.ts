@@ -6,22 +6,43 @@ import type { TransferConflictPolicy } from './file-transfer-manager.js'
 import { FileTransferManager } from './file-transfer-manager.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
 import { SshStore } from './store.js'
+import { SessionFileDownloads } from './session-file-download.js'
 
-const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'file_transfer_start', 'file_transfer_status', 'file_transfer_cancel'])
-const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel'])
+const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'file_transfer_start', 'file_transfer_status', 'file_transfer_cancel', 'file_download_to_local'])
+const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel', 'file_download_to_local'])
 const output = { schema: { type: 'string' as const }, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String(value) }] }
 
 export function registerFileTransferTools(ctx: Context, store: SshStore, files: RemoteFileSystems, transfers: FileTransferManager): () => void {
-  const definitions = [endpointListTool(store, files), directoryListTool(store, files), transferStartTool(store, transfers), transferStatusTool(store, transfers), transferCancelTool(store, transfers)]
+  const downloads = new SessionFileDownloads(files)
+  const definitions = [endpointListTool(store, files), directoryListTool(store, files), transferStartTool(store, transfers), transferStatusTool(store, transfers), transferCancelTool(store, transfers), downloadTool(store, downloads)]
   const disposers = definitions.map(definition => ctx.tools.register(definition))
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
-    if (exec.name !== 'file_transfer_start') return next()
+    if (exec.name !== 'file_transfer_start' && exec.name !== 'file_download_to_local') return next()
     const injection = exec.agent === undefined ? undefined : store.injection(exec.agent.session.id)
     if (injection?.requireFileApproval !== true) return next()
-    return { kind: 'ask', reason: 'The conversation requested a remote file transfer between authorized endpoints.' }
+    return { kind: 'ask', reason: exec.name === 'file_download_to_local' ? 'Download an authorized remote file into the current DSH session directory.' : 'The conversation requested a remote file transfer between authorized endpoints.' }
   })
   const disposeVisibility = installVisibility(ctx, store)
-  return () => { disposeVisibility(); disposeApproval(); for (const dispose of disposers.reverse()) dispose() }
+  return () => { downloads.close(); disposeVisibility(); disposeApproval(); for (const dispose of disposers.reverse()) dispose() }
+}
+
+function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDefinition {
+  return tool('file_download_to_local', 'Download one file from an authorized FTP, FTPS or SFTP endpoint into the current DSH session directory. Default: preserve the remote filename directly in that directory. Optional localPath is relative to the session directory; its parent must already exist. Never overwrite existing files. Returns the actual saved localPath only after completion. This is DSH-host local storage, NOT the browser Downloads folder. Prefer this tool over SSH commands, temporary servers or terminal encoding. Requires file transfer permission/approval. Maximum 512 MiB per file, 5 minutes; cancellation/failure removes staging data. Directory download is not supported.', {
+    endpointId: { type: 'string', required: true, description: 'Exact authorized endpoint id from file_endpoint_list.' },
+    remotePath: { type: 'string', required: true, description: 'Remote file path, not a directory.' },
+    localPath: { type: 'string', description: 'Optional relative filename/path under the current session directory. Defaults to the remote filename. Parent directory must exist.' },
+  }, async (raw, exec) => {
+    const args = object(raw), endpointId = text(args.endpointId, 'endpointId', 110)
+    const owner = requireEndpoint(store, exec, endpointId, true)
+    const sessionDirectory = owner.session.header.cwd
+    if (!sessionDirectory) throw new Error('当前会话没有本地工作目录，不能下载')
+    const assertAllowed = (): void => {
+      requireEndpoint(store, exec, endpointId, true)
+      if (owner.session.header.cwd !== sessionDirectory) throw new Error('会话目录已更新，请重新下载')
+    }
+    return json(await downloads.download({ endpointId, remotePath: rawText(args.remotePath, 'remotePath', 4096), sessionDirectory,
+      ...(args.localPath === undefined ? {} : { localPath: rawText(args.localPath, 'localPath', 4096) }) }, exec.signal, assertAllowed))
+  })
 }
 
 function endpointListTool(store: SshStore, files: RemoteFileSystems): ToolDefinition {
@@ -128,6 +149,7 @@ function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStor
     name: 'dsh-ssh:file-access',
     text: `Remote file access is limited to explicitly authorized endpoints. Permission: ${injection.filePermission}.
 For any file listing or transfer request, use file_endpoint_list, file_directory_list, and the available file_transfer_* tools before considering SSH commands. Never guess endpoint ids or paths.
+For downloading a remote file for this conversation, use file_download_to_local. It defaults to the current DSH session directory; report its returned localPath. Do not invent a sandbox URL or claim it was saved to the browser's Downloads folder.
 Never start an HTTP or other file server, open a temporary port, encode a file through a terminal, or invent another transport for file delivery.
 For a download to the user's browser-local computer, do not run terminal commands: directly tell the user to select the file in SSH → 文件传输 and click “下载到本地”. The conversation tool cannot attach those remote bytes itself.
 If the requested source or destination is not authorized, explain that directly instead of attempting a workaround.`,

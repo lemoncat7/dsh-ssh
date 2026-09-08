@@ -13,9 +13,9 @@ import { setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
 import { normalizeGitHubProxy } from './github-http.js'
-import { listSftpDirectory, openSftpFile, readSftpFilePreview, uploadSftpFile } from './sftp.js'
+import { listSftpDirectory, openSftpFile, readSftpFilePreview, statSftpPath, uploadSftpFile } from './sftp.js'
 import { ActivityEventBus, streamActivityEvents } from './activity-events.js'
-import { deleteLocalWorkspaceEntries, listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview } from './local-workspace.js'
+import { deleteLocalWorkspaceEntries, listLocalWorkspace, openLocalWorkspaceFile, readLocalWorkspacePreview, statLocalWorkspacePath } from './local-workspace.js'
 import { connectFtpProfile } from './ftp-adapter.js'
 import { NetworkDialer } from './network-dialer.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
@@ -368,6 +368,9 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && segments[2] === 'sftp') {
       requiredProfile(runtime.store, id)
       const operation = segments[3]
+      if (method === 'GET' && operation === 'stat' && segments.length === 4) {
+        return sendJson(res, 200, await statSftpPath(runtime.connector, id, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+      }
       if (method === 'GET' && operation === 'directory' && segments.length === 4) {
         return sendJson(res, 200, await listSftpDirectory(runtime.connector, id, url.searchParams.get('path') ?? '~'))
       }
@@ -528,6 +531,18 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
 
   if (segments[0] === 'activity') {
     const sessionId = url.searchParams.get('sessionId')
+    if (method === 'GET' && segments[1] === 'local-stat' && segments.length === 2) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      const cwd = runtime.sessionCwd(sessionId)
+      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      return sendJson(res, 200, await statLocalWorkspacePath(cwd, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+    }
+    if (method === 'GET' && segments[1] === 'stat' && segments.length === 2) {
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      const profileId = requireText(url.searchParams.get('profileId'), 'profileId', 100)
+      requireActivityProfile(runtime.store, sessionId, profileId)
+      return sendJson(res, 200, await statSftpPath(runtime.connector, profileId, requireRawText(url.searchParams.get('path'), 'path', 4096)))
+    }
     if (method === 'GET' && segments[1] === 'local-directory' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)

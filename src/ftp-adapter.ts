@@ -82,14 +82,10 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
   async list(value: string, signal?: AbortSignal): Promise<RemoteDirectoryView> {
     const requested = value.trim() || this.profile.initialPath
     const resolved = await this.resolveDirectory(requested, signal)
-    const entries: RemoteFileEntry[] = []
-    for (const entry of await this.run(this.client.list(resolved), signal)) {
-      const mapped = ftpEntry(resolved, entry)
-      if (mapped.kind === 'symlink' || mapped.kind === 'other') {
-        mapped.navigable = await this.isDirectory(mapped.path, signal)
-      }
-      entries.push(mapped)
-    }
+    // LIST/MLSD already provides regular file/directory metadata. Do not issue
+    // serial CWD/PWD probes for every link: navigation resolves only the clicked
+    // path. Keep unknown navigability distinct from a verified directory.
+    const entries = (await this.run(() => this.client.list(resolved), signal)).map(entry => ftpEntry(resolved, entry))
     return { path: resolved, parent: remoteParent(resolved), entries: sortRemoteEntries(entries) }
   }
 
@@ -97,13 +93,16 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
     const normalized = value.replaceAll('\\', '/').replace(/\/+$/, '') || '/'
     if (normalized === '/') return { name: '/', path: '/', kind: 'directory', size: 0, modifiedAt: 0 }
     const parent = remoteParent(normalized) ?? '/'
-    const match = (await this.list(parent, signal)).entries.find(entry => entry.name === remoteName(normalized))
+    const resolved = await this.resolveDirectory(parent, signal)
+    const info = (await this.run(() => this.client.list(resolved), signal)).find(entry => entry.name === remoteName(normalized))
+    const match = info === undefined ? undefined : ftpEntry(resolved, info)
     if (match === undefined) throw Object.assign(new Error(`remote path ${value} was not found`), { status: 404 })
+    if (match.kind === 'symlink' || match.kind === 'other') match.navigable = await this.isDirectory(match.path, signal)
     return match
   }
 
   async download(value: string, destination: Writable, signal?: AbortSignal): Promise<void> {
-    await this.run(this.client.downloadTo(destination, value), signal)
+    await this.run(() => this.client.downloadTo(destination, value), signal)
   }
 
   async upload(value: string, source: Readable, overwrite: boolean, signal?: AbortSignal): Promise<void> {
@@ -111,33 +110,33 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
       try { await this.stat(value, signal); throw Object.assign(new Error('A file with this name already exists'), { status: 409 }) }
       catch (error) { if ((error as { status?: number }).status !== 404) throw error }
     }
-    await this.run(this.client.uploadFrom(source, value), signal)
+    await this.run(() => this.client.uploadFrom(source, value), signal)
   }
 
-  async ensureDirectory(value: string, signal?: AbortSignal): Promise<void> { await this.run(this.client.ensureDir(value), signal) }
+  async ensureDirectory(value: string, signal?: AbortSignal): Promise<void> { await this.run(() => this.client.ensureDir(value), signal) }
 
   async move(sourcePath: string, destinationPath: string, signal?: AbortSignal): Promise<void> {
     try { await this.stat(destinationPath, signal); throw Object.assign(new Error('destination already contains an entry with this name'), { status: 409 }) }
     catch (error) { if ((error as { status?: number }).status !== 404) throw error }
-    await this.run(this.client.rename(sourcePath, destinationPath), signal)
+    await this.run(() => this.client.rename(sourcePath, destinationPath), signal)
   }
 
   async remove(value: string, recursive: boolean, signal?: AbortSignal): Promise<void> {
     const entry = await this.stat(value, signal)
     if (entry.kind === 'directory') {
       if (!recursive) throw Object.assign(new Error('remote path is a directory'), { status: 409 })
-      await this.run(this.client.removeDir(value), signal)
+      await this.run(() => this.client.removeDir(value), signal)
       return
     }
-    await this.run(this.client.remove(value), signal)
+    await this.run(() => this.client.remove(value), signal)
   }
 
   close(): void { if (!this.closed) { this.closed = true; this.client.close() } }
 
   private async resolveDirectory(value: string, signal?: AbortSignal): Promise<string> {
-    const previous = await this.run(this.client.pwd(), signal)
-    try { await this.run(this.client.cd(value), signal); return await this.run(this.client.pwd(), signal) }
-    finally { await this.run(this.client.cd(previous), signal).catch(() => {}) }
+    const previous = await this.run(() => this.client.pwd(), signal)
+    try { await this.run(() => this.client.cd(value), signal); return await this.run(() => this.client.pwd(), signal) }
+    finally { await this.run(() => this.client.cd(previous), signal).catch(() => {}) }
   }
 
   private async isDirectory(value: string, signal?: AbortSignal): Promise<boolean> {
@@ -145,13 +144,13 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
     catch { signal?.throwIfAborted(); return false }
   }
 
-  private async run<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  private async run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (this.closed) throw new Error('FTP session is closed')
     signal?.throwIfAborted()
-    if (signal === undefined) return operation
+    if (signal === undefined) return operation()
     const abort = (): void => this.close()
     signal.addEventListener('abort', abort, { once: true })
-    try { return await operation }
+    try { return await operation() }
     finally { signal.removeEventListener('abort', abort) }
   }
 }
