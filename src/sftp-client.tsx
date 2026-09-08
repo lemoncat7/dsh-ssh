@@ -16,10 +16,13 @@ import { REMOTE_FILES_DRAG_TYPE, isNavigableRemoteEntry, parseRemoteFilesDragPay
 import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
 import { explorerInputPath } from './explorer-path.js'
+import { FileNameTooltip } from './file-name-tooltip.js'
+import { NativeDirectoryButton } from './native-directory-button.js'
 
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
 interface SftpExplorerProps {
+  nativeSessionId?: string
   initialPath: string
   header?: ReactNode
   workspace?: boolean
@@ -56,7 +59,7 @@ export function LocalWorkspaceBrowser({ sessionId }: { sessionId: string }): JSX
   const loadPreview = useCallback((path: string) => loadLocalWorkspaceFilePreview(sessionId, path), [sessionId])
   const fileUrl = useCallback((path: string, inline = false) => localWorkspaceFileUrl(sessionId, path, inline), [sessionId])
   const remove = useCallback((directory: string, paths: string[]) => deleteLocalWorkspaceEntries(sessionId, directory, paths), [sessionId])
-  return <SftpExplorer key={sessionId} initialPath="" loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} deletion={{ locationName: '本地会话', locationKind: 'local', remove }} />
+  return <SftpExplorer key={sessionId} nativeSessionId={sessionId} initialPath="" loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} deletion={{ locationName: '本地会话', locationKind: 'local', remove }} />
 }
 
 export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, onSaved }: { sessionId: string; profile: ActivityProfileView; profiles: ActivityProfileView[]; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
@@ -95,7 +98,8 @@ export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, 
   </div>
 }
 
-function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, loadPreview, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+function SftpExplorer({ initialPath, nativeSessionId, header, workspace = false, loadDirectory, loadPreview, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
   const navigationId = useRef(0)
   const errorId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -169,25 +173,29 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
   const isFileDrag = (event: DragEvent<HTMLDivElement>): boolean => Array.from(event.dataTransfer.types).includes('Files')
   const isRemoteDrag = (event: DragEvent<HTMLElement>): boolean => Array.from(event.dataTransfer.types).includes(REMOTE_FILES_DRAG_TYPE)
   const handleDragEnter = (event: DragEvent<HTMLDivElement>): void => {
-    if (!canDropFiles || !isFileDrag(event)) return
-    event.preventDefault(); dragDepthRef.current += 1; setDraggingFiles(true)
+    if (uploadFile === undefined || !isFileDrag(event)) return
+    event.preventDefault(); event.stopPropagation()
+    dragDepthRef.current += 1
+    if (canDropFiles) setDraggingFiles(true)
   }
   const handleDragOver = (event: DragEvent<HTMLDivElement>): void => {
-    if (canDropFiles && isFileDrag(event)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; return }
+    if (uploadFile !== undefined && isFileDrag(event)) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = canDropFiles ? 'copy' : 'none'; return }
     if (operations === undefined || directory === undefined || !isRemoteDrag(event)) return
     const operation = remoteDragSource === undefined ? 'copy' : remoteDropOperation(remoteDragSource, { endpointId: operations.endpointId, directory: directory.path })
     if (operation === 'none' || operation === 'invalid') return
     event.preventDefault(); event.dataTransfer.dropEffect = operation
   }
   const handleDragLeave = (event: DragEvent<HTMLDivElement>): void => {
-    if (!isFileDrag(event)) return
+    if (uploadFile === undefined || !isFileDrag(event)) return
+    event.stopPropagation()
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
     if (dragDepthRef.current === 0) setDraggingFiles(false)
   }
   const handleDrop = (event: DragEvent<HTMLDivElement>): void => {
     dragDepthRef.current = 0; setDraggingFiles(false)
-    if (canDropFiles && isFileDrag(event)) {
-      event.preventDefault()
+    if (uploadFile !== undefined && isFileDrag(event)) {
+      event.preventDefault(); event.stopPropagation()
+      if (!canDropFiles) { setError('当前无法上传，请等待目录加载或当前上传完成后重试'); return }
       const files = Array.from(event.dataTransfer.files)
       if (files.length > 0) void uploadFiles(files)
       return
@@ -211,13 +219,15 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
     await deletion.remove(directory.path, [deleteTarget.path])
     await browse(directory.path, false)
   }
-  return <div className={`dsh-ssh-sftp${workspace ? ' is-workspace' : ''}${draggingFiles ? ' is-dragging-files' : ''}`} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+  const content = <div className={`dsh-ssh-sftp${workspace || expanded ? ' is-workspace' : ''}${draggingFiles ? ' is-dragging-files' : ''}`} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
     {header}
-    {openedFile ? <SftpFilePreview entry={openedFile} loadPreview={loadPreview} fileUrl={fileUrl} onBack={() => setOpenedFile(undefined)} /> : <>
-      <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}`} aria-busy={loading} onSubmit={event => { void submit(event) }}>
+    {openedFile ? <SftpFilePreview entry={openedFile} loadPreview={loadPreview} fileUrl={fileUrl} onBack={() => setOpenedFile(undefined)} inDirectoryModal={expanded} /> : <>
+      <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}${nativeSessionId === undefined ? '' : ' has-native-open'}`} aria-busy={loading} onSubmit={event => { void submit(event) }}>
         <button type="button" aria-label="返回上级目录" title="返回上级目录" disabled={directory?.parent == null || loading} onClick={() => { if (directory?.parent) void browse(directory.parent, true) }}><IconChevronLeftOutline14 size={14} /></button>
         <input aria-label="目录或文件路径" title="输入目录进入，输入文件路径打开预览；按 Enter 确认" placeholder="目录或文件路径，按 Enter 打开" value={path} readOnly={loading} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} spellCheck={false} onChange={event => { setPath(event.target.value); setError(undefined) }} onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault() }} />
         <button type="button" aria-label="刷新目录" title="刷新目录" disabled={loading} onClick={() => { void browse(directory?.path ?? path, false) }}><IconRefreshOutline16 size={15} /></button>
+        <button type="button" aria-label={expanded ? '收起目录弹窗' : '展开目录'} title={expanded ? '收起目录弹窗' : '在弹窗中打开目录'} disabled={directory === undefined} onClick={() => setExpanded(value => !value)}><IconFullscreenOutline16 size={16} /></button>
+        {nativeSessionId !== undefined && <NativeDirectoryButton sessionId={nativeSessionId} path={directory?.path} onMessage={setOperationMessage} />}
         {uploadFile !== undefined && <><input ref={fileInputRef} className="sr-only" type="file" multiple tabIndex={-1} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length > 0) void uploadFiles(files) }} /><button type="button" className="dsh-ssh-sftp-upload-button" disabled={directory === undefined || uploading !== undefined || pendingOverwrite !== undefined} onClick={() => fileInputRef.current?.click()}><IconSendOutline14 size={14} />{uploading === undefined ? '上传' : '上传中'}</button></>}
       </form>
       {pendingOverwrite !== undefined && <div className="dsh-ssh-upload-conflict" role="alert"><span><strong>同名文件已存在</strong><small>{pendingOverwrite.file.name}</small></span><span><button type="button" onClick={() => { const pending = pendingOverwrite; setPendingOverwrite(undefined); void uploadFiles(pending.remaining, pending.directory) }}>跳过</button><button type="button" className="is-primary" disabled={uploading !== undefined} onClick={() => { const pending = pendingOverwrite; void uploadFiles([pending.file, ...pending.remaining], pending.directory, true) }}>覆盖上传</button></span></div>}
@@ -233,13 +243,13 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
               const acceptsRemoteDrop = directoryEntry && dragOperation !== 'none' && dragOperation !== 'invalid'
               return <div role="row" tabIndex={0} aria-label={`${entry.name}${directoryEntry ? '，目录，单击进入；可接收拖放' : '，文件，单击预览'}`} data-ssh-interactive="row" data-ssh-context-row draggable={operations !== undefined && (entry.kind === 'file' || directoryEntry)} className={`dsh-ssh-sftp-row is-${directoryEntry ? 'directory' : entry.kind}${remoteDropTarget === entry.path ? ' is-drop-target' : ''}`} key={entry.path}
                 onClick={() => openEntry(entry)}
-                onKeyDown={event => { if (event.target === event.currentTarget && event.key === 'Enter') openEntry(entry) }}
+                onKeyDown={event => { if (event.key === 'Enter' && !(event.target instanceof Element && event.target.closest('button, a'))) openEntry(entry) }}
                 onDragStart={event => { if (operations === undefined || directory === undefined) return; const source = { paneId: operations.paneId, endpointId: operations.endpointId, directory: directory.path, paths: [entry.path] }; setRemoteDragSource(source); event.dataTransfer.effectAllowed = 'copyMove'; event.dataTransfer.setData(REMOTE_FILES_DRAG_TYPE, JSON.stringify(source)) }}
                 onDragEnd={() => { setRemoteDragSource(undefined); setRemoteDropTarget(undefined) }}
                 onDragOver={event => { const fileDrop = canDropFiles && isFileDrag(event); if (!directoryEntry || (!fileDrop && !isRemoteDrag(event)) || (!fileDrop && !acceptsRemoteDrop)) return; event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = fileDrop || dragOperation !== 'move' ? 'copy' : 'move'; setRemoteDropTarget(entry.path) }}
                 onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setRemoteDropTarget(undefined) }}
                 onDrop={event => { if (!directoryEntry) return; event.preventDefault(); event.stopPropagation(); setRemoteDropTarget(undefined); if (canDropFiles && isFileDrag(event)) { const files = Array.from(event.dataTransfer.files); if (files.length > 0) void uploadFiles(files, entry.path); return } const source = parseRemoteFilesDragPayload(event.dataTransfer.getData(REMOTE_FILES_DRAG_TYPE)); if (source !== undefined) void applyRemoteDrop(source, entry.path) }}>
-              <span>{directoryEntry ? <IconFolderClose16 size={16} /> : <IconDataOutline16 size={16} />}<strong title={entry.name}>{entry.name}</strong></span>
+              <FileNameTooltip name={entry.name}>{directoryEntry ? <IconFolderClose16 size={16} /> : <IconDataOutline16 size={16} />}<strong>{entry.name}</strong></FileNameTooltip>
               <small>{directoryEntry ? '-' : formatBytes(entry.size)}</small>
               <small>{formatFileTime(entry.modifiedAt)}</small>
               {deletion !== undefined && <button type="button" className="dsh-ssh-sftp-row-delete dsh-ssh-context-action" draggable={false} aria-label={`删除 ${entry.name}`} title={`删除 ${entry.name}`} onClick={event => { event.stopPropagation(); setDeleteTarget(entry) }}><IconTrashOutline16 size={14} /></button>}
@@ -249,9 +259,10 @@ function SftpExplorer({ initialPath, header, workspace = false, loadDirectory, l
     {draggingFiles && <div className="dsh-ssh-sftp-dropzone" aria-hidden="true"><span><strong>松开以上传</strong><small>上传到 {directory?.path ?? path}</small></span></div>}
     {deleteTarget !== undefined && deletion !== undefined && <FileEntryDeleteDialog locationName={deletion.locationName} locationKind={deletion.locationKind} entries={[deleteTarget]} onClose={() => setDeleteTarget(undefined)} onDelete={removeEntry} />}
   </div>
+  return <>{!expanded && content}<Modal open={expanded} onClose={() => setExpanded(false)} title="目录浏览" headless className="dsh-ssh-preview-modal"><section className="dsh-ssh-preview-modal-shell"><header><span><strong>目录浏览</strong><small title={directory?.path}>{directory?.path}</small></span><span className="dsh-ssh-file-preview-actions"><button type="button" aria-label="关闭目录弹窗" onClick={() => setExpanded(false)}><IconCloseOutline16 size={16} /></button></span></header><div className="dsh-ssh-directory-modal-body">{expanded && content}</div></section></Modal></>
 }
 
-function SftpFilePreview({ entry, loadPreview, fileUrl, onBack }: { entry: SftpEntryView; loadPreview(path: string): Promise<SftpFilePreviewView>; fileUrl(path: string, inline?: boolean): string; onBack(): void }): JSX.Element {
+function SftpFilePreview({ entry, loadPreview, fileUrl, onBack, inDirectoryModal = false }: { entry: SftpEntryView; loadPreview(path: string): Promise<SftpFilePreviewView>; fileUrl(path: string, inline?: boolean): string; onBack(): void; inDirectoryModal?: boolean }): JSX.Element {
   const [preview, setPreview] = useState<SftpFilePreviewView>()
   const [error, setError] = useState<string>()
   const [expanded, setExpanded] = useState(false)
@@ -263,7 +274,7 @@ function SftpFilePreview({ entry, loadPreview, fileUrl, onBack }: { entry: SftpE
   }, [entry.path, loadPreview])
   const downloadUrl = fileUrl(entry.path)
   return <><section className="dsh-ssh-file-preview">
-    <header><button type="button" className="dsh-ssh-icon-button" aria-label="返回目录" title="返回目录" onClick={onBack}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-file-preview-title"><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><span className="dsh-ssh-file-preview-actions"><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a><button type="button" aria-label="放大预览" title="放大预览" onClick={() => setExpanded(true)}><IconFullscreenOutline16 size={16} /></button></span></header>
+    <header><button type="button" className="dsh-ssh-icon-button" aria-label="返回目录" title="返回目录" onClick={onBack}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-file-preview-title"><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><span className="dsh-ssh-file-preview-actions"><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a>{!inDirectoryModal && <button type="button" aria-label="放大预览" title="放大预览" onClick={() => setExpanded(true)}><IconFullscreenOutline16 size={16} /></button>}</span></header>
     <div className="dsh-ssh-file-preview-body dsh-ssh-scroll-surface"><SftpPreviewContent entry={entry} preview={preview} error={error} fileUrl={fileUrl} downloadUrl={downloadUrl} /></div>
   </section><Modal open={expanded} onClose={() => setExpanded(false)} title={`预览 ${entry.name}`} headless className="dsh-ssh-preview-modal"><section className="dsh-ssh-preview-modal-shell"><header><span><strong title={entry.name}>{entry.name}</strong><small>{formatBytes(entry.size)}</small></span><span className="dsh-ssh-file-preview-actions"><a href={downloadUrl} aria-label="下载文件" title="下载文件"><IconDownloadOutline16 size={16} /></a><button type="button" aria-label="关闭预览" title="关闭预览" onClick={() => setExpanded(false)}><IconCloseOutline16 size={16} /></button></span></header><div className="dsh-ssh-file-preview-body is-modal dsh-ssh-scroll-surface"><SftpPreviewContent entry={entry} preview={preview} error={error} fileUrl={fileUrl} downloadUrl={downloadUrl} /></div></section></Modal></>
 }

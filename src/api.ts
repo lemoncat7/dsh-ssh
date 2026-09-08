@@ -23,6 +23,7 @@ import { FileTransferManager, type TransferConflictPolicy } from './file-transfe
 import { EndpointSessionManager } from './endpoint-session-manager.js'
 import { deleteRemoteEntries, moveRemoteEntries } from './remote-entry-operations.js'
 import { remoteName } from './remote-files.js'
+import { openSessionDirectory, type NativeDirectoryController } from './native-directory.js'
 import { scanRemoteTree } from './remote-tree-scan.js'
 import { streamRemoteTar } from './remote-tar-download.js'
 import { GistSyncService } from './gist-sync.js'
@@ -53,6 +54,7 @@ export interface SshApiRuntime {
   transfers: FileTransferManager
   fileSessions: EndpointSessionManager
   sessionCwd(sessionId: string): string | undefined
+  nativeDirectoryController?(): NativeDirectoryController | undefined
 }
 
 export function registerSshApi(webServer: WebServerLike, prefix: string, runtime: SshApiRuntime): () => void {
@@ -537,6 +539,22 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
 
   if (segments[0] === 'activity') {
     const sessionId = url.searchParams.get('sessionId')
+    if (method === 'GET' && segments[1] === 'native-directory' && segments.length === 2) {
+      return sendJson(res, 200, { available: runtime.nativeDirectoryController?.()?.canOpenWorkspacePath() ?? false })
+    }
+    if (method === 'POST' && segments[1] === 'native-directory' && segments.length === 2) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const cwd = runtime.sessionCwd(requireText(body.sessionId, 'sessionId', 200))
+      if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+      const controller = new AbortController()
+      const abort = (): void => { if (!res.writableEnded) controller.abort() }
+      res.once('close', abort)
+      try {
+        await openSessionDirectory(runtime.nativeDirectoryController?.(), cwd, requireRawText(body.path, 'path', 4096), controller.signal)
+        return sendJson(res, 200, { opened: true })
+      } finally { res.off('close', abort) }
+    }
     if (method === 'GET' && segments[1] === 'local-stat' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
       const cwd = runtime.sessionCwd(sessionId)

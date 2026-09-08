@@ -1,4 +1,8 @@
 export const SSH_API = '/ssh-local/v1'
+export function loadNativeDirectorySupport(): Promise<{ available: boolean }> { return api('/activity/native-directory') }
+export function openNativeDirectory(sessionId: string, path: string): Promise<{ opened: boolean }> {
+  return api('/activity/native-directory', { method: 'POST', body: JSON.stringify({ sessionId, path }) })
+}
 
 export interface CredentialView { configured: boolean; writable: boolean; fields: string[]; source: 'profile' | 'vault'; entryId?: string; entryName?: string }
 export interface ProfileView {

@@ -17,6 +17,7 @@ import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager } from './file-transfer-manager.js'
 import { EndpointSessionManager } from './endpoint-session-manager.js'
 import { GistSyncService, GistTokenVault } from './gist-sync.js'
+import type { NativeDirectoryController } from './native-directory.js'
 
 export const Config = ConfigSchema
 export type Config = SshConfig
@@ -62,6 +63,7 @@ export function apply(context: Context, config: SshConfig): void {
       disposeApi = registerSshApi(webServer, resolved.apiPrefix, {
         store, credentials, gistSync, connector, dialer, files, transfers, fileSessions, forwards, terminals, aiTerminals, activityEvents,
         sessionCwd: sessionId => runtime.agents.get(sessionId as SessionId)?.session.header.cwd,
+        nativeDirectoryController: () => runtime.get('sessionController') as NativeDirectoryController | undefined,
       })
     }
     if (ctx.inject !== undefined) ctx.inject(['webServer'], mountApi)

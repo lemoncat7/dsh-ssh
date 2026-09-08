@@ -2422,13 +2422,20 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-sftp-pathbar {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 30px;
+  grid-template-columns: 30px minmax(0, 1fr) 30px 30px;
   gap: 5px;
   margin-bottom: 10px;
 }
 .dsh-ssh-sftp-pathbar.has-upload {
-  grid-template-columns: 30px minmax(0, 1fr) 30px auto;
+  grid-template-columns: 30px minmax(0, 1fr) 30px 30px auto;
 }
+.dsh-ssh-sftp-pathbar.has-native-open { grid-template-columns: 30px minmax(0, 1fr) 30px 30px 30px; }
+.dsh-ssh-sftp-pathbar button[data-unavailable="true"] { color: var(--ssh-text-subtle); }
+.dsh-ssh-directory-modal-body { display: flex; flex: 1; min-height: 0; min-width: 0; padding: 12px; overflow: hidden; }
+.dsh-ssh-directory-modal-body > .dsh-ssh-sftp { flex: 1; min-width: 0; }
+.dsh-ssh-file-name-disclosure { min-width: 0; cursor: pointer; }
+.dsh-ssh-file-name-disclosure:focus-visible { outline: 2px solid var(--ssh-accent); outline-offset: 2px; border-radius: 4px; }
+.dsh-ssh-file-name-tooltip { position: fixed; z-index: 2147483647; box-sizing: border-box; width: max-content; max-width: min(420px, calc(100vw - 16px)); padding: 8px 10px; border: 1px solid var(--ssh-glass-border); border-radius: 8px; color: var(--ssh-text); background: var(--ssh-modal-surface); font: 12px/1.5 var(--ssh-font-sans), sans-serif; overflow-wrap: anywhere; pointer-events: none; }
 .dsh-ssh-sftp-pathbar button,
 .dsh-ssh-sftp-pathbar input {
   box-sizing: border-box;
@@ -3510,6 +3517,12 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns,
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row {
   grid-template-columns: minmax(180px, 1fr) 90px 120px 28px;
+}
+@media (max-width: 600px) {
+  .dsh-ssh-directory-modal-body .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns,
+  .dsh-ssh-directory-modal-body .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row { grid-template-columns: minmax(0, 1fr) 56px 28px; }
+  .dsh-ssh-directory-modal-body .dsh-ssh-sftp-columns > :nth-child(3),
+  .dsh-ssh-directory-modal-body .dsh-ssh-sftp-row > :nth-child(3) { display: none; }
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns {
   min-height: 34px;

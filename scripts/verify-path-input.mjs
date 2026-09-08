@@ -9,6 +9,7 @@ import { build } from 'esbuild'
 const { chromium } = await import(process.env.SSH_PLAYWRIGHT_MODULE ?? 'playwright')
 const root = fileURLToPath(new URL('../', import.meta.url))
 const icons = ['IconCheckOutline14', 'IconChevronDownOutline14', 'IconCloseOutline16', 'IconDataOutline16',
+  'IconFolderOpenOutline16',
   'IconChevronLeftOutline14', 'IconDownloadOutline16', 'IconFolderClose16', 'IconEditOutline16',
   'IconFullscreenOutline16', 'IconRefreshOutline16', 'IconSendOutline14', 'IconTrashOutline16']
 const bundle = await build({
@@ -21,7 +22,7 @@ const bundle = await build({
   bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic',
   plugins: [{ name: 'host-primitives', setup(b) {
     b.onResolve({ filter: /^@deepseek-ai\/dsh-client-ui-primitives$/ }, () => ({ path: 'primitives', namespace: 'fixture' }))
-    b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `export const Modal=()=>null; ${icons.map(n => `export const ${n}=()=>null;`).join('')}` }))
+    b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ resolveDir: root, contents: `import {createElement} from 'react'; export const Modal=({open,children,className})=>open?createElement('div',{role:'dialog',className},children):null; ${icons.map(n => `export const ${n}=()=>null;`).join('')}` }))
   } }],
 })
 const css = await readFile(new URL('../src/client.css', import.meta.url), 'utf8')
@@ -43,21 +44,66 @@ try {
       const url = new URL(route.request().url()), path = url.searchParams.get('path') ?? '/work'
       requests.push({ route: url.pathname, path, method: route.request().method() })
       const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+      if (url.pathname.endsWith('/native-directory')) return json(route.request().method() === 'POST' ? { opened: true } : { available: width === 1024 })
       if (url.pathname.endsWith('stat')) {
         if (path.endsWith('/slow.md')) await new Promise(resolve => { releaseSlow = resolve })
         if (path.endsWith('/missing')) return json({ error: '路径不存在，请检查后重试' }, 404)
         return json({ path, name: path.split('/').at(-1), kind: path.endsWith('.md') || path.endsWith('/README') ? 'file' : 'directory', size: 12, modifiedAt: 1 })
       }
       if (url.pathname.endsWith('/directory') && route.request().method() === 'PUT') return json({ cwd: JSON.parse(route.request().postData()).cwd })
+      if (url.pathname.endsWith('/upload')) return json({ uploaded: true })
       if (url.pathname.endsWith('/local-file') || url.pathname.endsWith('/file')) return json({ path, name: path.split('/').at(-1), kind: 'text', mimeType: 'text/markdown', text: '# File opened', size: 12 })
-      return json({ path, parent: path === '/work' ? null : '/work', entries: [] })
+      return json({ path, parent: path === '/work' ? null : '/work', entries: [{ name: '这是一个需要完整展示的很长很长的文件名说明.md', path: `${path}/说明.md`, kind: 'file', size: 12, modifiedAt: 1 }] })
     })
     await page.goto(origin + '/?' + mode)
     const input = page.getByRole('textbox', { name: '目录或文件路径' })
     await page.waitForFunction(() => document.querySelector('input[aria-label="目录或文件路径"]')?.readOnly === false)
+    if (mode === 'local') {
+      await page.getByRole('button', { name: '打开文件管理器', exact: true }).click()
+      await page.getByRole('status').filter({ hasText: width === 1024 ? '已请求' : '不支持系统文件管理器' }).waitFor()
+      assert.equal(requests.filter(request => request.route.endsWith('/native-directory') && request.method === 'POST').length, width === 1024 ? 1 : 0)
+    } else assert.equal(await page.getByRole('button', { name: '打开文件管理器', exact: true }).count(), 0)
+    const disclosure = page.locator('.dsh-ssh-file-name-disclosure').first()
+    await disclosure.hover()
+    await page.getByRole('tooltip').waitFor()
+    assert.equal(await page.getByRole('tooltip').textContent(), '这是一个需要完整展示的很长很长的文件名说明.md')
+    await page.mouse.move(0, 0)
+    await page.getByRole('tooltip').waitFor({ state: 'hidden' })
+    await disclosure.focus()
+    await page.getByRole('tooltip').waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByRole('tooltip').waitFor({ state: 'hidden' })
+    await page.getByRole('button', { name: '展开目录', exact: true }).click()
+    await page.getByRole('dialog').waitFor()
+    if (mode === 'remote') {
+      await page.evaluate(() => {
+        window.globalDrops = 0
+        document.addEventListener('drop', () => { window.globalDrops++ })
+      })
+      const transfer = await page.evaluateHandle(() => { const data = new DataTransfer(); data.items.add(new File(['upload test'], 'upload-test.txt', { type: 'text/plain' })); return data })
+      const uploadArea = page.getByRole('dialog').locator('.dsh-ssh-sftp')
+      await uploadArea.dispatchEvent('dragenter', { dataTransfer: transfer })
+      await uploadArea.dispatchEvent('dragover', { dataTransfer: transfer })
+      await uploadArea.dispatchEvent('drop', { dataTransfer: transfer })
+      await page.waitForFunction(() => document.querySelector('input[aria-label="目录或文件路径"]')?.readOnly === false && !document.querySelector('.is-dragging-files'))
+      assert.equal(await page.evaluate(() => window.globalDrops), 0, 'SSH upload must not become a conversation attachment')
+      assert.ok(requests.some(request => request.route.endsWith('/upload')), 'drop must upload through SSH')
+      await transfer.dispose()
+    }
+    const bounds = await page.getByRole('dialog').evaluate(element => ({ width: element.clientWidth, contentWidth: element.scrollWidth }))
+    assert.ok(bounds.contentWidth <= bounds.width + 1, 'directory modal must not overflow horizontally')
+    assert.equal(await page.getByRole('dialog').getByRole('button', { name: /^删除 / }).count(), 1)
+    if (mode === 'remote' && width === 375) await page.screenshot({ path: '/tmp/dsh-ssh-directory-modal-mobile.png' })
+    await page.getByRole('dialog').getByRole('row').click()
+    await page.getByRole('heading', { name: 'File opened' }).waitFor()
+    assert.equal(await page.getByRole('button', { name: '放大预览', exact: true }).count(), 0)
+    await page.getByRole('button', { name: '返回目录', exact: true }).click()
+    await page.getByRole('button', { name: '关闭目录弹窗', exact: true }).click()
+    await page.getByRole('dialog').waitFor({ state: 'hidden' })
+    assert.equal(await input.inputValue(), '/work')
     await input.fill('/work/说明 1.md'); await input.press('Enter')
     await page.getByRole('heading', { name: 'File opened' }).waitFor()
-    assert.equal(requests.filter(r => r.method === 'PUT').length, 0, 'opening a file must not change session cwd')
+    assert.equal(requests.filter(r => r.method === 'PUT' && r.route.endsWith('/directory')).length, 0, 'opening a file must not change session cwd')
     await page.getByRole('button', { name: '返回目录', exact: true }).click()
     assert.equal(await input.inputValue(), '/work')
     await input.fill('README'); await input.press('Enter')
