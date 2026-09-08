@@ -101,6 +101,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function loadProfiles(): Promise<ProfileView[]> { return api('/profiles') }
 export function loadFtpProfiles(): Promise<FtpProfileView[]> { return api('/ftp-profiles') }
 export function loadFileEndpoints(): Promise<FileEndpointView[]> { return api('/file-transfer/endpoints') }
+export function inspectFileEndpointEntry(paneId: string, endpointId: string, path: string): Promise<SftpEntryView> {
+  return api(`/file-transfer/stat?${new URLSearchParams({ paneId, endpointId, path })}`)
+}
 export function loadFileEndpointDirectory(paneId: string, endpointId: string, path?: string): Promise<SftpDirectoryView> {
   const query = new URLSearchParams({ paneId, endpointId }); if (path !== undefined) query.set('path', path)
   return api(`/file-transfer/directory?${query.toString()}`)

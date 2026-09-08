@@ -47,7 +47,7 @@ test('shared interactive surface contract owns themed hover and selection states
   assert.match(css, /transform:\s*translate3d\(8px, 0, 0\) scale\(\.78\)/)
   assert.match(transferSource, /dsh-ssh-file-row-actions dsh-ssh-context-action/)
   assert.match(transferSource, /dsh-ssh-file-row-download[^>]*href=\{fileEndpointDownloadUrl/)
-  assert.match(transferSource, /onOpen=\{\(\) => \{ void load\(entry\.path\) \}\}/)
+  assert.match(transferSource, /onOpen=\{\(\) => \{ void openEntry\(entry\.path\) \}\}/)
   assert.doesNotMatch(transferSource, /onOpen=\{\(\) => \{ if \(entry\.kind === 'directory'\)/)
   assert.match(sftpSource, /dsh-ssh-sftp-row-delete dsh-ssh-context-action/)
   assert.match(sftpSource, /deletion=\{\{ locationName: '本地会话', locationKind: 'local', remove \}\}/)

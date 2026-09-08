@@ -6,7 +6,13 @@
 
 ## 兼容性
 
-正式版 `1.4.3` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+正式版 `1.4.4` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+
+## 1.4.4 更新
+
+- 文件传输列表所有条目均提供下载入口：文件直接下载，目录打包为 `.tar`。
+- 点击名称或输入路径后按需判断实际类型：目录进入，文件显示文件名和下载按钮，避免 FTP 文件被当成目录。
+- FTP 链接和未知类型仅在操作时解析；目录打包不递归跟随内部链接，保留大目录加载优化。
 
 ## 1.4.3 更新
 

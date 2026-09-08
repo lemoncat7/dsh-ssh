@@ -17,7 +17,7 @@ const bundle = await build({
   bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic',
   plugins: [{ name: 'host-primitives', setup(b) {
     b.onResolve({ filter: /^@deepseek-ai\/dsh-client-ui-primitives$/ }, () => ({ path: 'primitives', namespace: 'fixture' }))
-    b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `export const Modal=()=>null; ${icons.map(n => `export const ${n}=()=>null;`).join('')}` }))
+    b.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ resolveDir: root, contents: `import {createElement} from 'react'; export const Modal=({children})=>createElement('div',{role:'dialog'},children); ${icons.map(n => `export const ${n}=()=>null;`).join('')}` }))
   } }],
 })
 const css = (await Promise.all(['client.css', 'file-transfer-workspace.css'].map(name => readFile(root + 'src/' + name, 'utf8')))).join('\n')
@@ -41,6 +41,10 @@ try {
       const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       if (url.pathname.endsWith('/endpoints')) return json([{ id: 'ftp:test', name: 'Test FTP', kind: 'ftp', protocol: 'ftp', address: 'test', initialPath: '/' }])
       if (url.pathname.endsWith('/jobs')) return json([])
+      if (url.pathname.endsWith('/stat')) {
+        const path = url.searchParams.get('path')
+        return json({ name: path.slice(1), path, kind: 'symlink', navigable: path === '/0-shortcut', size: 4 })
+      }
       if (url.pathname.endsWith('/directory')) {
         const path = url.searchParams.get('path')
         requests.push(path)
@@ -50,10 +54,17 @@ try {
     })
     await page.goto(`http://127.0.0.1:${server.address().port}`)
     await page.getByRole('button', { name: /Test FTP/ }).first().click()
-    const link = page.getByRole('row', { name: '0-shortcut，单击尝试进入目录', exact: true })
+    const link = page.getByRole('row', { name: '0-shortcut，单击查看', exact: true })
     await link.waitFor()
     assert.ok(await page.locator('.dsh-ssh-file-row').count() <= 56, 'large listing stays virtualized')
     assert.equal(await link.getAttribute('draggable'), 'false', 'unverified links cannot be transferred as directories')
+    assert.equal(await link.getByRole('link', { name: '下载 0-shortcut 到本地' }).count(), 1)
+    await page.getByRole('row', { name: 'file-0.txt', exact: true }).click()
+    await page.getByRole('dialog').waitFor()
+    assert.equal(await page.getByRole('dialog').getByRole('link', { name: '下载到本地' }).count(), 1)
+    assert.deepEqual(requests, ['/'], 'opening a file does not list it as a directory')
+    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click()
+    await page.getByRole('dialog').waitFor({ state: 'hidden' })
     await link.focus(); await link.press('Enter')
     await page.waitForFunction(() => document.querySelector('input[aria-label="远端路径"]')?.value === '/docs')
     assert.deepEqual(requests, ['/', '/0-shortcut'])

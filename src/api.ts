@@ -112,6 +112,12 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   }
 
   if (segments[0] === 'file-transfer') {
+    if (method === 'GET' && segments[1] === 'stat' && segments.length === 2) {
+      const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
+      const paneId = requireText(url.searchParams.get('paneId'), 'paneId', 100)
+      const path = requireRawText(url.searchParams.get('path'), 'path', 4096)
+      return sendJson(res, 200, await runtime.fileSessions.run(paneId, endpointId, session => session.stat(path)))
+    }
     if (method === 'GET' && segments[1] === 'endpoints' && segments.length === 2) return sendJson(res, 200, runtime.files.endpoints())
     if (method === 'GET' && segments[1] === 'directory' && segments.length === 2) {
       const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
@@ -1025,15 +1031,16 @@ async function streamRemoteEndpointFile(req: IncomingMessage, res: ServerRespons
   try {
     session = await runtime.files.connect(endpointId, controller.signal)
     const entry = await session.stat(requestedPath, controller.signal)
-    if (entry.kind !== 'file' && entry.kind !== 'directory') throw httpError(400, 'this remote entry cannot be downloaded')
+    const resolvedFtpEntry = session.endpoint.kind === 'ftp' && typeof entry.navigable === 'boolean'
+    if (entry.kind !== 'file' && entry.kind !== 'directory' && !resolvedFtpEntry) throw httpError(400, 'this remote entry cannot be downloaded')
     const basename = remoteName(entry.path) || remoteName(requestedPath) || 'download'
-    const directory = entry.kind === 'directory'
+    const directory = entry.kind === 'directory' || (resolvedFtpEntry && entry.navigable === true)
     const tasks = directory ? await scanRemoteTree(session, [entry.path], controller.signal) : undefined
     const filename = directory ? `${basename}.tar` : basename
     res.statusCode = 200
     res.setHeader('Cache-Control', 'private, no-store')
     res.setHeader('Content-Type', directory ? 'application/x-tar' : 'application/octet-stream')
-    if (!directory && Number.isSafeInteger(entry.size) && entry.size >= 0) res.setHeader('Content-Length', String(entry.size))
+    if (entry.kind === 'file' && Number.isSafeInteger(entry.size) && entry.size >= 0) res.setHeader('Content-Length', String(entry.size))
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
     res.setHeader('X-Content-Type-Options', 'nosniff')
     if (tasks !== undefined) await streamRemoteTar(session, tasks, res, controller.signal)

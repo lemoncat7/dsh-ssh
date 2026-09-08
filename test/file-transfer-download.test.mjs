@@ -77,6 +77,39 @@ test('streams a directory as a tar archive and closes the endpoint session', asy
   assert.equal(closeCount, 1)
 })
 
+for (const kind of ['symlink', 'other']) for (const directory of [false, true]) {
+  test(`FTP ${kind} resolves on explicit download: directory=${directory}`, async t => {
+    let route
+    let closed = 0
+    const downloaded = []
+    registerSshApi({ register(value) { route = value; return () => {} } }, '/ssh-local/v1', {
+      files: { async connect() { return {
+        endpoint: { kind: 'ftp' },
+        async stat(path) { return { name: 'alias', path, kind, navigable: directory, size: 1 } },
+        async list(path) { return { entries: [
+          { name: 'file.txt', path: `${path}/file.txt`, kind: 'file', size: 5 },
+          { name: 'loop', path: `${path}/loop`, kind: 'symlink', navigable: true, size: 0 },
+        ] } },
+        async download(path, target) { downloaded.push(path); target.write('hel'); target.end('lo') },
+        close() { closed++ },
+      } } },
+    })
+    const server = createServer((req, res) => { void route.handler(req, res) })
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+    t.after(() => new Promise(resolve => server.close(resolve)))
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/ssh-local/v1/file-transfer/download?endpointId=ftp:test&path=/alias`)
+    assert.equal(response.status, 200)
+    assert.equal(response.headers.get('content-length'), null)
+    if (directory) {
+      const archive = await readTar(Buffer.from(await response.arrayBuffer()))
+      assert.equal(archive.get('alias/file.txt').toString(), 'hello')
+      assert.equal(archive.has('alias/loop/'), false)
+    } else assert.equal(await response.text(), 'hello')
+    assert.deepEqual(downloaded, [directory ? '/alias/file.txt' : '/alias'])
+    assert.equal(closed, 1)
+  })
+}
+
 function remoteEntry(path) {
   const directory = path === '/remote/folder' || path === '/remote/folder/nested'
   return { name: path.split('/').at(-1), path, kind: directory ? 'directory' : 'file', size: directory ? 0 : path.endsWith('notes.txt') ? 5 : 4, modifiedAt: 1 }

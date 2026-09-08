@@ -22,7 +22,10 @@ export async function scanRemoteTree(source: RemoteFileSystemSession, sourcePath
     signal.throwIfAborted()
     if (depth > limits.maxDepth || tasks.length >= limits.maxEntries) throw new Error('remote directory exceeds the safety limit')
     const entry = knownEntry ?? await source.stat(sourcePath, signal)
-    if (entry.kind !== 'directory') {
+    // Only an explicitly selected FTP root may resolve through a link. Nested
+    // links remain skipped, preventing cycles and unexpected traversal.
+    const resolvedFtpRoot = depth === 0 && source.endpoint.kind === 'ftp' && entry.navigable === true
+    if (entry.kind !== 'directory' && !resolvedFtpRoot) {
       if (entry.kind === 'file') tasks.push({ sourcePath: entry.path, relativePath, kind: 'file', size: entry.size })
       return
     }
