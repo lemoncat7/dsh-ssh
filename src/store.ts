@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
+import { mountedProjects } from './project-mounts.js'
 
 export class SshStore {
   private state: SshState
@@ -41,6 +42,7 @@ export class SshStore {
   forward(id: string): ForwardRule | undefined { return structuredClone(this.state.forwardRules.find(rule => rule.id === id)) }
   injection(sessionId: string): SessionInjection | undefined { return structuredClone(this.state.injections.find(item => item.sessionId === sessionId)) }
   settings(): SshSettings { return structuredClone(this.state.settings) }
+  commands(): NonNullable<SshState['commands']> { return structuredClone(this.state.commands ?? []) }
 
   /** Copy durable access from a parent conversation into a newly forked conversation. */
   async inheritInjection(parentSessionId: string, childSessionId: string): Promise<boolean> {
@@ -117,6 +119,7 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
     credentialEntries: Array.isArray(state.credentialEntries) ? state.credentialEntries : [],
     proxyEntries: Array.isArray(state.proxyEntries) ? state.proxyEntries : [],
     forwardRules: Array.isArray(state.forwardRules) ? state.forwardRules : [],
+    commands: Array.isArray(state.commands) ? state.commands : [],
     injections: Array.isArray(state.injections) ? state.injections.map(injection => ({
       ...injection,
       fileEndpointIds: normalizeFileEndpointIds(injection),
@@ -159,6 +162,7 @@ function validateReferences(state: SshState): void {
   for (const project of state.remoteProjects) if (!ids.has(project.profileId)) throw new Error(`remote project references missing profile ${project.profileId}`)
   for (const injection of state.injections) {
     injection.profileIds = [...new Set(injection.profileIds.filter(id => ids.has(id)))]
+    injection.mountedProjectIds = Object.fromEntries(injection.profileIds.map(profileId => [profileId, mountedProjects(injection, profileId).filter(projectId => projects.get(projectId)?.profileId === profileId)]))
     injection.workingDirectories = Object.fromEntries(Object.entries(injection.workingDirectories).filter(([profileId]) => injection.profileIds.includes(profileId)))
     injection.workingProjectIds = Object.fromEntries(Object.entries(injection.workingProjectIds ?? {}).filter(([profileId, projectId]) => {
       const project = projects.get(projectId)

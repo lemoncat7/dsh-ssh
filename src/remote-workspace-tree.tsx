@@ -12,6 +12,7 @@ import { ProjectSessionDialog } from './project-session-dialog.js'
 import { RemotePathInput } from './remote-path-input.js'
 import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
+import { mountedProjects } from './project-mounts.js'
 
 export interface RemoteTarget {
   profileId: string
@@ -32,10 +33,12 @@ interface RemoteWorkspaceTreeProps {
   onSelect(target: RemoteTarget): void
   onProfiles(profileIds: string[]): void
   onDirectory(profileId: string, path?: string, projectId?: string): void
+  onToggleProject(profileId: string, projectId: string, path: string): void
   onPermission(permission: InjectionView['permission']): void
   onApproval(value: boolean): void
   onCreateSession(project: RemoteProjectView, workspaceId: string): Promise<void>
   onNewProfile(): void
+  onProjectsChanged(): Promise<void>
 }
 
 export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Element {
@@ -115,17 +118,19 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                 : children.length === 0 ? <button type="button" className="dsh-ssh-tree-empty" onClick={() => setEditing({ profile })}><IconPlusOutline16 size={13} />添加项目目录</button>
                   : children.map(project => {
                     const projectActive = props.selected?.projectId === project.id
-                    const bound = props.access?.workingProjectIds[profile.id] === project.id
+                    const bound = props.access !== null && mountedProjects(props.access, profile.id).includes(project.id)
+                    const isDefault = props.access?.workingProjectIds[profile.id] === project.id
                     return <div className="dsh-ssh-tree-project" key={project.id}>
                       <div data-ssh-interactive="row" className={`dsh-ssh-tree-project-row${projectActive ? ' is-active' : ''}${bound ? ' is-bound' : ''}`}>
-                        <button type="button" className="dsh-ssh-tree-project-main" aria-pressed={props.access === null ? undefined : bound} title={props.access === null ? '当前没有可固定目录的 DSH 会话' : !enabled ? '请先挂载该主机' : bound ? '取消当前会话的固定目录' : '固定为当前会话目录'} onClick={() => {
+                        <button type="button" className="dsh-ssh-tree-project-main" aria-pressed={props.access === null ? undefined : bound} title={props.access === null ? '当前没有可挂载目录的 DSH 会话' : !enabled ? '请先挂载该主机' : bound ? '从当前会话卸载此目录' : '挂载目录，可同时选择多个'} onClick={() => {
                           if (enabled && !props.accessLoading && !props.accessSaving) {
-                            props.onDirectory(profile.id, bound ? undefined : project.path, bound ? undefined : project.id)
+                            props.onToggleProject(profile.id, project.id, project.path)
                             props.onSelect(bound ? { profileId: profile.id, path: '~' } : { profileId: profile.id, path: project.path, projectId: project.id })
                           }
-                        }}><span>{bound ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span><span><strong>{project.name}</strong><small>{project.path}</small>{bound && <em>当前会话已固定该路径</em>}</span></button>
+                        }}><span>{bound ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span><span><strong>{project.name}</strong><small>{project.path}</small>{bound && <em>{isDefault ? '已挂载 · 默认工作目录' : '已挂载'}</em>}</span></button>
+                        <div className="dsh-ssh-tree-project-actions">{bound && !isDefault && <button type="button" className="dsh-ssh-tree-project-edit" disabled={props.accessSaving} title="设为默认工作目录" aria-label={`将 ${project.name} 设为默认目录`} onClick={() => props.onDirectory(profile.id, project.path, project.id)}><IconFolderOpenOutline16 size={13} /></button>}
                         <button type="button" className="dsh-ssh-tree-project-new" aria-label={`在 ${project.name} 新建会话`} title="新建会话" onClick={event => { setError(undefined); setCreatingSession({ profile, project, returnFocus: event.currentTarget }) }}><IconPlusOutline16 size={13} /></button>
-                        <button type="button" className="dsh-ssh-tree-project-edit" aria-label={`编辑 ${project.name}`} title="编辑固定目录" onClick={() => setEditing({ profile, project })}><IconEditOutline16 size={13} /></button>
+                        <button type="button" className="dsh-ssh-tree-project-edit" aria-label={`编辑 ${project.name}`} title="编辑固定目录" onClick={() => setEditing({ profile, project })}><IconEditOutline16 size={13} /></button></div>
                       </div>
                     </div>
                   })}
@@ -136,14 +141,14 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
       {groups.length === 0 && <p className="dsh-ssh-tree-no-results">{props.profiles.length === 0 ? '还没有 SSH 主机' : '没有匹配的主机'}</p>}
     </div>
     <SessionAccessFooter access={props.access} loading={props.accessLoading} saving={props.accessSaving} error={props.accessError ?? error} onPermission={props.onPermission} onApproval={props.onApproval} />
-    {editing !== undefined && <RemoteProjectDialog profile={editing.profile} project={editing.project} onClose={() => setEditing(undefined)} onSaved={async () => { const profileId = editing.profile.id; setEditing(undefined); await refreshProjects(profileId) }} />}
+    {editing !== undefined && <RemoteProjectDialog profile={editing.profile} project={editing.project} onClose={() => setEditing(undefined)} onSaved={async () => { const profileId = editing.profile.id; setEditing(undefined); await refreshProjects(profileId); await props.onProjectsChanged() }} />}
     {creatingSession !== undefined && <ProjectSessionDialog {...creatingSession} workspaces={props.workspaces} currentWorkspaceId={props.currentWorkspaceId} recentWorkspaceId={props.recentWorkspaceId} onClose={() => setCreatingSession(undefined)} onCreate={props.onCreateSession} />}
   </aside>
 }
 
 function SessionAccessFooter({ access, loading, saving, error, onPermission, onApproval }: { access: InjectionView | null; loading: boolean; saving: boolean; error?: string | undefined; onPermission(value: InjectionView['permission']): void; onApproval(value: boolean): void }): JSX.Element {
   return <footer className="dsh-ssh-access-footer">
-    <div className="dsh-ssh-access-heading"><span><strong>当前会话权限</strong><small>{access?.profileIds.length ?? 0} 台主机可用</small></span><em>{loading ? '读取中' : saving ? '保存中' : '已同步'}</em></div>
+    <div className="dsh-ssh-access-heading"><span><strong>当前会话权限</strong><small>{access?.profileIds.length ?? 0} 台主机可用</small></span><em>{loading ? '读取中' : saving ? '保存中' : error ? '未同步' : '已同步'}</em></div>
     <div className="dsh-ssh-access-segments" aria-label="SSH 权限">
       <button type="button" data-ssh-interactive="choice" className={access?.permission === 'exec' ? 'is-active' : ''} aria-pressed={access?.permission === 'exec'} disabled={access === null} onClick={() => onPermission('exec')}>仅命令</button>
       <button type="button" data-ssh-interactive="choice" className={access?.permission === 'terminal' ? 'is-active' : ''} aria-pressed={access?.permission === 'terminal'} disabled={access === null} onClick={() => onPermission('terminal')}>终端控制</button>

@@ -78,6 +78,7 @@ export interface SessionInjection {
   requireCommandApproval: boolean
   workingDirectories: Record<string, string>
   workingProjectIds: Record<string, string>
+  mountedProjectIds?: Record<string, string[]>
   updatedAt: number
 }
 
@@ -143,7 +144,16 @@ export interface SshState {
   proxyEntries: ProxyEntry[]
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
+  commands?: SavedCommand[]
   settings: SshSettings
+}
+
+export interface SavedCommand {
+  id: string
+  name: string
+  command: string
+  createdAt: number
+  updatedAt: number
 }
 
 export function normalizeFtpProfileDraft(value: unknown): FtpProfileDraft {

@@ -341,7 +341,7 @@
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px 24px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-height: 40px;
   align-items: center;
   border: 1px solid transparent;
@@ -353,6 +353,8 @@
 .dsh-ssh-tree-project-row:hover {
   background: color-mix(in srgb, var(--ssh-text) 4%, transparent);
 }
+
+.dsh-ssh-tree-project-actions { display: flex; align-items: center; }
 
 .dsh-ssh-tree-project-row.is-active {
   border-color: transparent;

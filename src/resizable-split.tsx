@@ -19,6 +19,7 @@ interface ResizableSplitProps {
   secondary: ReactNode
   storageKey: string
   label: string
+  secondaryHidden?: boolean
 }
 
 interface SplitBounds {
@@ -59,7 +60,7 @@ function boundsFor(containerWidth: number): SplitBounds {
   return { min, max }
 }
 
-export function ResizableSplit({ primary, secondary, storageKey, label }: ResizableSplitProps): JSX.Element {
+export function ResizableSplit({ primary, secondary, storageKey, label, secondaryHidden = false }: ResizableSplitProps): JSX.Element {
   const [secondaryWidth, setSecondaryWidth] = useState(() => readStoredWidth(storageKey))
   const rootRef = useRef<HTMLDivElement>(null)
   const separatorRef = useRef<HTMLDivElement>(null)
@@ -126,10 +127,11 @@ export function ResizableSplit({ primary, secondary, storageKey, label }: Resiza
   }
 
   const style = { '--ssh-sftp-width': `${secondaryWidth}%` } as CSSProperties
-  return <div ref={rootRef} className="dsh-ssh-workbench-split" style={style}>
+  return <div ref={rootRef} className={`dsh-ssh-workbench-split${secondaryHidden ? ' is-secondary-hidden' : ''}`} style={style}>
     {primary}
     <div
       ref={separatorRef}
+      hidden={secondaryHidden}
       className="dsh-ssh-workbench-resizer"
       role="separator"
       aria-label={label}
@@ -147,6 +149,6 @@ export function ResizableSplit({ primary, secondary, storageKey, label }: Resiza
       onPointerCancel={event => finishResize(event.pointerId)}
       onLostPointerCapture={() => finishResize()}
     />
-    {secondary}
+    <div className="dsh-ssh-split-secondary" hidden={secondaryHidden}>{secondary}</div>
   </div>
 }

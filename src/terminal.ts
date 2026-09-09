@@ -194,19 +194,27 @@ class SendOperation implements TerminalSendOperation {
 
 export class BrowserTerminalManager {
   private readonly sessions = new Map<string, BrowserTerminal>()
+  private pending = 0
+  private closing = false
   constructor(private readonly connector: SshConnector) {}
 
-  async create(profileId: string, cols: number, rows: number, signal?: AbortSignal): Promise<{ id: string; profileId: string }> {
-    const connection = await this.connector.connect(profileId, signal)
+  async create(profileId: string, cols: number, rows: number, signal?: AbortSignal, cwd?: string): Promise<{ id: string; profileId: string }> {
+    if (this.closing) throw new Error('SSH terminal service is shutting down')
+    if (this.sessions.size + this.pending >= 32) throw Object.assign(new Error('终端连接已达 32 个，请先关闭不再使用的标签'), { status: 429 })
+    this.pending++
+    let connection: ManagedSshConnection | undefined
     try {
+      connection = await this.connector.connect(profileId, signal)
       const channel = await openShell(connection, clamp(cols, 20, 400), clamp(rows, 5, 200))
+      if (this.closing || signal?.aborted) { channel.destroy(); throw new Error('SSH terminal opening was cancelled') }
       const terminal = new BrowserTerminal(randomUUID(), profileId, connection, channel, () => this.sessions.delete(terminal.id))
       this.sessions.set(terminal.id, terminal)
+      if (cwd !== undefined && cwd !== '~') channel.write(`${directoryPrelude(cwd)}\n`)
       return { id: terminal.id, profileId }
     } catch (error) {
-      connection.close()
+      connection?.close()
       throw error
-    }
+    } finally { this.pending-- }
   }
 
   get(id: string): BrowserTerminal {
@@ -216,6 +224,7 @@ export class BrowserTerminalManager {
   }
 
   async closeAll(): Promise<void> {
+    this.closing = true
     await Promise.all([...this.sessions.values()].map(terminal => terminal.close()))
     this.sessions.clear()
   }
@@ -470,6 +479,7 @@ export class BrowserTerminal {
     channel.stderr?.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
     channel.once('close', () => {
       this.closed = true
+      clearTimeout(this.idleTimer)
       this.output.close()
       connection.close()
       onClose()

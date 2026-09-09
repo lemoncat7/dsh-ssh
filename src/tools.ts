@@ -62,6 +62,7 @@ function listTool(store: SshStore): ToolDefinition {
       id: profile.id, name: profile.name, host: profile.host, port: profile.port, username: profile.username,
       ...(profile.group === undefined ? {} : { group: profile.group }),
       tags: profile.tags, permission: injection.permission, cwd: sessionDirectory(injection, profile.id),
+      mountedDirectories: store.remoteProjects(profile.id).filter(project => (injection.mountedProjectIds?.[profile.id] ?? [injection.workingProjectIds[profile.id]]).includes(project.id)).map(({ id, name, path }) => ({ id, name, path })),
     }))
     return json({ sessionId: injection.sessionId, profiles })
   }, true)

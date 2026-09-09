@@ -32,6 +32,7 @@ export interface InjectionView {
   sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean
   fileEndpointIds: string[]; filePermission: 'browse' | 'transfer'; requireFileApproval: boolean
   workingDirectories: Record<string, string>; workingProjectIds: Record<string, string>; updatedAt: number
+  mountedProjectIds?: Record<string, string[]>
 }
 export interface FtpProfileView {
   id: string; name: string; group?: string; protocol: 'ftp' | 'ftps-explicit' | 'ftps-implicit'
@@ -69,7 +70,7 @@ export interface GistSyncView {
 }
 export interface GitHubDeviceFlowStart { id: string; userCode: string; verificationUri: string; expiresAt: number; retryAfterMs: number }
 export type GitHubDeviceFlowStatus = { state: 'pending'; retryAfterMs: number } | { state: 'complete'; login: string }
-export interface ActivityProfileView { id: string; name: string; host: string; port: number; username: string; cwd: string }
+export interface ActivityProfileView { id: string; name: string; host: string; port: number; username: string; cwd: string; mountedDirectories?: Array<{ id: string; name: string; path: string }> }
 export interface ActivityCommandView { id: string; command: string; submitted: boolean; startedAt: number; completedAt: number; output: string; waitReason: string; truncated: boolean }
 export interface ActivityTerminalView {
   terminalId: string; profileId: string; name: string; cwd: string; createdAt: number

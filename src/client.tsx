@@ -22,22 +22,21 @@ import {
   IconStopFill16, IconTrashOutline16, IconChevronLeftOutline14,
   IconUserOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Terminal } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
 import remoteWorkspaceCss from './remote-workspace-tree.css'
 import hostWorkbenchCss from './host-workbench.css'
 import {
-  activityEventStreamUrl, api, browserTerminalStreamUrl, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
+  activityEventStreamUrl, api, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
   profileAddress,
   type ForwardStatus, type ForwardView, type FtpProfileView, type GistSyncView, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ProfileSftpPane } from './sftp-client.js'
-import { TerminalTransport } from './terminal-transport.js'
-import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
+import { TerminalWorkspace } from './terminal-workspace.js'
+import { CommandsPanel } from './commands-panel.js'
+import workbenchPagesCss from './workbench-pages.css'
 import { RemoteWorkspaceTree, type RemoteTarget } from './remote-workspace-tree.js'
 import { emptyAccess, useSessionAccess } from './session-access.js'
 import { subscribeSessionAccess } from './session-access-channel.js'
@@ -296,7 +295,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
   const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
-  const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings'>('workspace')
+  const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'commands'>('workspace')
+  const [visitedHosts, setVisitedHosts] = useState<string[]>([])
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [deleting, setDeleting] = useState<ProfileView>()
   const [refreshKey, setRefreshKey] = useState(0)
@@ -327,12 +327,16 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === target?.profileId)
+  useEffect(() => {
+    if (view === 'workspace' && selected) setVisitedHosts(current => current.includes(selected.id) ? current : [...current, selected.id])
+  }, [view, selected?.id])
   const currentWorkspaceId = workspaceList.items.find((item: WorkspaceView) => sessionId !== undefined && item.sessionIds.includes(sessionId))?.workspaceId
   const toolbar = <header ref={toolbarGlow.ref} onPointerMove={toolbarGlow.onPointerMove} onPointerLeave={toolbarGlow.onPointerLeave} className="dsh-ssh-toolbar dsh-ssh-border-surface">
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label="返回会话" title="返回会话" onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>SSH 工作台</strong><small>{view === 'transfer' ? 'FTP · FTPS · SFTP' : selected === undefined ? '选择一台主机' : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" role="tablist" aria-label="SSH 工作台视图">
         <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>终端与文件</Segment>
         <Segment active={view === 'transfer'} onClick={() => setView('transfer')}>文件传输</Segment>
+        <Segment active={view === 'commands'} onClick={() => setView('commands')}>常用命令</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>端口转发</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>密钥库</Segment>
         <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>代理库</Segment>
@@ -359,6 +363,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         selected={target}
         onSelect={next => { setTarget(next); setView('workspace'); props.controller.open(next.profileId); controls.closePanel() }}
         onProfiles={access.setProfiles}
+        onToggleProject={access.toggleProject}
+        onProjectsChanged={access.refresh}
         onDirectory={(profileId, path, projectId) => {
           access.setDirectory(profileId, path, projectId)
           if (path !== undefined) { setTarget({ profileId, path, ...(projectId === undefined ? {} : { projectId }) }); setView('workspace') }
@@ -373,13 +379,14 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
-        {view === 'transfer' ? <FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} />
+        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onEdit={() => setEditing(profile)} onDelete={() => setDeleting(profile)} /></div>)}
+        {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? <FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} />
+          : view === 'commands' ? <CommandsPanel />
           : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
+          : view === 'settings' ? <SettingsPane />
           : selected === undefined ? <EmptyState />
-          : view === 'workspace' ? <HostWorkbench key={selected.id} profile={selected} initialPath={target?.path ?? '~'} onEdit={() => setEditing(selected)} onDelete={() => setDeleting(selected)} />
-            : view === 'forwards' ? <ForwardPane profiles={profiles} selected={selected} />
-                : <SettingsPane />}
+          : <ForwardPane profiles={profiles} selected={selected} />}
       </section>
     </AdaptiveWorkspace>
     {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
@@ -387,19 +394,21 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   </>
 }
 
-function HostWorkbench({ profile, initialPath, onEdit, onDelete }: { profile: ProfileView; initialPath: string; onEdit(): void; onDelete(): void }): JSX.Element {
+function HostWorkbench({ profile, initialPath, active, onEdit, onDelete }: { profile: ProfileView; initialPath: string; active: boolean; onEdit(): void; onDelete(): void }): JSX.Element {
   const [sftpReady, setSftpReady] = useState(false)
+  const [sftpHidden, setSftpHidden] = useState(false)
   const headingGlow = useBorderGlowSurface<HTMLElement>()
   return <div className="dsh-ssh-host-workbench">
     <header ref={headingGlow.ref} onPointerMove={headingGlow.onPointerMove} onPointerLeave={headingGlow.onPointerLeave} className="dsh-ssh-workbench-heading dsh-ssh-border-surface">
       <div><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
-      <div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button></div>
+      <div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? '展开 SFTP' : '收起 SFTP'} title={sftpHidden ? '展开 SFTP' : '收起 SFTP'} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? '展开 SFTP' : '收起 SFTP'}</button><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button></div>
     </header>
     <ResizableSplit
       storageKey="dsh-ssh:workbench:sftp-width"
       label="调整终端与 SFTP 的宽度"
-      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalPane profile={profile} onEdit={onEdit} onDelete={onDelete} onConnected={() => setSftpReady(true)} embedded /></section>}
-      secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady
+      secondaryHidden={sftpHidden}
+      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} /></section>}
+      secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady && active
         ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} embedded />
         : <div className="dsh-ssh-sftp-deferred"><span>SFTP</span><strong>等待终端连接</strong><p>打开终端后再读取远端目录。</p></div>}
       </section>}
@@ -407,83 +416,6 @@ function HostWorkbench({ profile, initialPath, onEdit, onDelete }: { profile: Pr
   </div>
 }
 
-function TerminalPane({ profile, onEdit, onDelete, onConnected, embedded = false }: { profile: ProfileView; onEdit(): void; onDelete(): void; onConnected?(): void; embedded?: boolean }): JSX.Element {
-  const hostRef = useRef<HTMLDivElement>(null)
-  const terminalRef = useRef<Terminal>()
-  const fitRef = useRef<FitAddon>()
-  const terminalIdRef = useRef<string>()
-  const [terminalId, setTerminalId] = useState<string>()
-  const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
-  const [error, setError] = useState<string>()
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (host === null) return
-    const terminal = createSshTerminal({ scrollback: 5000 })
-    const fit = new FitAddon()
-    terminal.loadAddon(fit)
-    terminal.open(host)
-    terminalRef.current = terminal; fitRef.current = fit
-    const viewport = attachTerminalViewport(host, terminal, fit, (cols, rows) => {
-      const id = terminalIdRef.current
-      if (id !== undefined) void api(`/terminals/${id}/resize`, { method: 'POST', body: JSON.stringify({ cols, rows }) }).catch(() => {})
-    })
-    return () => { viewport.dispose(); terminal.dispose(); terminalRef.current = undefined; fitRef.current = undefined }
-  }, [])
-
-  useEffect(() => { terminalIdRef.current = terminalId }, [terminalId])
-
-  useEffect(() => {
-    if (terminalId === undefined) return
-    const terminal = terminalRef.current
-    if (terminal === undefined) return
-    const transport = new TerminalTransport({
-      streamUrl: browserTerminalStreamUrl(terminalId),
-      read: cursor => api(`/terminals/${terminalId}/output?cursor=${cursor}`),
-      send: (text, sequence) => api(`/terminals/${terminalId}/input`, { method: 'POST', body: JSON.stringify({ text, sequence }) }),
-    })
-    const input = terminal.onData(data => transport.sendInput(data, reason => setError(message(reason))))
-    const stopOutput = transport.observe({
-      output: value => {
-        if (value.truncated) terminal.write('\r\n\x1b[33m[较早输出已截断]\x1b[0m\r\n')
-        if (value.data) terminal.write(value.data)
-        if (value.closed) { setPhase('idle'); setTerminalId(undefined) }
-      },
-      error: reason => { setError(message(reason)); setPhase('error') },
-    })
-    return () => { stopOutput(); transport.dispose(); input.dispose() }
-  }, [terminalId])
-
-  useEffect(() => () => { if (terminalId !== undefined) void api(`/terminals/${terminalId}`, { method: 'DELETE' }).catch(() => {}) }, [terminalId])
-  useEffect(() => { setTerminalId(undefined); setPhase('idle'); terminalRef.current?.clear() }, [profile.id])
-
-  const connect = async (): Promise<void> => {
-    const terminal = terminalRef.current
-    if (terminal === undefined) return
-    setPhase('connecting'); setError(undefined); terminal.clear(); terminal.write(`\x1b[2m正在连接 ${profileAddress(profile)}…\x1b[0m\r\n`)
-    try {
-      fitRef.current?.fit()
-      const result = await api<{ id: string }>('/terminals', { method: 'POST', body: JSON.stringify({ profileId: profile.id, cols: terminal.cols, rows: terminal.rows }) })
-      setTerminalId(result.id); setPhase('connected'); onConnected?.(); terminal.focus()
-    } catch (reason) { setPhase('error'); setError(message(reason)); terminal.write(`\r\n\x1b[31m${message(reason)}\x1b[0m\r\n`) }
-  }
-  const disconnect = async (): Promise<void> => {
-    if (terminalId !== undefined) await api(`/terminals/${terminalId}`, { method: 'DELETE' }).catch(() => {})
-    setTerminalId(undefined); setPhase('idle')
-  }
-  return <div className={`dsh-ssh-terminal-pane${embedded ? ' is-embedded' : ''}`}>
-    <div className="dsh-ssh-content-heading">
-      <div><div className="dsh-ssh-title-line"><span className={`dsh-ssh-live-dot is-${phase}`} /> <h1>{embedded ? '终端' : profile.name}</h1></div><p>{embedded ? profileAddress(profile) : `${profileAddress(profile)} · ${proxyLabel(profile)}`}</p></div>
-      <div className="dsh-ssh-heading-actions">
-        {!embedded && <><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑</button></>}
-        {phase === 'connected' ? <button type="button" className="dsh-ssh-danger-button" onClick={() => { void disconnect() }}><IconStopFill16 size={16} />断开</button>
-          : <button type="button" className="dsh-ssh-primary-button" disabled={phase === 'connecting'} onClick={() => { void connect() }}>{phase === 'connecting' ? '连接中…' : '打开终端'}</button>}
-      </div>
-    </div>
-    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span>{phase === 'connected' ? '已连接' : phase === 'connecting' ? '正在建立安全连接' : '终端未连接'}</span><span>UTF-8 · {profile.terminalType}</span></div></div>
-  </div>
-}
 
 function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected: ProfileView }): JSX.Element {
   const [rules, setRules] = useState<ForwardView[]>([])
@@ -887,7 +819,7 @@ function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
 function forwardState(status?: ForwardStatus): string { return status?.state === 'running' ? `运行中 · ${status.connections}` : status?.state === 'starting' ? '启动中' : status?.state === 'error' ? '失败' : '已停止' }
 
 function installStyles(): () => void {
-  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${fileTransferCss}\n${interactiveSurfacesCss}`
+  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}`
   document.getElementById(STYLE_ID)?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID

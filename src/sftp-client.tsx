@@ -25,6 +25,7 @@ interface SftpExplorerProps {
   nativeSessionId?: string
   initialPath: string
   header?: ReactNode
+  mountedDirectories?: Array<{ id: string; name: string; path: string }> | undefined
   workspace?: boolean
   loadDirectory(path: string, persist: boolean): Promise<SftpDirectoryView>
   loadPreview(path: string): Promise<SftpFilePreviewView>
@@ -80,7 +81,7 @@ export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, o
     <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
     <label><span className="sr-only">选择远端主机</span><select value={profile.id} onChange={event => onProfile(event.target.value)}>{profiles.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><small>{profile.username}@{profile.host}:{profile.port}</small></label>
   </div>
-  return <SftpExplorer key={`${sessionId}:${profile.id}`} initialPath={profile.cwd} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
+  return <SftpExplorer key={`${sessionId}:${profile.id}`} initialPath={profile.cwd} mountedDirectories={profile.mountedDirectories} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
 }
 
 export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean }): JSX.Element {
@@ -98,7 +99,7 @@ export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, 
   </div>
 }
 
-function SftpExplorer({ initialPath, nativeSessionId, header, workspace = false, loadDirectory, loadPreview, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+function SftpExplorer({ initialPath, nativeSessionId, header, mountedDirectories, workspace = false, loadDirectory, loadPreview, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const navigationId = useRef(0)
   const errorId = useId()
@@ -221,6 +222,7 @@ function SftpExplorer({ initialPath, nativeSessionId, header, workspace = false,
   }
   const content = <div className={`dsh-ssh-sftp${workspace || expanded ? ' is-workspace' : ''}${draggingFiles ? ' is-dragging-files' : ''}`} onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
     {header}
+    {mountedDirectories && mountedDirectories.length > 0 && <nav className="dsh-ssh-mounted-directories" aria-label="已挂载目录">{mountedDirectories.map(project => <button key={project.id} type="button" data-ssh-interactive="choice" className={directory?.path === project.path ? 'is-active' : ''} title={project.path} disabled={loading} onClick={() => { void browse(project.path, true) }}><IconFolderClose16 size={14} /><span>{project.name}</span></button>)}</nav>}
     {openedFile ? <SftpFilePreview entry={openedFile} loadPreview={loadPreview} fileUrl={fileUrl} onBack={() => setOpenedFile(undefined)} inDirectoryModal={expanded} /> : <>
       <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}${nativeSessionId === undefined ? '' : ' has-native-open'}`} aria-busy={loading} onSubmit={event => { void submit(event) }}>
         <button type="button" aria-label="返回上级目录" title="返回上级目录" disabled={directory?.parent == null || loading} onClick={() => { if (directory?.parent) void browse(directory.parent, true) }}><IconChevronLeftOutline14 size={14} /></button>

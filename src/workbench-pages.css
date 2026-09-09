@@ -1,0 +1,95 @@
+/* Workbench pages share the transfer stage material; nested panes stay clear. */
+.dsh-ssh-workspace .dsh-ssh-host-page { height: 100%; min-height: 0; min-width: 0; }
+.dsh-ssh-workspace [hidden] { display: none !important; }
+.dsh-ssh-workspace .dsh-ssh-adaptive-content { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
+.dsh-ssh-workspace :is(.dsh-ssh-host-workbench, .dsh-ssh-commands-pane, .dsh-ssh-forward-pane, .dsh-ssh-vault-pane, .dsh-ssh-proxy-pane, .dsh-ssh-settings-pane) {
+  background: var(--ssh-canvas);
+}
+.dsh-ssh-workspace :is(.dsh-ssh-commands-pane, .dsh-ssh-forward-pane, .dsh-ssh-vault-pane, .dsh-ssh-proxy-pane, .dsh-ssh-settings-pane) {
+  min-width: 0; padding: 10px 12px; gap: 6px;
+}
+.dsh-ssh-workspace :is(.dsh-ssh-commands-pane, .dsh-ssh-forward-pane, .dsh-ssh-vault-pane, .dsh-ssh-proxy-pane, .dsh-ssh-settings-pane) > .dsh-ssh-content-heading,
+.dsh-ssh-workspace .dsh-ssh-workbench-heading {
+  min-height: 62px; padding: 10px 16px; gap: 12px;
+  border: 1px solid var(--ssh-glass-border); border-radius: 18px;
+  background: var(--ssh-chrome-surface); backdrop-filter: var(--ssh-glass-filter);
+  -webkit-backdrop-filter: var(--ssh-glass-filter); box-shadow: var(--ssh-glass-shadow);
+}
+.dsh-ssh-workspace :is(.dsh-ssh-commands-pane, .dsh-ssh-forward-pane, .dsh-ssh-vault-pane, .dsh-ssh-proxy-pane, .dsh-ssh-settings-pane) > .dsh-ssh-content-heading h1,
+.dsh-ssh-workspace .dsh-ssh-workbench-heading h1 { font-size: 18px; font-weight: 650; letter-spacing: -.015em; }
+.dsh-ssh-workspace :is(.dsh-ssh-forward-list, .dsh-ssh-vault-list, .dsh-ssh-proxy-list, .dsh-ssh-command-list, .dsh-ssh-vault-empty, .dsh-ssh-settings-stack),
+.dsh-ssh-workspace .dsh-ssh-host-workbench > .dsh-ssh-workbench-split {
+  border: 1px solid var(--ssh-glass-border); border-radius: 18px;
+  background: var(--ssh-chrome-surface); backdrop-filter: var(--ssh-glass-filter);
+  -webkit-backdrop-filter: var(--ssh-glass-filter); box-shadow: var(--ssh-glass-shadow);
+}
+.dsh-ssh-workspace .dsh-ssh-host-workbench > .dsh-ssh-workbench-split { margin: 6px 12px 10px; }
+.dsh-ssh-workspace :is(.dsh-ssh-vault-list, .dsh-ssh-proxy-list) { gap: 0; overflow: hidden; }
+.dsh-ssh-workspace :is(.dsh-ssh-vault-row, .dsh-ssh-proxy-row, .dsh-ssh-forward-row, .dsh-ssh-settings-section) { border: 0; border-bottom: 1px solid var(--ssh-glass-separator); border-radius: 0; background: transparent; box-shadow: none; }
+.dsh-ssh-workspace :is(.dsh-ssh-vault-row, .dsh-ssh-proxy-row, .dsh-ssh-forward-row):hover { background: var(--ssh-hover); }
+.dsh-ssh-workspace .dsh-ssh-settings-stack { width: 100%; gap: 0; padding-bottom: 0; overflow: hidden; }
+.dsh-ssh-workspace :is(.dsh-ssh-workbench-terminal, .dsh-ssh-workbench-files) { background: transparent; }
+.dsh-ssh-terminal-workspace { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; container: ssh-terminals / inline-size; }
+.dsh-ssh-terminal-tabbar { display: flex; flex: none; align-items: center; gap: 4px; padding: 4px 6px; min-width: 0; border-bottom: 1px solid var(--ssh-glass-separator); }
+.dsh-ssh-terminal-tabs { display: flex; flex: 1; gap: 4px; min-width: 40px; overflow-x: auto; scrollbar-width: thin; }
+.dsh-ssh-terminal-layout-actions, .dsh-ssh-terminal-session-actions { display: flex; flex: none; align-items: center; gap: 2px; }
+.dsh-ssh-terminal-layout-actions { padding-inline: 4px; border-inline: 1px solid var(--ssh-glass-separator); }
+.dsh-ssh-terminal-tabbar .dsh-ssh-icon-button { width: 30px; min-width: 30px; height: 30px; padding: 0; }
+.dsh-ssh-terminal-session-actions > button { min-height: 30px; padding: 4px 7px; white-space: nowrap; }
+.dsh-ssh-terminal-layout-actions > button[aria-pressed="true"] { background: var(--ssh-tab-selected); color: var(--ssh-text); }
+.dsh-ssh-terminal-tab { display: flex; align-items: center; flex: none; border-radius: 8px; }
+.dsh-ssh-terminal-tab > button { padding: 7px 9px; background: transparent; color: var(--ssh-text-muted); border: 0; border-radius: 8px; }
+.dsh-ssh-terminal-tab.is-active { background: var(--ssh-tab-selected); }
+.dsh-ssh-terminal-tab.is-active > button { color: var(--ssh-text); }
+.dsh-ssh-terminal-panes { display: grid; gap: 1px; background: var(--ssh-terminal-border); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-width: 0; min-height: 0; }
+.dsh-ssh-terminal-panes.is-horizontal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dsh-ssh-terminal-panes.is-vertical { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.dsh-ssh-terminal-panes.is-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.dsh-ssh-terminal-slot { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.dsh-ssh-terminal-slot .dsh-ssh-terminal-pane.is-embedded { flex: 1; height: auto; padding: 0; background: var(--ssh-terminal-surface); }
+.dsh-ssh-terminal-slot .dsh-ssh-terminal-pane.is-embedded .dsh-ssh-terminal-frame { border: 0; border-radius: 0; box-shadow: none; }
+.dsh-ssh-terminal-slot .dsh-ssh-xterm { padding: 6px; }
+.dsh-ssh-terminal-slot .dsh-ssh-terminal-status { min-height: 24px; gap: 8px; padding-inline: 8px; }
+.dsh-ssh-terminal-status > span:first-child { flex: none; }
+.dsh-ssh-terminal-status > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-ssh-terminal-slot[data-focused="true"] .dsh-ssh-terminal-status { box-shadow: inset 2px 0 var(--ssh-text-muted); }
+.dsh-ssh-command-draft { display: grid; gap: 8px; padding-top: 8px; }
+.dsh-ssh-command-draft label { display: grid; gap: 5px; color: var(--ssh-text-muted); font-size: var(--ssh-type-caption); }
+.dsh-ssh-command-draft textarea { width: 100%; max-height: 120px; resize: vertical; font-family: var(--ssh-font-mono); }
+.dsh-ssh-commands-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 8px; }
+.dsh-ssh-commands-pane .dsh-ssh-search { margin: 0; }
+.dsh-ssh-command-picker { display: grid; min-width: 0; gap: 12px; padding: 18px; }
+.dsh-ssh-workbench-heading > .dsh-ssh-heading-actions { flex: none; flex-wrap: nowrap; }
+.dsh-ssh-command-picker .dsh-ssh-search { margin: 0; }
+.dsh-ssh-command-picker .dsh-ssh-command-list { max-height: 45dvh; border: 1px solid var(--ssh-glass-separator); border-radius: 10px; background: var(--ssh-surface); }
+.dsh-ssh-command-picker .dsh-ssh-command-row { padding: 10px 12px; }
+.dsh-ssh-command-picker .dsh-ssh-command-row:last-child { border-bottom: 0; }
+.dsh-ssh-command-picker .dsh-ssh-command-row:hover { background: var(--ssh-hover); }
+.dsh-ssh-split-secondary { display: contents; }
+.dsh-ssh-workspace .dsh-ssh-workbench-split.is-secondary-hidden { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.dsh-ssh-command-list { overflow: auto; min-height: 0; max-height: 65vh; }
+.dsh-ssh-command-row { display: flex; gap: 12px; padding: 12px 16px; align-items: start; border-bottom: 1px solid var(--ssh-glass-separator); }
+.dsh-ssh-command-row > div:first-child { min-width: 0; flex: 1; }
+.dsh-ssh-command-row strong { color: var(--ssh-text); font-size: var(--ssh-type-body); }
+.dsh-ssh-command-row pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ssh-text-muted); font: var(--ssh-type-label)/1.5 var(--ssh-font-mono); max-height: 120px; overflow: auto; }
+.dsh-ssh-command-empty { padding: 24px; color: var(--ssh-text-subtle); text-align: center; }
+.dsh-ssh-command-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--ssh-text-muted); font-size: var(--ssh-type-caption); }
+.dsh-ssh-mounted-directories { display: flex; flex: none; gap: 6px; padding: 6px 10px; overflow-x: auto; scrollbar-width: thin; }
+.dsh-ssh-mounted-directories button { display: flex; align-items: center; flex: none; gap: 5px; max-width: 180px; min-height: 32px; padding: 4px 8px; border-radius: 7px; color: var(--ssh-text-muted); background: transparent; }
+.dsh-ssh-mounted-directories button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container ssh-terminals (max-width: 620px) {
+  .dsh-ssh-terminal-panes.is-horizontal { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(120px, 1fr)); overflow: auto; }
+  .dsh-ssh-terminal-panes.is-vertical { grid-template-rows: repeat(2, minmax(120px, 1fr)); overflow: auto; }
+  .dsh-ssh-terminal-panes.is-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: minmax(120px, 1fr); overflow: auto; }
+}
+@container dsh-ssh-workspace (max-width: 600px) {
+  .dsh-ssh-workspace :is(.dsh-ssh-commands-pane, .dsh-ssh-forward-pane, .dsh-ssh-vault-pane, .dsh-ssh-proxy-pane, .dsh-ssh-settings-pane) > .dsh-ssh-content-heading { flex-wrap: wrap; }
+  .dsh-ssh-terminal-tabbar { gap: 2px; padding-inline: 4px; }
+  .dsh-ssh-terminal-layout-actions { padding-inline: 2px; }
+}
+@media (pointer: coarse) {
+  .dsh-ssh-terminal-tabbar button { min-height: 44px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .dsh-ssh-workspace :is(.dsh-ssh-command-list, .dsh-ssh-forward-list, .dsh-ssh-vault-list, .dsh-ssh-proxy-list, .dsh-ssh-workbench-split) { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--ssh-surface-raised); }
+}

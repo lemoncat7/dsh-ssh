@@ -2,6 +2,7 @@ import { executeSshCommand, type ExecResult } from './exec.js'
 import { SshConnector } from './connector.js'
 import type { SessionInjection } from './domain.js'
 import { SshStore } from './store.js'
+import { mountedProjects } from './project-mounts.js'
 
 const DIRECTORY_PROBE_TIMEOUT_MS = 10_000
 const DIRECTORY_PROBE_OUTPUT_CHARS = 8_192
@@ -49,6 +50,11 @@ export async function setSessionDirectory(
     const current = state.injections.find(item => item.sessionId === sessionId)
     if (current === undefined || !current.profileIds.includes(profileId)) throw new Error('SSH session injection changed while resolving the directory')
     current.workingDirectories[profileId] = cwd
+    const mounted = mountedProjects(current, profileId)
+    current.mountedProjectIds = { ...current.mountedProjectIds, [profileId]: mounted }
+    const matching = state.remoteProjects.find(project => project.profileId === profileId && project.path === cwd && mounted.includes(project.id))
+    if (matching) current.workingProjectIds[profileId] = matching.id
+    else delete current.workingProjectIds[profileId]
     current.updatedAt = Date.now()
   })
   return cwd

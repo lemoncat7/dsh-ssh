@@ -35,6 +35,11 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - `src/file-transfer-workspace.tsx` owns transfer task tabs, 2–4 file panes, cross-pane actions, job feedback, and file authorization UI.
 - `src/ftp-profile-editor.tsx` owns FTP/FTPS connection editing and validation.
 - `src/resizable-split.tsx` owns the terminal/SFTP split and persisted sizing.
+- `src/terminal-workspace.tsx` owns host-scoped tab identities and two-pane layout. Tabs stay mounted when switching pages/hosts within the open workbench; closing the workbench releases its browser terminals. Narrow panes stack vertically. Each host has at most 8 tabs, and the server limits active plus opening browser terminals to 32.
+- `src/terminal-session.tsx` owns one browser terminal lifecycle. xterm is created only on connection, pending opens are cleaned up after unmount, hidden tabs slow their polling fallback, and commands are reviewed before explicit execution into that tab only.
+- `src/commands.ts` owns command validation and serialized persistence (500 records, 16,000 characters each). `src/commands-panel.tsx` owns the editor/list reused by the command page and terminal picker. Commands are deliberately local to this DSH instance and excluded from Gist; terminal input is never automatically recorded.
+- `src/project-mounts.ts` owns multi-project reference validation and the legacy single-project fallback. Mounted projects are separate from the one default cwd. References follow edits/deletions, regular session forks copy them, and host revocation removes them. Mounts are directory bookmarks/context, not a filesystem sandbox or a new authorization grant.
+- `src/workbench-pages.css` aligns workspace headers, content surfaces, lists, and responsive terminal layouts to the file-transfer page's existing material tokens; it adds no animation runtime or font dependency.
 - `src/ui-components.tsx` provides shared dialog, field, segment, and empty-state behavior.
 
 ### Transport

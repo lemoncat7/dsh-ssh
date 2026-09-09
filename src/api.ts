@@ -9,7 +9,7 @@ import {
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
-import { setSessionDirectory } from './directory.js'
+import { normalizeRemoteDirectory, setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
 import { normalizeGitHubProxy } from './github-http.js'
@@ -28,6 +28,8 @@ import { scanRemoteTree } from './remote-tree-scan.js'
 import { streamRemoteTar } from './remote-tar-download.js'
 import { GistSyncService } from './gist-sync.js'
 import { findDuplicateProfileEndpoint } from './profile-endpoint.js'
+import { parseProjectMounts } from './project-mounts.js'
+import { saveCommand } from './commands.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -77,6 +79,19 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const relative = url.pathname.slice(prefix.length).replace(/^\/+|\/+$/g, '')
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
+
+  if (segments[0] === 'commands') {
+    if (method === 'GET' && segments.length === 1) return sendJson(res, 200, runtime.store.commands().sort((a, b) => b.updatedAt - a.updatedAt))
+    if ((method === 'POST' && segments.length === 1) || (method === 'PUT' && segments.length === 2)) {
+      requireMutationHeader(req)
+      return sendJson(res, method === 'POST' ? 201 : 200, await saveCommand(runtime.store, await readObject(req), segments[1]))
+    }
+    if (method === 'DELETE' && segments.length === 2) {
+      requireMutationHeader(req)
+      await runtime.store.update(state => { state.commands = (state.commands ?? []).filter(item => item.id !== segments[1]) })
+      return sendJson(res, 204, undefined)
+    }
+  }
 
   if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 5 })
 
@@ -519,9 +534,19 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (permission === undefined) throw httpError(400, 'permission must be exec or terminal')
       const workingDirectories = parseWorkingDirectories(body.workingDirectories, profileIds)
       const workingProjectIds = parseWorkingProjectIds(body.workingProjectIds, profileIds, runtime.store)
+      const mountedProjectIds = body.mountedProjectIds === undefined
+        ? Object.fromEntries(profileIds.map(id => [id, [...new Set([...(previous?.mountedProjectIds?.[id] ?? []), ...(workingProjectIds[id] ? [workingProjectIds[id]!] : [])])]]))
+        : parseProjectMounts(body.mountedProjectIds, profileIds, runtime.store.remoteProjects())
+      for (const profileId of profileIds) {
+        if (workingProjectIds[profileId] && !mountedProjectIds[profileId]?.includes(workingProjectIds[profileId]!)) throw httpError(400, '默认目录必须先挂载到当前会话')
+        if (workingDirectories[profileId] === undefined && mountedProjectIds[profileId]?.[0]) {
+          const project = runtime.store.remoteProject(mountedProjectIds[profileId]![0]!)
+          if (project) { workingDirectories[profileId] = project.path; workingProjectIds[profileId] = project.id }
+        }
+      }
       const injection: SessionInjection = {
         sessionId, profileIds, fileEndpointIds, filePermission, requireFileApproval: body.requireFileApproval === undefined ? previous?.requireFileApproval ?? true : body.requireFileApproval !== false,
-        permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, updatedAt: Date.now(),
+        permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, mountedProjectIds, updatedAt: Date.now(),
       }
       await runtime.store.update(state => { state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection] })
       const revoked = previous?.profileIds.filter(profileId => !profileIds.includes(profileId)) ?? []
@@ -609,6 +634,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         port: profile.port,
         username: profile.username,
         cwd: injection.workingDirectories[profile.id] ?? '~',
+        mountedDirectories: runtime.store.remoteProjects(profile.id).filter(project => (injection.mountedProjectIds?.[profile.id] ?? [injection.workingProjectIds[profile.id]]).includes(project.id)).map(({ id, name, path }) => ({ id, name, path })),
       }))
       return sendJson(res, 200, {
         injection,
@@ -709,7 +735,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const body = await readObject(req)
       const profileId = requireText(body.profileId, 'profileId', 100)
       requiredProfile(runtime.store, profileId)
-      return sendJson(res, 201, await runtime.terminals.create(profileId, optionalInteger(body.cols, 20, 400) ?? 120, optionalInteger(body.rows, 5, 200) ?? 32))
+      return sendJson(res, 201, await runtime.terminals.create(profileId, optionalInteger(body.cols, 20, 400) ?? 120, optionalInteger(body.rows, 5, 200) ?? 32, undefined, body.cwd === undefined ? undefined : normalizeRemoteDirectory(body.cwd)))
     }
     const id = segments[1]
     if (id !== undefined && method === 'GET' && segments[2] === 'output') {

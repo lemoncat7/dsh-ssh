@@ -1,6 +1,7 @@
 import type { TerminalOutputDelta } from './client-api.js'
 
 interface TerminalTransportEndpoints {
+  isVisible?(): boolean
   streamUrl: string
   read(cursor: number): Promise<TerminalOutputDelta>
   send(text: string, sequence: number): Promise<void>
@@ -66,7 +67,7 @@ export class TerminalTransport {
       try {
         const value = await this.endpoints.read(cursor)
         accept(value)
-        if (!stopped) pollTimer = window.setTimeout(() => { void poll() }, document.hidden ? 500 : value.data ? 16 : 64)
+        if (!stopped) pollTimer = window.setTimeout(() => { void poll() }, document.hidden || this.endpoints.isVisible?.() === false ? 1000 : value.data ? 16 : 64)
       } catch (reason) {
         if (stopped) return
         observer.error(reason)
