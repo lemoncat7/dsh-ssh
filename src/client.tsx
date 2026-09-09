@@ -556,7 +556,7 @@ function SettingsPane(): JSX.Element {
   const [busy, setBusy] = useState<'save' | 'test' | 'sync' | 'oauth' | 'disconnect' | 'network'>()
   const [notice, setNotice] = useState<string>()
   const [error, setError] = useState<string>()
-  const githubAuthError = gist?.tokenConfigured === false && gist.lastError?.startsWith('GitHub 授权已失效') === true ? gist.lastError : undefined
+  const githubAuthError = gist?.authPaused === true || (gist?.tokenConfigured === false && gist.lastError?.startsWith('GitHub 授权已失效') === true) ? gist?.lastError : undefined
   useEffect(() => {
     void Promise.all([api<SettingsView>('/settings'), api<GistSyncView>('/gist-sync')])
       .then(([nextSettings, nextGist]) => { setSettings(nextSettings); setGist(nextGist) })
@@ -655,7 +655,7 @@ function SettingsPane(): JSX.Element {
         <div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-gist-title">GitHub Gist 同步</strong><small>主机、FTP/FTPS、项目目录、代理与密钥库端到端加密同步</small></span><SyncStatus view={gist} /></div>
         <div className={`dsh-ssh-github-auth${githubAuthError === undefined ? '' : ' is-invalid'}`}>
           <span className="dsh-ssh-github-mark" aria-hidden="true">GH</span>
-          <span><strong>{gist.tokenConfigured ? `已连接 ${gist.githubLogin ?? 'GitHub'}` : githubAuthError === undefined ? '连接 GitHub' : 'GitHub 授权已失效'}</strong><small>{gist.tokenConfigured ? '授权凭据安全保存在当前 DSH' : githubAuthError ?? '通过 GitHub 设备授权获取 Gist 访问权限'}</small></span>
+          <span><strong>{githubAuthError !== undefined ? 'GitHub 授权需检查' : gist.tokenConfigured ? `已连接 ${gist.githubLogin ?? 'GitHub'}` : '连接 GitHub'}</strong><small>{githubAuthError ?? (gist.tokenConfigured ? '授权凭据安全保存在当前 DSH' : '通过 GitHub 设备授权获取 Gist 访问权限')}{githubAuthError !== undefined && gist.lastErrorAt ? `（${new Date(gist.lastErrorAt).toLocaleString()}）` : ''}</small></span>
           <span className="dsh-ssh-github-auth-actions">
             <button type="button" className={gist.tokenConfigured ? 'dsh-ssh-secondary-button' : 'dsh-ssh-primary-button'} disabled={busy !== undefined || oauthFlow !== undefined || !gist.oauthClientId} onClick={() => { void connectGitHub() }}>{busy === 'oauth' ? '连接中…' : oauthFlow !== undefined ? '等待授权…' : gist.tokenConfigured ? '重新连接' : '连接 GitHub'}</button>
             {gist.tokenConfigured && <button type="button" className="dsh-ssh-text-button" disabled={busy !== undefined} onClick={() => { void disconnectGitHub() }}>{busy === 'disconnect' ? '断开中…' : '断开'}</button>}

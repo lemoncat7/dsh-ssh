@@ -52,6 +52,8 @@ export interface TransferJobView {
 export interface RemoteProjectView { id: string; profileId: string; name: string; path: string; createdAt: number; updatedAt: number }
 export interface SettingsView { allowPublicBind: boolean; defaultCommandTimeoutMs: number; maxOutputChars: number; githubProxy?: string }
 export interface GistSyncView {
+  authPaused?: boolean
+  lastErrorAt?: number
   autoSync: boolean
   strategy: 'smart' | 'local-first' | 'cloud-first'
   backupRetention: number

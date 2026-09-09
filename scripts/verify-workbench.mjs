@@ -69,7 +69,7 @@ try {
       if (path.endsWith('/sftp/directory')) return json({ path: '/srv/app', parent: '/', entries: [] })
       if (path === '/forwards') return json({ rules: [], statuses: [] })
       if (path === '/settings') return json({ allowPublicBind: false, defaultCommandTimeoutMs: 30000, maxOutputChars: 32000 })
-      if (path === '/gist-sync') return json({ autoSync: false, strategy: 'smart', backupRetention: 5, tokenConfigured: false, encryptionConfigured: false, running: false })
+      if (path === '/gist-sync') return json({ autoSync: false, strategy: 'smart', backupRetention: 5, tokenConfigured: true, encryptionConfigured: false, running: false, authPaused: true, lastError: 'GitHub 授权复核返回 HTTP 401，自动同步已暂停；凭据已保留，请测试连接或重新连接 GitHub', lastErrorAt: 1788900000000 })
       if (path === '/file-transfer/endpoints') return json([{ id: 'local:test', name: '当前会话', kind: 'local', initialPath: '/work' }])
       if (path === '/file-transfer/jobs') return json([])
       if (path === '/file-transfer/directory') return json({ path: '/work', parent: null, entries: [] })
@@ -148,6 +148,7 @@ try {
     for (const tab of ['常用命令', '密钥库', '代理库', '设置', '文件传输']) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await page.waitForTimeout(80)
+      if (tab === '设置') assert.equal(await page.getByText('GitHub 授权需检查', { exact: true }).count(), 1)
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${tab} must fit ${width}px`)
     }
     await page.getByRole('tab', { name: '终端与文件', exact: true }).click()

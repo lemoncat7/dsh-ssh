@@ -164,10 +164,11 @@ test('recovers from damaged local sync metadata without preventing SSH startup',
   assert.equal((await readdir(fixture.directory)).some(name => name.startsWith('gist.json.corrupt.')), true)
 })
 
-test('invalid GitHub authorization is cleared and reported without discarding the encryption password', async t => {
+test('confirmed invalid authorization is retained and automatic sync pause survives restart', async t => {
   const fixture = await createFixture(t, 'invalid-github-authorization')
   const metadataPath = join(fixture.directory, 'gist.json')
-  const unauthorized = async () => json({ message: 'Bad credentials' }, 401)
+  let valid = false
+  const unauthorized = async () => valid ? json({ login: 'recovered' }) : json({ message: 'Bad credentials' }, 401)
   const service = await GistSyncService.open(
     fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), metadataPath,
     token => new GitHubGistClient(token, unauthorized),
@@ -178,14 +179,84 @@ test('invalid GitHub authorization is cleared and reported without discarding th
     token: 'github-token-value-for-tests', encryptionPassphrase: 'portable secret phrase',
   })
 
-  await assert.rejects(service.sync(), /GitHub 授权已失效，请重新连接 GitHub/)
+  await assert.rejects(service.sync(), /授权复核返回 HTTP 401/)
   const view = await service.view()
-  assert.equal(view.tokenConfigured, false)
+  assert.equal(view.tokenConfigured, true)
+  assert.equal(view.authPaused, true)
+  assert.ok(view.lastErrorAt > 0)
+  await service.sync(true)
+  assert.equal((await service.view()).lastErrorAt, view.lastErrorAt, 'automatic attempts must leave paused diagnosis intact')
   assert.equal(view.encryptionConfigured, true)
   assert.equal(view.githubLogin, undefined)
-  assert.equal(view.lastError, 'GitHub 授权已失效，请重新连接 GitHub')
+  assert.match(view.lastError, /凭据已保留/)
   const persisted = JSON.parse(await readFile(metadataPath, 'utf8'))
-  assert.equal(persisted.lastError, 'GitHub 授权已失效，请重新连接 GitHub')
+  assert.equal(persisted.lastError, view.lastError)
+  const reopened = await GistSyncService.open(fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), metadataPath)
+  t.after(() => reopened.close())
+  assert.equal((await reopened.view()).authPaused, true)
+  assert.equal((await reopened.view()).lastErrorAt, view.lastErrorAt)
+  valid = true
+  await service.testConnection()
+  assert.equal((await service.view()).authPaused, false)
+  assert.equal((await service.view()).lastError, undefined)
+})
+
+test('a transient 401 is verified without deleting token and manual retry recovers', async t => {
+  const fixture = await createFixture(t, 'transient-401')
+  let first = true
+  const service = await GistSyncService.open(fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), join(fixture.directory, 'gist.json'), token => new GitHubGistClient(token, async () => {
+    if (first) { first = false; return json({ message: 'Bad credentials' }, 401) }
+    return json({ login: 'tester' })
+  }))
+  t.after(() => service.close())
+  await service.configure({ settings: { autoSync: false, strategy: 'smart', backupRetention: 2 }, token: 'github-token-value-for-tests' })
+  await assert.rejects(service.testConnection(), /账号授权复核有效/)
+  assert.equal((await service.view()).tokenConfigured, true)
+  assert.equal((await service.view()).authPaused, false)
+  await service.testConnection()
+  assert.equal((await service.view()).lastError, undefined)
+  assert.equal((await service.view()).lastErrorAt, undefined)
+})
+
+test('an old failing request cannot overwrite newly saved authorization', async t => {
+  const fixture = await createFixture(t, 'stale-401')
+  let release
+  let started
+  const pending = new Promise(resolve => { started = resolve })
+  const service = await GistSyncService.open(fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), join(fixture.directory, 'gist.json'), token => new GitHubGistClient(token, async () => {
+    if (token === 'github-old-token-value-tests') { started(); return new Promise(resolve => { release = () => resolve(json({ message: 'Bad credentials' }, 401)) }) }
+    return json({ login: 'new-account' })
+  }))
+  t.after(() => service.close())
+  const settings = { autoSync: false, strategy: 'smart', backupRetention: 2 }
+  await service.configure({ settings, token: 'github-old-token-value-tests' })
+  const attempt = assert.rejects(service.testConnection(), /Bad credentials/)
+  await pending
+  await service.configure({ settings, token: 'github-new-token-value-tests' })
+  await service.testConnection()
+  release()
+  await attempt
+  const view = await service.view()
+  assert.equal(view.tokenConfigured, true)
+  assert.equal(view.githubLogin, 'new-account')
+  assert.equal(view.lastError, undefined)
+  assert.equal(view.authPaused, false)
+})
+
+test('network failure during 401 verification preserves token without declaring expiration', async t => {
+  const fixture = await createFixture(t, 'verification-network')
+  let first = true
+  const service = await GistSyncService.open(fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), join(fixture.directory, 'gist.json'), token => new GitHubGistClient(token, async () => {
+    if (first) { first = false; return json({ message: 'Bad credentials' }, 401) }
+    throw new Error('network timeout')
+  }))
+  t.after(() => service.close())
+  await service.configure({ settings: { autoSync: false, strategy: 'smart', backupRetention: 2 }, token: 'github-token-value-for-tests' })
+  await assert.rejects(service.testConnection(), /授权复核未完成/)
+  assert.equal((await service.view()).tokenConfigured, true)
+  assert.equal((await service.view()).authPaused, false)
+  await assert.rejects(service.testConnection(), /network timeout/)
+  assert.equal((await service.view()).tokenConfigured, true)
 })
 
 test('loads legacy FTP profiles without tags and persists the normalized metadata', async t => {

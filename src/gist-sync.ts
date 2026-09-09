@@ -49,6 +49,8 @@ export interface GistSyncView extends GistSyncSettings {
   lastSyncAt?: number
   lastResult?: 'uploaded' | 'downloaded' | 'merged' | 'unchanged'
   lastError?: string
+  lastErrorAt?: number
+  authPaused?: boolean
   gistUrl?: string
   githubLogin?: string
   cloudVersion?: string
@@ -90,6 +92,8 @@ interface SyncMetadata {
   lastSyncAt?: number
   lastResult?: GistSyncView['lastResult']
   lastError?: string
+  lastErrorAt?: number
+  authPaused?: boolean
   githubLogin?: string
   lastCloudVersion?: string
 }
@@ -228,6 +232,7 @@ export class GistSyncService {
   private pullTimer: NodeJS.Timeout | undefined
   private applying = false
   private running = false
+  private authGeneration = 0
   private readonly oauth: GitHubDeviceAuthService
 
   private constructor(
@@ -244,9 +249,12 @@ export class GistSyncService {
       () => this.metadata.settings.oauthClientId,
       async token => {
         const identity = await this.clientFactory(token).identify()
+        this.authGeneration++
         await this.vault.write({ token })
         this.metadata.githubLogin = identity.login
         delete this.metadata.lastError
+        delete this.metadata.lastErrorAt
+        delete this.metadata.authPaused
         await this.persist()
         return identity
       },
@@ -303,6 +311,8 @@ export class GistSyncService {
       ...(this.metadata.lastSyncAt === undefined ? {} : { lastSyncAt: this.metadata.lastSyncAt }),
       ...(this.metadata.lastResult === undefined ? {} : { lastResult: this.metadata.lastResult }),
       ...(this.metadata.lastError === undefined ? {} : { lastError: this.metadata.lastError }),
+      ...(this.metadata.lastErrorAt === undefined ? {} : { lastErrorAt: this.metadata.lastErrorAt }),
+      authPaused: this.metadata.authPaused === true,
       ...(settings.gistId === undefined ? {} : { gistUrl: `https://gist.github.com/${settings.gistId}` }),
       ...(this.metadata.githubLogin === undefined ? {} : { githubLogin: this.metadata.githubLogin }),
       ...(this.metadata.lastCloudVersion === undefined ? {} : { cloudVersion: this.metadata.lastCloudVersion }),
@@ -318,16 +328,21 @@ export class GistSyncService {
     if (typeof input.token === 'string' && input.token.trim().length > 0) credentialUpdate.token = input.token
     if (typeof input.encryptionPassphrase === 'string' && input.encryptionPassphrase.length > 0) credentialUpdate.encryptionPassphrase = input.encryptionPassphrase
     if (Object.keys(credentialUpdate).length > 0) {
+      if (credentialUpdate.token !== undefined) this.authGeneration++
       await this.vault.write(credentialUpdate)
-      if (credentialUpdate.token !== undefined) delete this.metadata.githubLogin
+      if (credentialUpdate.token !== undefined) {
+        delete this.metadata.githubLogin
+        this.clearAuthFailure()
+      }
     }
     if (input.clearToken === true) {
+      this.authGeneration++
       await this.vault.clearToken()
       delete this.metadata.githubLogin
+      this.clearAuthFailure()
     }
     this.metadata.settings = settings
     if (previousGistId !== settings.gistId) delete this.metadata.lastSyncedDigest
-    delete this.metadata.lastError
     await this.persist()
     this.configureAutomaticSync()
     if (settings.autoSync) this.scheduleAutoSync(500)
@@ -335,6 +350,7 @@ export class GistSyncService {
   }
 
   async testConnection(): Promise<{ login: string; gistId?: string }> {
+    const generation = this.authGeneration
     try {
       const client = await this.client()
       const identity = await client.identify()
@@ -348,12 +364,14 @@ export class GistSyncService {
           await decryptSecretRecords(snapshot.secrets, await this.encryptionPassphrase())
         }
       }
-      this.metadata.githubLogin = identity.login
-      delete this.metadata.lastError
+      if (generation === this.authGeneration) {
+        this.metadata.githubLogin = identity.login
+        this.clearAuthFailure()
+      }
       await this.persist()
       return { login: identity.login, ...(gistId === undefined ? {} : { gistId }) }
     } catch (error) {
-      throw await this.recordFailure(error)
+      throw await this.recordFailure(error, generation)
     }
   }
 
@@ -362,22 +380,23 @@ export class GistSyncService {
   pollOAuth(id: string): Promise<GitHubDeviceFlowStatus> { return this.oauth.poll(id) }
 
   async disconnectGitHub(): Promise<GistSyncView> {
+    this.authGeneration++
     await this.vault.clearToken()
     delete this.metadata.githubLogin
-    delete this.metadata.lastError
+    this.clearAuthFailure()
     await this.persist()
     return this.view()
   }
 
-  sync(): Promise<GistSyncView> {
-    const operation = this.syncQueue.catch(() => undefined as never).then(() => this.performSync())
+  sync(automatic = false): Promise<GistSyncView> {
+    const operation = this.syncQueue.catch(() => undefined as never).then(() => automatic && this.metadata.authPaused ? this.view() : this.performSync())
     this.syncQueue = operation
     return operation
   }
 
   private async performSync(): Promise<GistSyncView> {
+    const generation = this.authGeneration
     this.running = true
-    delete this.metadata.lastError
     try {
       await this.persistQueue
       const client = await this.client()
@@ -388,7 +407,7 @@ export class GistSyncService {
       if (gistId === undefined) {
         const created = await client.create(serializeSnapshot(local))
         this.metadata.settings = { ...this.metadata.settings, gistId: created.id }
-        this.complete(local, localDigest, 'uploaded', created.version)
+        this.complete(local, localDigest, 'uploaded', created.version, generation)
         await this.persist()
         return this.view()
       }
@@ -397,7 +416,7 @@ export class GistSyncService {
       const content = await client.content(gist)
       if (content === undefined) {
         gist = await client.update(gistId, { [MAIN_FILE]: { content: serializeSnapshot(local) } })
-        this.complete(local, localDigest, 'uploaded', gist.version)
+        this.complete(local, localDigest, 'uploaded', gist.version, generation)
         await this.persist()
         return this.view()
       }
@@ -411,11 +430,11 @@ export class GistSyncService {
         ? 'remote'
         : resolveSyncDecision(localDigest, remoteDigest, this.metadata.lastSyncedDigest, this.metadata.settings.strategy)
       if (decision === 'unchanged') {
-        this.complete(remote, remoteDigest, 'unchanged', gist.version)
+        this.complete(remote, remoteDigest, 'unchanged', gist.version, generation)
       } else if (decision === 'remote') {
         if (localDigest !== remoteDigest) gist = await this.writeBackup(client, gist, local)
         await this.apply(remote, passphrase)
-        this.complete(remote, remoteDigest, 'downloaded', gist.version)
+        this.complete(remote, remoteDigest, 'downloaded', gist.version, generation)
       } else {
         const result = decision === 'merge' ? mergePortableSnapshots(local, remote, this.metadata.deviceId) : local
         const resultDigest = snapshotDigest(result)
@@ -423,12 +442,12 @@ export class GistSyncService {
           gist = await this.writeMain(client, gist, result, remote)
         }
         if (localDigest !== resultDigest) await this.apply(result, passphrase)
-        this.complete(result, resultDigest, decision === 'merge' ? 'merged' : 'uploaded', gist.version)
+        this.complete(result, resultDigest, decision === 'merge' ? 'merged' : 'uploaded', gist.version, generation)
       }
       await this.persist()
       return this.view()
     } catch (error) {
-      throw await this.recordFailure(error)
+      throw await this.recordFailure(error, generation)
     } finally {
       this.running = false
     }
@@ -440,18 +459,37 @@ export class GistSyncService {
     return this.clientFactory(token)
   }
 
-  private async recordFailure(error: unknown): Promise<Error> {
-    const authenticationFailure = error instanceof GitHubApiError && error.status === 401
-    const failure = authenticationFailure
-      ? new Error('GitHub 授权已失效，请重新连接 GitHub', { cause: error })
-      : error instanceof Error ? error : new Error(String(error))
-    if (authenticationFailure) {
-      await this.vault.clearToken().catch(() => {})
-      delete this.metadata.githubLogin
+  private async recordFailure(error: unknown, generation: number): Promise<Error> {
+    let failure = error instanceof Error ? error : new Error(String(error))
+    if (generation !== this.authGeneration) return failure
+    const token = await this.vault.readToken()
+    if (generation !== this.authGeneration) return failure
+    // Preserve the original diagnosis when a subsequent manual attempt has no token.
+    if (token === undefined && this.metadata.lastError !== undefined) return new Error(this.metadata.lastError)
+    if (error instanceof GitHubApiError && error.status === 401 && token !== undefined) {
+      let paused = false
+      try {
+        await this.clientFactory(token).identify()
+        failure = new Error('GitHub 请求返回 HTTP 401，但账号授权复核有效；凭据已保留，请重试', { cause: error })
+      } catch (verificationError) {
+        paused = verificationError instanceof GitHubApiError && verificationError.status === 401
+        failure = new Error(paused
+          ? 'GitHub 授权复核返回 HTTP 401，自动同步已暂停；凭据已保留，请测试连接或重新连接 GitHub'
+          : `GitHub 请求返回 HTTP 401，授权复核未完成；凭据已保留，请重试。${verificationError instanceof Error ? verificationError.message : '复核请求失败'}`, { cause: error })
+      }
+      if (generation !== this.authGeneration) return failure
+      this.metadata.authPaused = paused
     }
     this.metadata.lastError = failure.message
+    this.metadata.lastErrorAt = Date.now()
     await this.persist().catch(() => {})
     return failure
+  }
+
+  private clearAuthFailure(): void {
+    delete this.metadata.lastError
+    delete this.metadata.lastErrorAt
+    delete this.metadata.authPaused
   }
 
   private async encryptionPassphrase(): Promise<string> {
@@ -528,13 +566,13 @@ export class GistSyncService {
     }
   }
 
-  private complete(snapshot: PortableSshSnapshot, digest: string, result: NonNullable<GistSyncView['lastResult']>, cloudVersion?: string): void {
+  private complete(snapshot: PortableSshSnapshot, digest: string, result: NonNullable<GistSyncView['lastResult']>, cloudVersion: string | undefined, generation: number): void {
     this.metadata.tombstones = structuredClone(snapshot.tombstones)
     this.metadata.lastSyncedDigest = digest
     this.metadata.lastSyncAt = Date.now()
     this.metadata.lastResult = result
     if (cloudVersion !== undefined) this.metadata.lastCloudVersion = cloudVersion
-    delete this.metadata.lastError
+    if (generation === this.authGeneration) this.clearAuthFailure()
   }
 
   private onStoreChanged(previous: SshState, next: SshState): void {
@@ -574,9 +612,10 @@ export class GistSyncService {
   }
 
   private async runAutomaticSync(): Promise<void> {
+    if (this.metadata.authPaused) return
     const configured = await this.vault.configured()
     if (!configured.token || !configured.encryption) return
-    await this.sync()
+    await this.sync(true)
   }
 
   private persist(): Promise<void> {
@@ -750,6 +789,8 @@ async function readMetadata(path: string): Promise<SyncMetadata> {
       ...(typeof input.lastSyncAt === 'number' ? { lastSyncAt: input.lastSyncAt } : {}),
       ...(input.lastResult === 'uploaded' || input.lastResult === 'downloaded' || input.lastResult === 'merged' || input.lastResult === 'unchanged' ? { lastResult: input.lastResult } : {}),
       ...(typeof input.lastError === 'string' ? { lastError: input.lastError } : {}),
+      ...(typeof input.lastErrorAt === 'number' && Number.isFinite(input.lastErrorAt) ? { lastErrorAt: input.lastErrorAt } : {}),
+      ...(input.authPaused === true ? { authPaused: true } : {}),
       ...(typeof input.githubLogin === 'string' ? { githubLogin: text(input.githubLogin, 'githubLogin', 1, 100) } : {}),
       ...(typeof input.lastCloudVersion === 'string' ? { lastCloudVersion: revision(input.lastCloudVersion) } : {}),
     }
