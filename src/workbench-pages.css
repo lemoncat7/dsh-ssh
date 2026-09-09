@@ -60,6 +60,10 @@
 .dsh-ssh-commands-pane .dsh-ssh-search { margin: 0; }
 .dsh-ssh-command-picker { display: grid; min-width: 0; gap: 12px; padding: 18px; }
 .dsh-ssh-workbench-heading > .dsh-ssh-heading-actions { flex: none; flex-wrap: nowrap; }
+.dsh-ssh-host-action-divider { width: 1px; height: 20px; margin-inline: 2px; background: var(--ssh-glass-separator); }
+@container dsh-ssh-workspace (max-width: 600px) {
+  .dsh-ssh-workbench-heading .dsh-ssh-host-actions { gap: 4px; }
+}
 .dsh-ssh-command-picker .dsh-ssh-search { margin: 0; }
 .dsh-ssh-command-picker .dsh-ssh-command-list { max-height: 45dvh; border: 1px solid var(--ssh-glass-separator); border-radius: 10px; background: var(--ssh-surface); }
 .dsh-ssh-command-picker .dsh-ssh-command-row { padding: 10px 12px; }

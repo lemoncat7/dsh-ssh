@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { selectTerminal, splitTerminal, closeTerminal } from '../lib/terminal-layout.js'
+import { selectTerminal, splitTerminal, closeTerminal, nextTerminalNumber } from '../lib/terminal-layout.js'
+
+test('terminal labels reuse gaps and restart at one when empty', () => {
+  assert.equal(nextTerminalNumber([]), 1)
+  assert.equal(nextTerminalNumber([1, 3, 4]), 2)
+  assert.equal(nextTerminalNumber([2, 3]), 1)
+})
 
 test('visible tabs change focus without swapping panes', () => {
   const layout = { panes: [1, 2], focused: 1 }

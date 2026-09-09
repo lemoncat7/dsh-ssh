@@ -1,5 +1,11 @@
 /** Pane positions are stable; focus and tab selection never swap visible shells. */
 export interface TerminalLayout { panes: number[]; focused: number }
+export function nextTerminalNumber(used: number[]): number {
+  const occupied = new Set(used)
+  let number = 1
+  while (occupied.has(number)) number++
+  return number
+}
 export function selectTerminal(layout: TerminalLayout, id: number): TerminalLayout {
   if (layout.panes.includes(id)) return { ...layout, focused: id }
   const index = Math.max(0, layout.panes.indexOf(layout.focused))

@@ -397,17 +397,25 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
 function HostWorkbench({ profile, initialPath, active, onEdit, onDelete }: { profile: ProfileView; initialPath: string; active: boolean; onEdit(): void; onDelete(): void }): JSX.Element {
   const [sftpReady, setSftpReady] = useState(false)
   const [sftpHidden, setSftpHidden] = useState(false)
+  const [closeAllRequest, setCloseAllRequest] = useState(0)
+  const [terminalCount, setTerminalCount] = useState(1)
   const headingGlow = useBorderGlowSurface<HTMLElement>()
   return <div className="dsh-ssh-host-workbench">
     <header ref={headingGlow.ref} onPointerMove={headingGlow.onPointerMove} onPointerLeave={headingGlow.onPointerLeave} className="dsh-ssh-workbench-heading dsh-ssh-border-surface">
       <div><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
-      <div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? '展开 SFTP' : '收起 SFTP'} title={sftpHidden ? '展开 SFTP' : '收起 SFTP'} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? '展开 SFTP' : '收起 SFTP'}</button><button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button><button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button></div>
+      <div className="dsh-ssh-heading-actions dsh-ssh-host-actions" role="group" aria-label="主机操作">
+        <button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? '展开 SFTP' : '收起 SFTP'} title={sftpHidden ? '展开 SFTP' : '收起 SFTP'} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? '展开 SFTP' : '收起 SFTP'}</button>
+        <button type="button" className="dsh-ssh-secondary-button" aria-label="编辑主机" title="编辑主机" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button>
+        <span className="dsh-ssh-host-action-divider" aria-hidden="true" />
+        <button type="button" className="dsh-ssh-secondary-button" disabled={terminalCount === 0} aria-label="关闭全部终端" title="关闭当前主机全部终端" onClick={() => setCloseAllRequest(value => value + 1)}><IconStopFill16 size={16} />关闭终端</button>
+        <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button>
+      </div>
     </header>
     <ResizableSplit
       storageKey="dsh-ssh:workbench:sftp-width"
       label="调整终端与 SFTP 的宽度"
       secondaryHidden={sftpHidden}
-      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} /></section>}
+      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={setTerminalCount} /></section>}
       secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady && active
         ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} embedded />
         : <div className="dsh-ssh-sftp-deferred"><span>SFTP</span><strong>等待终端连接</strong><p>打开终端后再读取远端目录。</p></div>}
