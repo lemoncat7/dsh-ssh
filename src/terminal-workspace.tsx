@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { IconCloseOutline16, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ProfileView } from './client-api.js'
 import { TerminalSession } from './terminal-session.js'
@@ -13,8 +13,14 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
   const [direction, setDirection] = useState<'horizontal' | 'vertical'>('horizontal')
   const [closing, setClosing] = useState<number>()
   const [controls, setControls] = useState<ReactNode>(null)
-  const [closingAll, setClosingAll] = useState(false)
-  useEffect(() => { if (closeAllRequest > 0) setClosingAll(true) }, [closeAllRequest])
+  const handledCloseRequest = useRef(closeAllRequest)
+  useEffect(() => {
+    if (handledCloseRequest.current === closeAllRequest) return
+    handledCloseRequest.current = closeAllRequest
+    setTabs([])
+    setView({ panes: [], focused: 0 })
+    setClosing(undefined)
+  }, [closeAllRequest])
   useEffect(() => { onCountChange?.(tabs.length) }, [onCountChange, tabs.length])
   const label = (id: number): string => `终端 ${tabs.find(tab => tab.id === id)?.number ?? ''}`
   const choose = (id: number): void => setView(current => selectTerminal(current, id))
@@ -68,7 +74,6 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
       </section>)}
       {tabs.length === 0 && <div className="dsh-ssh-command-empty"><p>所有终端均已关闭。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => add()}>新建终端</button></div>}
     </div>
-    {closingAll && <Dialog title="关闭全部终端？" subtitle={`将关闭 ${profile.name} 的 ${tabs.length} 个终端标签，包括隐藏标签，可能中断运行中的命令。其他主机不受影响。`} onClose={() => setClosingAll(false)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosingAll(false)}>取消</button><button type="button" className="dsh-ssh-danger-button" onClick={() => { setTabs([]); setView({ panes: [], focused: 0 }); setClosing(undefined); setClosingAll(false) }}>确认关闭全部</button></div></Dialog>}
     {closing !== undefined && <Dialog title={`关闭${label(closing)}？`} subtitle="关闭将断开此标签的 SSH 连接，可能中断正在运行的命令。" onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>取消</button><button type="button" className="dsh-ssh-danger-button" onClick={() => {
       const rest = tabs.filter(tab => tab.id !== closing)
       setTabs(rest)

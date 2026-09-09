@@ -297,6 +297,13 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
   const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'commands'>('workspace')
   const [visitedHosts, setVisitedHosts] = useState<string[]>([])
+  const [closeAllRequest, setCloseAllRequest] = useState(0)
+  const [closingAllTerminals, setClosingAllTerminals] = useState(false)
+  const [terminalCounts, setTerminalCounts] = useState<Record<string, number>>({})
+  const reportTerminalCount = useCallback((id: string, count: number) => {
+    setTerminalCounts(current => current[id] === count ? current : { ...current, [id]: count })
+  }, [])
+  const totalTerminals = profiles.reduce((sum, profile) => sum + (terminalCounts[profile.id] ?? 0), 0)
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [deleting, setDeleting] = useState<ProfileView>()
   const [refreshKey, setRefreshKey] = useState(0)
@@ -379,7 +386,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
-        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onEdit={() => setEditing(profile)} onDelete={() => setDeleting(profile)} /></div>)}
+        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onEdit={() => setEditing(profile)} onDelete={() => setDeleting(profile)} closeAllRequest={closeAllRequest} totalTerminals={totalTerminals} onCloseAll={() => setClosingAllTerminals(true)} reportTerminalCount={reportTerminalCount} /></div>)}
         {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? <FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'commands' ? <CommandsPanel />
           : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
@@ -389,16 +396,16 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
           : <ForwardPane profiles={profiles} selected={selected} />}
       </section>
     </AdaptiveWorkspace>
+    {closingAllTerminals && <Dialog title="关闭所有主机的终端？" subtitle={`将关闭本工作台所有主机的 ${totalTerminals} 个终端标签，包括隐藏标签及连接中的终端，可能中断正在运行的命令。不会删除主机配置，也不会关闭其他浏览器窗口的终端。`} onClose={() => setClosingAllTerminals(false)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosingAllTerminals(false)}>取消</button><button type="button" className="dsh-ssh-danger-button" onClick={() => { setCloseAllRequest(value => value + 1); setClosingAllTerminals(false) }}>确认关闭全部</button></div></Dialog>}
     {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
     {deleting !== undefined && <ProfileDeleteDialog profile={deleting} dependents={profiles.filter(profile => profile.id !== deleting.id && profile.proxy.type === 'jump' && profile.proxy.profileIds.includes(deleting.id))} onClose={() => setDeleting(undefined)} onDeleted={() => { setDeleting(undefined); setEditing(undefined); setRefreshKey(value => value + 1) }} />}
   </>
 }
 
-function HostWorkbench({ profile, initialPath, active, onEdit, onDelete }: { profile: ProfileView; initialPath: string; active: boolean; onEdit(): void; onDelete(): void }): JSX.Element {
+function HostWorkbench({ profile, initialPath, active, onEdit, onDelete, closeAllRequest, totalTerminals, onCloseAll, reportTerminalCount }: { profile: ProfileView; initialPath: string; active: boolean; onEdit(): void; onDelete(): void; closeAllRequest: number; totalTerminals: number; onCloseAll(): void; reportTerminalCount(id: string, count: number): void }): JSX.Element {
   const [sftpReady, setSftpReady] = useState(false)
   const [sftpHidden, setSftpHidden] = useState(false)
-  const [closeAllRequest, setCloseAllRequest] = useState(0)
-  const [terminalCount, setTerminalCount] = useState(1)
+  const onTerminalCount = useCallback((count: number) => reportTerminalCount(profile.id, count), [profile.id, reportTerminalCount])
   const headingGlow = useBorderGlowSurface<HTMLElement>()
   return <div className="dsh-ssh-host-workbench">
     <header ref={headingGlow.ref} onPointerMove={headingGlow.onPointerMove} onPointerLeave={headingGlow.onPointerLeave} className="dsh-ssh-workbench-heading dsh-ssh-border-surface">
@@ -407,7 +414,7 @@ function HostWorkbench({ profile, initialPath, active, onEdit, onDelete }: { pro
         <button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? '展开 SFTP' : '收起 SFTP'} title={sftpHidden ? '展开 SFTP' : '收起 SFTP'} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? '展开 SFTP' : '收起 SFTP'}</button>
         <button type="button" className="dsh-ssh-secondary-button" aria-label="编辑主机" title="编辑主机" onClick={onEdit}><IconEditOutline16 size={16} />编辑主机</button>
         <span className="dsh-ssh-host-action-divider" aria-hidden="true" />
-        <button type="button" className="dsh-ssh-secondary-button" disabled={terminalCount === 0} aria-label="关闭全部终端" title="关闭当前主机全部终端" onClick={() => setCloseAllRequest(value => value + 1)}><IconStopFill16 size={16} />关闭终端</button>
+        <button type="button" className="dsh-ssh-secondary-button" disabled={totalTerminals === 0} aria-label="关闭全部终端" title="关闭所有主机的终端" onClick={onCloseAll}><IconStopFill16 size={16} />关闭全部终端</button>
         <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={`删除主机 ${profile.name}`} title="删除主机" onClick={onDelete}><IconTrashOutline16 size={16} /></button>
       </div>
     </header>
@@ -415,7 +422,7 @@ function HostWorkbench({ profile, initialPath, active, onEdit, onDelete }: { pro
       storageKey="dsh-ssh:workbench:sftp-width"
       label="调整终端与 SFTP 的宽度"
       secondaryHidden={sftpHidden}
-      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={setTerminalCount} /></section>}
+      primary={<section className="dsh-ssh-workbench-terminal" aria-label={`${profile.name} 终端`}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={onTerminalCount} /></section>}
       secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady && active
         ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} embedded />
         : <div className="dsh-ssh-sftp-deferred"><span>SFTP</span><strong>等待终端连接</strong><p>打开终端后再读取远端目录。</p></div>}
