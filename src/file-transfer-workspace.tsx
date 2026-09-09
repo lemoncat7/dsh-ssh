@@ -213,7 +213,7 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
     </div>
     <footer><span>{selected.length > 0 ? `已选择 ${selected.length} 项` : `${view?.entries.length ?? 0} 项`}</span><span className="dsh-ssh-file-pane-actions"><button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || destination === undefined || !destination.endpointId || loading} onClick={() => { if (destination?.endpointId) onTransfer(selected, destination) }}>传送到下一栏 <span aria-hidden="true">→</span></button></span></footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>{dragSource?.endpointId === pane.endpointId ? '移动到此目录' : '复制到此目录'}</strong><span>{view?.path ?? pane.path}</span></div>}
-    {openedFile !== undefined && <Dialog title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><div className="dsh-ssh-dialog-actions"><a className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path)} download><DownloadGlyph /> 下载到本地</a></div></Dialog>}
+    {openedFile !== undefined && <Dialog className="dsh-ssh-file-download-dialog" title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><div className="dsh-ssh-dialog-actions"><a className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path)} download><DownloadGlyph /><span>下载到本地</span></a></div></Dialog>}
     {deleteTarget !== undefined && <FileEntryDeleteDialog locationName={endpoint.name} locationKind="remote" entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
   </section>
 }
@@ -228,7 +228,7 @@ function SortGlyph({ active, direction }: { active: boolean; direction: FileEntr
 }
 
 function DownloadGlyph(): JSX.Element {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7m0 0 2.6-2.6M8 9 5.4 6.4M3 11.5v1.25h10V11.5" /></svg>
+  return <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v7m0 0 2.6-2.6M8 9 5.4 6.4M3 11.5v1.25h10V11.5" /></svg>
 }
 
 function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, dropTarget, selected, selectedPaths, style, onSelect, onOpen, onDelete, onDirectoryTarget, onDropIntoDirectory, onDragSourceChange }: { entry: SftpEntryView; paneId: string; endpointId: string; sourceDirectory: string; dragSource?: TransferDragSource | undefined; dropTarget: boolean; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void; onDelete(): void; onDirectoryTarget(path?: string): void; onDropIntoDirectory(payload: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void }): JSX.Element {

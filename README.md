@@ -6,7 +6,13 @@
 
 ## 兼容性
 
-正式版 `1.4.5` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+正式版 `1.4.6` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+
+## 1.4.6 更新
+
+- 修复 FTP 文件弹窗下载图标缺少尺寸与描边，导致“下载到本地”竖排、图标变形的问题。
+- 下载按钮保持单行并保留 44px 点击高度，补齐弹窗操作区边距；长文件名和路径在弹窗内换行，关闭按钮不被挤出。
+- 保持现有材质、配色及下载逻辑。94 项测试通过，浏览器回归覆盖手机、窄窗口和桌面的深浅主题及万条目录虚拟列表。
 
 ## 1.4.5 更新
 

@@ -1016,3 +1016,11 @@
     background: var(--ssh-modal-surface);
   }
 }
+.dsh-ssh-file-download-dialog > header { gap: 12px; padding-block: 14px; }
+.dsh-ssh-file-download-dialog > header > span { flex: 1; min-width: 0; }
+.dsh-ssh-file-download-dialog > header h2 { overflow-wrap: anywhere; }
+.dsh-ssh-file-download-dialog > header p { overflow-wrap: anywhere; }
+.dsh-ssh-file-download-dialog > header > button { flex: none; }
+.dsh-ssh-file-download-dialog > .dsh-ssh-dialog-actions { padding: 16px 18px max(18px, env(safe-area-inset-bottom)); }
+.dsh-ssh-file-download-dialog .dsh-ssh-dialog-actions > a { flex: none; white-space: nowrap; text-decoration: none; min-height: 44px; padding-inline: 14px; }
+.dsh-ssh-file-download-dialog .dsh-ssh-dialog-actions > a > svg { flex: 0 0 16px; width: 16px; height: 16px; }
