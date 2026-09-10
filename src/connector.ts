@@ -168,11 +168,10 @@ async function connectClient(
   const client = new ssh2.Client()
   return new Promise((resolve, reject) => {
     let settled = false
-    const abort = (): void => { client.end(); finishReject(signal?.reason instanceof Error ? signal.reason : new Error('SSH connection was aborted')) }
+    const abort = (): void => finishReject(signal?.reason instanceof Error ? signal.reason : new Error('SSH connection was aborted'))
     const cleanup = (): void => {
       signal?.removeEventListener('abort', abort)
       client.off('ready', ready)
-      client.off('error', failed)
     }
     const finishReject = (error: Error): void => {
       if (settled) return
@@ -180,12 +179,23 @@ async function connectClient(
       cleanup()
       if (profile.hostFingerprint === undefined && observedFingerprint !== undefined) reject(new HostKeyRequiredError(profile.id, observedFingerprint))
       else reject(error)
+      client.destroy()
     }
     const ready = (): void => { if (settled) return; settled = true; cleanup(); resolve(client) }
     const failed = (error: Error): void => finishReject(error)
+    const closed = (): void => {
+      finishReject(new Error('SSH connection closed before handshake completed'))
+      cleanup()
+      client.off('error', failed)
+    }
     signal?.addEventListener('abort', abort, { once: true })
     client.once('ready', ready)
-    client.once('error', failed)
+    // ssh2 can emit another error while tearing down a timed-out socket.
+    // Keep a listener throughout the transport lifetime, including after ready.
+    // Settled promises ignore later errors; operation-specific listeners still receive them.
+    client.on('error', failed)
+    client.once('close', closed)
+    if (signal?.aborted) { abort(); return }
     try { client.connect(config) } catch (error) { finishReject(error instanceof Error ? error : new Error(String(error))) }
   })
 }

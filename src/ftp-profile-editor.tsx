@@ -72,7 +72,7 @@ function FtpProfileEditor({ value, profiles, vaultEntries, proxyEntries, onBack,
   const [error, setError] = useState<string>()
   const payload = () => ({
     profile: {
-      authMode: form.authMode, name: form.name, ...(form.group.trim() ? { group: form.group.trim() } : {}), protocol: form.protocol, host: form.host, port: Number(form.port), username: form.username,
+      authMode: form.authMode, name: form.name, ...(form.group.trim() ? { group: form.group.trim() } : {}), protocol: form.protocol, host: form.host, port: Number(form.port), username: form.authMode === 'anonymous' ? 'anonymous' : form.username,
       ...(form.authMode !== 'anonymous' && form.credentialId ? { credentialId: form.credentialId } : {}), proxy: form.proxyId ? { type: 'saved', proxyId: form.proxyId } : { type: 'none' },
       initialPath: form.initialPath, connectTimeoutMs: Number(form.connectTimeoutMs), ...(form.tlsServerName.trim() ? { tlsServerName: form.tlsServerName.trim() } : {}),
       tags: form.tags.split(/[,，]/u).map(item => item.trim()).filter(Boolean),

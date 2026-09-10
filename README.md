@@ -6,7 +6,13 @@
 
 ## 兼容性
 
-版本 `1.5.1` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+版本 `1.5.2` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+
+## 1.5.2 连接稳定性修复
+
+- SSH 错误监听保留至连接关闭，避免握手超时后的二次错误终止后端进程；同时处理连接取消及握手前关闭。
+- 匿名 FTP 表单明确提交标准用户名 `anonymous`，不携带私人密码。
+- 增加直连与 SOCKS5 无响应握手回归，以及匿名 FTP 新建、重开和修改的浏览器验证。
 
 ## 1.5.1 匿名 FTP 登录
 
