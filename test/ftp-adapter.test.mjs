@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import test from 'node:test'
-import { connectFtpProfile } from '../lib/ftp-adapter.js'
+import { connectFtpProfile, FtpFileSystemAdapter } from '../lib/ftp-adapter.js'
+import { normalizeFtpProfileDraft } from '../lib/domain.js'
 import { connectSocket } from '../lib/proxy.js'
 import { scanRemoteTree } from '../lib/remote-tree-scan.js'
 
@@ -75,6 +76,29 @@ test('large FTP listings have constant command count and resolve only the reques
   await assert.rejects(session.list('/', aborted.signal), /abort/i)
   assert.deepEqual(server.commands, [], 'already cancelled work must not issue FTP commands')
   assert.equal((await session.list('/docs')).path, '/docs')
+})
+
+test('anonymous FTP ignores private credentials and can browse directories', async t => {
+  const server = await createFtpServer()
+  t.after(server.close)
+  const draft = normalizeFtpProfileDraft({ name: 'Public', protocol: 'ftp', host: '127.0.0.1', authMode: 'anonymous', credentialId: 'private' })
+  assert.equal(draft.username, 'anonymous')
+  assert.equal(draft.credentialId, undefined)
+  const profile = { ...draft, id: 'public', port: server.port, createdAt: 0, updatedAt: 0 }
+  const adapter = new FtpFileSystemAdapter({ ftpProfile: () => profile }, {
+    readFtp() { throw new Error('must not read private password') },
+  }, { connect: (host, port, _route, timeout, signal) => connectSocket(host, port, timeout, signal) })
+  const session = await adapter.connect('public')
+  t.after(() => session.close())
+  assert.equal((await session.list('/docs')).entries[0].name, 'readme.md')
+  assert.deepEqual(server.commands.filter(c => /^(USER|PASS) /.test(c)), ['USER anonymous', 'PASS anonymous@'])
+})
+
+test('FTP legacy authentication remains password-based and validates username', () => {
+  const base = { name: 'Private', protocol: 'ftp', host: 'localhost' }
+  assert.throws(() => normalizeFtpProfileDraft(base), /username/)
+  assert.equal(normalizeFtpProfileDraft({ ...base, username: 'tester' }).authMode, 'password')
+  assert.throws(() => normalizeFtpProfileDraft({ ...base, authMode: 'invalid' }), /authMode/)
 })
 
 async function createFtpServer({ rootListing } = {}) {

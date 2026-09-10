@@ -91,6 +91,7 @@ export interface FtpProfile {
   group?: string
   tags: string[]
   protocol: FtpProtocol
+  authMode?: 'password' | 'anonymous'
   host: string
   port: number
   username: string
@@ -108,6 +109,7 @@ export interface FtpProfileDraft {
   group?: string
   tags: string[]
   protocol: FtpProtocol
+  authMode?: 'password' | 'anonymous'
   host: string
   port?: number
   username: string
@@ -162,6 +164,8 @@ export function normalizeFtpProfileDraft(value: unknown): FtpProfileDraft {
   if (protocol !== 'ftp' && protocol !== 'ftps-explicit' && protocol !== 'ftps-implicit') {
     throw bad('protocol must be ftp, ftps-explicit, or ftps-implicit')
   }
+  const authMode = input.authMode ?? 'password'
+  if (authMode !== 'password' && authMode !== 'anonymous') throw bad('invalid FTP authMode')
   const proxy = normalizeFtpProxy(input.proxy)
   const defaultPort = protocol === 'ftps-implicit' ? 990 : 21
   return {
@@ -171,8 +175,9 @@ export function normalizeFtpProfileDraft(value: unknown): FtpProfileDraft {
     protocol,
     host: text(input.host, 'host', 1, 253),
     port: integer(input.port ?? defaultPort, 'port', 1, 65_535),
-    username: text(input.username, 'username', 1, 128),
-    ...optionalText(input.credentialId, 'credentialId', 1, 100),
+    authMode,
+    username: authMode === 'anonymous' ? 'anonymous' : text(input.username, 'username', 1, 128),
+    ...(authMode === 'anonymous' ? {} : optionalText(input.credentialId, 'credentialId', 1, 100)),
     proxy,
     initialPath: remotePath(input.initialPath ?? '/', 'initialPath'),
     connectTimeoutMs: integer(input.connectTimeoutMs ?? 15_000, 'connectTimeoutMs', 1000, 120_000),

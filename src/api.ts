@@ -180,9 +180,9 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const id = body.profileId === undefined ? createId('ftp-preview') : requiredFtpProfile(runtime.store, requireText(body.profileId, 'profileId', 100)).id
       const previous = body.profileId === undefined ? {} : await runtime.credentials.readFtp(id)
       const secrets = { ...previous, ...normalizeSecrets(body.secrets) }
-      if (!secrets.password && draft.credentialId === undefined) throw httpError(400, 'FTP password is required')
+      if (draft.authMode !== 'anonymous' && !secrets.password && draft.credentialId === undefined) throw httpError(400, 'FTP password is required')
       const credentialEntry = draft.credentialId === undefined ? undefined : requiredPasswordCredential(runtime.store, draft.credentialId)
-      const password = credentialEntry === undefined ? secrets.password! : (await runtime.credentials.readEntry(credentialEntry.id)).password
+      const password = draft.authMode === 'anonymous' ? 'anonymous@' : credentialEntry === undefined ? secrets.password! : (await runtime.credentials.readEntry(credentialEntry.id)).password
       if (!password) throw httpError(400, 'FTP password credential is not configured')
       const now = Date.now()
       const profile: FtpProfile = { ...draft, id, username: credentialEntry?.username ?? draft.username, port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: now, updatedAt: now }
@@ -195,10 +195,10 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const draft = normalizeFtpProfileDraft(body.profile)
       if (draft.credentialId !== undefined) requiredPasswordCredential(runtime.store, draft.credentialId)
       const secrets = normalizeSecrets(body.secrets)
-      if (draft.credentialId === undefined && !secrets.password) throw httpError(400, 'FTP password is required')
+      if (draft.authMode !== 'anonymous' && draft.credentialId === undefined && !secrets.password) throw httpError(400, 'FTP password is required')
       const now = Date.now()
       const profile: FtpProfile = { ...draft, id: createId('ftp'), port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: now, updatedAt: now }
-      if (profile.credentialId === undefined) await runtime.credentials.replaceFtp(profile.id, { password: secrets.password! })
+      if (profile.authMode !== 'anonymous' && profile.credentialId === undefined) await runtime.credentials.replaceFtp(profile.id, { password: secrets.password! })
       try { await runtime.store.update(state => { state.ftpProfiles.push(profile) }) }
       catch (error) { if (profile.credentialId === undefined) await runtime.credentials.deleteFtp(profile.id).catch(() => {}); throw error }
       return sendJson(res, 201, await ftpProfileView(runtime, profile))
@@ -212,14 +212,15 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (draft.credentialId !== undefined) requiredPasswordCredential(runtime.store, draft.credentialId)
       const secrets = normalizeSecrets(body.secrets)
       const next: FtpProfile = { ...previous, ...draft, id, port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: previous.createdAt, updatedAt: Date.now() }
+      if (draft.credentialId === undefined) delete next.credentialId
       if (draft.group === undefined) delete next.group
       if (draft.tlsServerName === undefined) delete next.tlsServerName
       const oldSecrets = await runtime.credentials.readFtp(id)
-      if (next.credentialId === undefined && !secrets.password && !oldSecrets.password) throw httpError(400, 'FTP password is required when switching to connection-specific credentials')
-      if (next.credentialId === undefined && secrets.password) await runtime.credentials.writeFtp(id, { password: secrets.password })
+      if (next.authMode !== 'anonymous' && next.credentialId === undefined && !secrets.password && !oldSecrets.password) throw httpError(400, 'FTP password is required when switching to connection-specific credentials')
+      if (next.authMode !== 'anonymous' && next.credentialId === undefined && secrets.password) await runtime.credentials.writeFtp(id, { password: secrets.password })
       try { await runtime.store.update(state => { state.ftpProfiles = state.ftpProfiles.map(profile => profile.id === id ? next : profile) }) }
       catch (error) { await runtime.credentials.replaceFtp(id, oldSecrets).catch(() => {}); throw error }
-      if (next.credentialId !== undefined && previous.credentialId === undefined) await runtime.credentials.deleteFtp(id).catch(() => {})
+      if (next.authMode === 'anonymous' || (next.credentialId !== undefined && previous.credentialId === undefined)) await runtime.credentials.deleteFtp(id).catch(() => {})
       return sendJson(res, 200, await ftpProfileView(runtime, next))
     }
     if (id !== undefined && method === 'DELETE' && segments.length === 2) {
@@ -815,6 +816,7 @@ async function proxyEntryView(runtime: SshApiRuntime, entry: ProxyEntry): Promis
 async function ftpProfileViews(runtime: SshApiRuntime): Promise<unknown[]> { return Promise.all(runtime.store.ftpProfiles().map(profile => ftpProfileView(runtime, profile))) }
 
 async function ftpProfileView(runtime: SshApiRuntime, profile: FtpProfile): Promise<unknown> {
+  if (profile.authMode === 'anonymous') return { ...profile, username: 'anonymous', credential: { configured: false, fields: [], source: 'profile' } }
   if (profile.credentialId !== undefined) {
     const entry = requiredPasswordCredential(runtime.store, profile.credentialId)
     const credential = await runtime.credentials.describeEntry(entry.id)

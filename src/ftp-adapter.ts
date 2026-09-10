@@ -23,6 +23,7 @@ export class FtpFileSystemAdapter implements RemoteFileSystemAdapter {
   async connect(id: string, signal?: AbortSignal): Promise<RemoteFileSystemSession> {
     const profile = this.store.ftpProfile(id)
     if (profile === undefined) throw Object.assign(new Error(`FTP endpoint ${id} was not found`), { status: 404 })
+    if (profile.authMode === 'anonymous') return connectFtpProfile(profile, '', this.dialer, signal)
     const entry = profile.credentialId === undefined ? undefined : this.store.credentialEntry(profile.credentialId)
     if (profile.credentialId !== undefined && (entry === undefined || entry.authType !== 'password')) throw new Error('FTP password credential entry was not found')
     const secrets = entry === undefined ? await this.credentials.readFtp(profile.id) : await this.credentials.readEntry(entry.id)
@@ -32,6 +33,7 @@ export class FtpFileSystemAdapter implements RemoteFileSystemAdapter {
   }
 
   private resolveProfile(profile: FtpProfile): FtpProfile {
+    if (profile.authMode === 'anonymous') return { ...profile, username: 'anonymous' }
     if (profile.credentialId === undefined) return profile
     const entry = this.store.credentialEntry(profile.credentialId)
     return entry?.authType === 'password' ? { ...profile, username: entry.username } : profile
@@ -69,7 +71,7 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
         await welcome
         if (profile.protocol === 'ftps-explicit') await client.useTLS(tlsOptions)
       }
-      await client.login(profile.username, password)
+      await client.login(profile.authMode === 'anonymous' ? 'anonymous' : profile.username, profile.authMode === 'anonymous' ? 'anonymous@' : password)
       await client.useDefaultSettings()
       if (profile.initialPath !== '/') await client.cd(profile.initialPath)
       return new FtpFileSystemSession(endpoint, profile, client)

@@ -35,6 +35,7 @@ export interface InjectionView {
   mountedProjectIds?: Record<string, string[]>
 }
 export interface FtpProfileView {
+  authMode?: 'password' | 'anonymous'
   id: string; name: string; group?: string; protocol: 'ftp' | 'ftps-explicit' | 'ftps-implicit'
   tags: string[]
   host: string; port: number; username: string; credentialId?: string

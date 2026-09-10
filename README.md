@@ -6,7 +6,14 @@
 
 ## 兼容性
 
-版本 `1.5.0` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+版本 `1.5.1` 针对 DeepSeek Harness `0.1.2-rc.1` 构建，需要 Node.js `22.19+` 或 `24+`。Agent、Session/Workspace Controller、Credentials、Tools 与客户端 UI 接口均对应 `0.1.2-rc.1`。
+
+## 1.5.1 匿名 FTP 登录
+
+- FTP/FTPS 连接的身份认证可选择“匿名登录”，无需填写账号密码；服务器需开放匿名访问。
+- 测试连接、目录浏览、文件传输及配置同步保留匿名模式，代理与 TLS 规则不变。
+- 匿名连接使用 `anonymous` / `anonymous@`，不会发送私人凭据；切换匿名后清理此连接独立保存的密码，不删除共享凭据。
+- 原有连接默认保持账号密码认证。
 
 ## 1.5.0 工作台增强
 
