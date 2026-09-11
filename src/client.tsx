@@ -45,6 +45,8 @@ import { Dialog, EmptyState, Field, PasswordInput, Segment, ServerGlyph, errorMe
 import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
 import { FileTransferWorkspace } from './file-transfer-workspace.js'
 import fileTransferCss from './file-transfer-workspace.css'
+import { createDockedPanel, supportsDockedPanels } from './docked-panel-compat.js'
+import { registerMainPanel } from './main-panel-compat.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -65,9 +67,10 @@ export const inject = ['slots', 'layout', 'sessions', 'workspaces']
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(installStyles, 'dsh-ssh: styles')
+  const docked = supportsDockedPanels(ctx)
   const activityController = createActivityController(ctx)
-  const controller = createController(ctx, () => activityController.close())
-  ctx.effect(() => observePluginWorkspace(PLUGIN_ID, () => { controller.close(); activityController.close() }), 'dsh-ssh: exclusive workspace')
+  const controller = createController(ctx, () => { if (!docked) activityController.close() })
+  ctx.effect(() => observePluginWorkspace(PLUGIN_ID, () => { controller.close(); if (!docked) activityController.close() }), 'dsh-ssh: exclusive workspace')
   ctx.effect(() => () => { controller.close(); activityController.dispose() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'ssh-remote', order: -100,
@@ -91,9 +94,9 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
       if (profileId !== undefined) selected = profileId
       if (dispose === undefined) {
         activatePluginWorkspace(PLUGIN_ID)
-        dispose = ctx.slots.register({ name: 'conversation', priority: -2 }, props => (
+        dispose = registerMainPanel(ctx, PLUGIN_ID, -2, props => (
           <RemoteWorkspace {...props} controller={controller} />
-        ))
+        ), () => controller.close())
       }
       notify()
     },
@@ -113,6 +116,7 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
 }
 
 function createActivityController(ctx: ClientContext): ActivityController {
+  if (supportsDockedPanels(ctx)) return createDockedActivityController(ctx)
   const runtime = ctx as unknown as { sessions: ISessions }
   const listeners = new Set<() => void>()
   const states = new Map<string, { open: boolean; selectedProfileId?: string; requestedView: ActivityViewMode }>()
@@ -205,6 +209,32 @@ function createActivityController(ctx: ClientContext): ActivityController {
 
 function normalizeSessionId(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function createDockedActivityController(ctx: ClientContext): ActivityController {
+  const states = new Map<string, { profileId: string | undefined; view: ActivityViewMode }>()
+  const listeners = new Set<() => void>()
+  const notify = (): void => { for (const listener of listeners) listener() }
+  const panel = createDockedPanel(ctx, '@lemoncat7/dsh-ssh/activity', 'SSH 活动',
+    props => <SshActivityPanel {...props} controller={controller} />, notify)
+  const controller: ActivityController = {
+    open(sessionId, profileId, view) {
+      states.set(sessionId, { profileId: profileId ?? states.get(sessionId)?.profileId,
+        view: view ?? (profileId === undefined ? 'local-directory' : 'remote-directory') })
+      panel.open(sessionId)
+    },
+    toggle(sessionId) { if (panel.isOpen(sessionId)) controller.close(sessionId); else controller.open(sessionId) },
+    close(sessionId) {
+      const target = sessionId ?? normalizeSessionId((ctx.sessions as unknown as ISessions).list.getSnapshot().current)
+      if (target !== undefined) panel.close(target)
+    },
+    isOpen: panel.isOpen,
+    selected: sessionId => states.get(sessionId)?.profileId,
+    requestedView: sessionId => states.get(sessionId)?.view,
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener) } },
+    dispose() { panel.dispose(); states.clear(); listeners.clear() },
+  }
+  return controller
 }
 
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {
