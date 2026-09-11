@@ -1,0 +1,67 @@
+/* Match the knowledge dock; never restyle the full SSH workspace. */
+.dsh-ssh-activity-panel {
+  --ssh-activity-surface: rgba(255, 255, 255, .14);
+  --ssh-activity-surface-raised: rgba(255, 255, 255, .27);
+  --ssh-dock-filter: saturate(.65) contrast(1.015) blur(24px);
+  overflow: hidden;
+  backdrop-filter: var(--ssh-dock-filter);
+  -webkit-backdrop-filter: var(--ssh-dock-filter);
+}
+body[data-ds-dark-theme] .dsh-ssh-activity-panel {
+  --ssh-activity-surface: rgb(29 36 38 / 24%);
+  --ssh-activity-surface-raised: rgb(39 50 53 / 72%);
+  --ssh-dock-filter: saturate(.55) contrast(1.02) blur(24px);
+}
+.dsh-ssh-activity-panel .dsh-ssh-activity-header {
+  min-height: 58px;
+  flex: none;
+  margin: 0;
+  padding: 0 12px 0 15px;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid var(--ssh-border);
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+.dsh-ssh-activity-panel .dsh-ssh-activity-mark {
+  width: 27px;
+  height: 27px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ssh-text);
+  background: transparent;
+}
+.dsh-ssh-activity-panel .dsh-ssh-activity-title { gap: 9px; }
+.dsh-ssh-activity-panel .dsh-ssh-activity-header small { font: 11px/1.5 var(--ssh-font-sans); }
+.dsh-ssh-activity-panel .dsh-ssh-activity-tabs {
+  min-height: 43px;
+  flex: none;
+  margin: 0;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--ssh-border);
+  border-radius: 0;
+  background: transparent;
+}
+.dsh-ssh-activity-panel .dsh-ssh-activity-tabs button { border: 1px solid transparent; border-radius: 9px; min-height: 32px; padding: 0 10px; }
+.dsh-ssh-activity-panel .dsh-ssh-activity-tabs button.is-active {
+  border-color: var(--ssh-border);
+  background: var(--ssh-activity-surface-raised);
+  box-shadow: inset 0 1px 0 var(--ssh-glass-highlight);
+}
+.dsh-ssh-activity-panel .dsh-ssh-sftp-table {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.dsh-ssh-activity-panel .dsh-ssh-sftp-columns { background: var(--ssh-activity-surface-raised); border-radius: 8px 8px 0 0; }
+.dsh-ssh-activity-panel .dsh-ssh-sftp-pathbar input { min-height: 38px; border-radius: 10px; }
+@media (prefers-reduced-transparency: reduce) {
+  .dsh-ssh-activity-panel { --ssh-activity-surface: #f2f3f7; --ssh-dock-filter: none; }
+  body[data-ds-dark-theme] .dsh-ssh-activity-panel { --ssh-activity-surface: #101719; }
+}

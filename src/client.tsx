@@ -15,6 +15,7 @@ import adaptiveUiCss from './adaptive-workspace.css'
 import borderGlowCss from './border-glow.css'
 import { useBorderGlowSurface } from './border-glow.js'
 import interactiveSurfacesCss from './interactive-surfaces.css'
+import activitySurfaceCss from './activity-surface.css'
 import { activatePluginWorkspace, observePluginWorkspace } from './workspace-ownership.js'
 import {
   IconChevronDownOutline14, IconCloseOutline16, IconDataOutline16,
@@ -864,7 +865,7 @@ function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
 function forwardState(status?: ForwardStatus): string { return status?.state === 'running' ? `运行中 · ${status.connections}` : status?.state === 'starting' ? '启动中' : status?.state === 'error' ? '失败' : '已停止' }
 
 function installStyles(): () => void {
-  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}`
+  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}`
   document.getElementById(STYLE_ID)?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID
