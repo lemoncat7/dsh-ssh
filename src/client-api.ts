@@ -84,7 +84,18 @@ export interface ActivityView { injection: InjectionView | null; profiles: Activ
 export interface TerminalOpenedEvent { type: 'terminal-opened'; sessionId: string; terminalId: string; profileId: string; createdAt: number }
 export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; navigable?: boolean; size: number; modifiedAt: number }
 export interface SftpDirectoryView { path: string; parent: string | null; entries: SftpEntryView[] }
-export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean }
+export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean; contentHash?: string }
+
+export interface MarkdownSaveInput { path: string; text: string; expectedHash: string }
+export function saveLocalWorkspaceMarkdown(sessionId: string, input: MarkdownSaveInput): Promise<{ contentHash: string }> {
+  return api(`/activity/local-markdown?${new URLSearchParams({ sessionId })}`, { method: 'PUT', body: JSON.stringify(input), signal: AbortSignal.timeout(60_000) })
+}
+export function saveActivityMarkdown(sessionId: string, profileId: string, input: MarkdownSaveInput): Promise<{ contentHash: string }> {
+  return api(`/activity/markdown?${new URLSearchParams({ sessionId, profileId })}`, { method: 'PUT', body: JSON.stringify(input), signal: AbortSignal.timeout(60_000) })
+}
+export function saveProfileMarkdown(profileId: string, input: MarkdownSaveInput): Promise<{ contentHash: string }> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/markdown`, { method: 'PUT', body: JSON.stringify(input), signal: AbortSignal.timeout(60_000) })
+}
 
 export class ApiError extends Error {
   constructor(readonly status: number, message: string, readonly body?: Record<string, unknown>) { super(message); this.name = 'ApiError' }
@@ -154,23 +165,23 @@ export function loadSftpDirectory(sessionId: string, profileId: string, path?: s
   if (path !== undefined) query.set('path', path)
   return api(`/activity/files?${query.toString()}`)
 }
-export function loadSftpPathEntry(sessionId: string, profileId: string, path: string): Promise<SftpEntryView> {
-  return api(`/activity/stat?${new URLSearchParams({ sessionId, profileId, path })}`)
+export function loadSftpPathEntry(sessionId: string, profileId: string, path: string, signal?: AbortSignal): Promise<SftpEntryView> {
+  return api(`/activity/stat?${new URLSearchParams({ sessionId, profileId, path })}`, { signal: signal ?? null })
 }
-export function loadLocalWorkspacePathEntry(sessionId: string, path: string): Promise<SftpEntryView> {
-  return api(`/activity/local-stat?${new URLSearchParams({ sessionId, path })}`)
+export function loadLocalWorkspacePathEntry(sessionId: string, path: string, signal?: AbortSignal): Promise<SftpEntryView> {
+  return api(`/activity/local-stat?${new URLSearchParams({ sessionId, path })}`, { signal: signal ?? null })
 }
-export function loadProfileSftpPathEntry(profileId: string, path: string): Promise<SftpEntryView> {
-  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/stat?${new URLSearchParams({ path })}`)
+export function loadProfileSftpPathEntry(profileId: string, path: string, signal?: AbortSignal): Promise<SftpEntryView> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/stat?${new URLSearchParams({ path })}`, { signal: signal ?? null })
 }
 export function loadLocalWorkspaceDirectory(sessionId: string, path?: string): Promise<SftpDirectoryView> {
   const query = new URLSearchParams({ sessionId })
   if (path !== undefined) query.set('path', path)
   return api(`/activity/local-directory?${query.toString()}`)
 }
-export function loadLocalWorkspaceFilePreview(sessionId: string, path: string): Promise<SftpFilePreviewView> {
+export function loadLocalWorkspaceFilePreview(sessionId: string, path: string, signal?: AbortSignal): Promise<SftpFilePreviewView> {
   const query = new URLSearchParams({ sessionId, path })
-  return api(`/activity/local-file?${query.toString()}`)
+  return api(`/activity/local-file?${query.toString()}`, { signal: signal ?? null })
 }
 export function deleteLocalWorkspaceEntries(sessionId: string, directory: string, paths: string[]): Promise<void> {
   return api('/activity/local-delete', { method: 'POST', body: JSON.stringify({ sessionId, directory, paths }) })
@@ -180,9 +191,9 @@ export function localWorkspaceFileUrl(sessionId: string, path: string, inline = 
   if (inline) query.set('inline', '1')
   return `${SSH_API}/activity/local-download?${query.toString()}`
 }
-export function loadSftpFilePreview(sessionId: string, profileId: string, path: string): Promise<SftpFilePreviewView> {
+export function loadSftpFilePreview(sessionId: string, profileId: string, path: string, signal?: AbortSignal): Promise<SftpFilePreviewView> {
   const query = new URLSearchParams({ sessionId, profileId, path })
-  return api(`/activity/file?${query.toString()}`)
+  return api(`/activity/file?${query.toString()}`, { signal: signal ?? null })
 }
 export function sftpFileUrl(sessionId: string, profileId: string, path: string, inline = false): string {
   const query = new URLSearchParams({ sessionId, profileId, path })
@@ -193,9 +204,9 @@ export function loadProfileSftpDirectory(profileId: string, path = '~'): Promise
   const query = new URLSearchParams({ path })
   return api(`/profiles/${encodeURIComponent(profileId)}/sftp/directory?${query.toString()}`)
 }
-export function loadProfileSftpFilePreview(profileId: string, path: string): Promise<SftpFilePreviewView> {
+export function loadProfileSftpFilePreview(profileId: string, path: string, signal?: AbortSignal): Promise<SftpFilePreviewView> {
   const query = new URLSearchParams({ path })
-  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/file?${query.toString()}`)
+  return api(`/profiles/${encodeURIComponent(profileId)}/sftp/file?${query.toString()}`, { signal: signal ?? null })
 }
 export function profileSftpFileUrl(profileId: string, path: string, inline = false): string {
   const query = new URLSearchParams({ path })

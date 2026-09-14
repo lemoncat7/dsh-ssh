@@ -30,6 +30,9 @@ import { GistSyncService } from './gist-sync.js'
 import { findDuplicateProfileEndpoint } from './profile-endpoint.js'
 import { parseProjectMounts } from './project-mounts.js'
 import { saveCommand } from './commands.js'
+import { parseMarkdownSave } from './markdown-file.js'
+import { saveLocalMarkdown } from './local-markdown-file.js'
+import { saveSftpMarkdown } from './sftp-markdown-file.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -392,6 +395,10 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && segments[2] === 'sftp') {
       requiredProfile(runtime.store, id)
       const operation = segments[3]
+      if (method === 'PUT' && operation === 'markdown' && segments.length === 4) {
+        requireMutationHeader(req)
+        return sendJson(res, 200, await saveSftpMarkdown(runtime.connector, id, parseMarkdownSave(await readObject(req, 2_097_152))))
+      }
       if (method === 'GET' && operation === 'stat' && segments.length === 4) {
         return sendJson(res, 200, await statSftpPath(runtime.connector, id, requireRawText(url.searchParams.get('path'), 'path', 4096)))
       }
@@ -598,6 +605,19 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const cwd = runtime.sessionCwd(sessionId)
       if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
       return sendJson(res, 200, await listLocalWorkspace(cwd, url.searchParams.get('path') ?? undefined))
+    }
+    if (method === 'PUT' && (segments[1] === 'local-markdown' || segments[1] === 'markdown') && segments.length === 2) {
+      requireMutationHeader(req)
+      if (!sessionId) throw httpError(400, 'sessionId is required')
+      const input = parseMarkdownSave(await readObject(req, 2_097_152))
+      if (segments[1] === 'local-markdown') {
+        const cwd = runtime.sessionCwd(sessionId)
+        if (cwd === undefined) throw httpError(404, '当前会话没有可用的工作目录')
+        return sendJson(res, 200, await saveLocalMarkdown(cwd, input))
+      }
+      const profileId = requireText(url.searchParams.get('profileId'), 'profileId', 100)
+      requireActivityProfile(runtime.store, sessionId, profileId)
+      return sendJson(res, 200, await saveSftpMarkdown(runtime.connector, profileId, input))
     }
     if (method === 'GET' && segments[1] === 'local-file' && segments.length === 2) {
       if (!sessionId) throw httpError(400, 'sessionId is required')
@@ -995,13 +1015,13 @@ function requireMutationHeader(req: IncomingMessage): void {
   if (req.headers['x-dsh-ssh-request'] !== '1') throw httpError(403, 'missing SSH mutation request header')
 }
 
-async function readObject(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function readObject(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<Record<string, unknown>> {
   let total = 0
   const chunks: Buffer[] = []
   for await (const chunk of req) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
     total += buffer.length
-    if (total > MAX_BODY_BYTES) throw httpError(413, 'request body is too large')
+    if (total > limit) throw httpError(413, 'request body is too large')
     chunks.push(buffer)
   }
   let parsed: unknown

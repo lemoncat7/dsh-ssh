@@ -32,6 +32,9 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - `src/profile-editor.tsx` owns connection editing, validation, jump chains, and deletion safeguards.
 - `src/remote-workspace-tree.tsx` owns host mounting, fixed directories, and remote-session creation.
 - `src/sftp-client.tsx` owns directory browsing, upload, preview, and download.
+- `src/use-file-preview.ts` owns preview request serialization, cancellation, metadata polling, stale-result protection and scroll restoration. Inline and expanded previews share one refresh state; content rendering is memoized independently of request status.
+- `src/preview-refresh-control.tsx` renders the shared manual/automatic refresh control; `src/html-file-preview.tsx` isolates static HTML through script-disabled sandboxing and restrictive CSP, strips active/navigation elements, and owns HTML/source scroll state. No raw HTML is inserted into the host DOM.
+- `src/markdown-preview-editor.tsx` owns rich Markdown editing; `src/use-markdown-draft.ts` owns drafts and save state. Readonly/refresh state never discards dirty content. `src/markdown-file.ts` handles validation, hashes and writer exclusion; local and SFTP adapters separately own boundary checks, staging, metadata preservation and atomic replacement. These routes are UI-only and do not register new agent tools.
 - `src/file-transfer-workspace.tsx` owns transfer task tabs, 2–4 file panes, cross-pane actions, job feedback, and file authorization UI.
 - `src/ftp-profile-editor.tsx` owns FTP/FTPS connection editing and validation.
 - `src/resizable-split.tsx` owns the terminal/SFTP split and persisted sizing.

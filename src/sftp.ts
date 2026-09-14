@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { markdownHash } from './markdown-file.js'
 import { Transform, type Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { FileEntry, SFTPWrapper } from 'ssh2'
@@ -35,6 +36,7 @@ export interface SftpFilePreview {
   kind: 'text' | 'image' | 'pdf' | 'binary'
   text?: string
   truncated?: boolean
+  contentHash?: string
 }
 
 export interface SftpUploadResult {
@@ -327,7 +329,8 @@ export async function readSftpFilePreview(
       total += Math.min(value.length, remaining)
       if (value.length > remaining || total >= maxTextBytes && attributes.size > total) { truncated = true; break }
     }
-    return { ...base, text: Buffer.concat(chunks).toString('utf8'), truncated }
+    const bytes = Buffer.concat(chunks)
+    return { ...base, text: bytes.toString('utf8'), contentHash: markdownHash(bytes), truncated }
   } finally {
     sftp?.end()
     connection.close()

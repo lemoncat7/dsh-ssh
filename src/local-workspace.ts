@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs'
 import { lstat, open, readdir, realpath, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
+import { markdownHash } from './markdown-file.js'
 import { mimeTypeFor, previewKind, type SftpDirectoryEntry, type SftpDirectoryView, type SftpFilePreview } from './sftp.js'
 
 const MAX_PREVIEW_BYTES = 1_048_576
@@ -51,7 +52,7 @@ export async function readLocalWorkspacePreview(root: string, requestedPath: str
   const handle = await open(target, 'r')
   try {
     const { bytesRead } = await handle.read(buffer, 0, length, 0)
-    return { ...base, text: buffer.subarray(0, bytesRead).toString('utf8'), truncated: attributes.size > bytesRead }
+    return { ...base, text: buffer.subarray(0, bytesRead).toString('utf8'), contentHash: markdownHash(buffer.subarray(0, bytesRead)), truncated: attributes.size > bytesRead }
   } finally { await handle.close() }
 }
 
@@ -85,7 +86,7 @@ export async function deleteLocalWorkspaceEntries(root: string, directory: strin
   for (const target of targets) await rm(target.path, { recursive: target.recursive, force: false })
 }
 
-async function resolveInside(boundary: string, requestedPath: string): Promise<string> {
+export async function resolveInside(boundary: string, requestedPath: string): Promise<string> {
   const candidate = path.isAbsolute(requestedPath) ? requestedPath : path.join(boundary, requestedPath)
   let resolved: string
   try { resolved = await realpath(candidate) }
