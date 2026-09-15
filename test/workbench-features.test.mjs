@@ -22,7 +22,7 @@ async function fixture(t) {
   return { store, path }
 }
 
-test('command records validate, serialize updates and survive restart without exposing them to Gist', async t => {
+test('command records validate, serialize updates and survive restart with portable Gist support', async t => {
   const { store, path } = await fixture(t)
   const entries = await Promise.all(Array.from({ length: 10 }, (_, i) => saveCommand(store, { name: `命令 ${i}`, command: 'pwd\nls -la' })))
   assert.equal(store.snapshot().commands.length, 10)
@@ -35,7 +35,7 @@ test('command records validate, serialize updates and survive restart without ex
   assert.throws(() => commandDraft({ name: 'bad', command: 'x'.repeat(16001) }), /16000/)
   await assert.rejects(saveCommand(store, { name: 'missing', command: 'pwd' }, 'missing'), /已删除/)
   const source = await readFile(new URL('../src/gist-sync.ts', import.meta.url), 'utf8')
-  assert.doesNotMatch(source, /state\.commands/)
+  assert.match(source, /commands: sortItems\(state\.commands \?\? \[\]\)/)
 })
 
 test('mounts inherit legacy defaults, persist multiple directories and drop deleted references', async t => {

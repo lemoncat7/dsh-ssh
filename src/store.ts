@@ -3,8 +3,12 @@ import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
 import { mountedProjects } from './project-mounts.js'
+import { parseGroupProxy } from './group-proxy.js'
 
 export class SshStore {
+  private revision = randomBytes(16).toString('hex')
+  workspaceRevision(): string { return this.revision }
+  markWorkspaceChanged(): void { this.revision = randomBytes(16).toString('hex') }
   private state: SshState
   private queue: Promise<unknown> = Promise.resolve()
   private readonly listeners = new Set<(previous: SshState, next: SshState) => void>()
@@ -43,6 +47,7 @@ export class SshStore {
   injection(sessionId: string): SessionInjection | undefined { return structuredClone(this.state.injections.find(item => item.sessionId === sessionId)) }
   settings(): SshSettings { return structuredClone(this.state.settings) }
   commands(): NonNullable<SshState['commands']> { return structuredClone(this.state.commands ?? []) }
+  groupProxies(): NonNullable<SshState['groupProxies']> { return structuredClone(this.state.groupProxies ?? []) }
 
   /** Copy durable access from a parent conversation into a newly forked conversation. */
   async inheritInjection(parentSessionId: string, childSessionId: string): Promise<boolean> {
@@ -71,6 +76,7 @@ export class SshStore {
       validateReferences(draft)
       await this.persist(draft)
       this.state = draft
+      this.markWorkspaceChanged()
       const next = this.snapshot()
       for (const listener of this.listeners) {
         try { listener(previous, next) } catch { /* State is already durable; observers must not roll back updates. */ }
@@ -120,6 +126,7 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
     proxyEntries: Array.isArray(state.proxyEntries) ? state.proxyEntries : [],
     forwardRules: Array.isArray(state.forwardRules) ? state.forwardRules : [],
     commands: Array.isArray(state.commands) ? state.commands : [],
+    groupProxies: Array.isArray(state.groupProxies) ? state.groupProxies.map(parseGroupProxy) : [],
     injections: Array.isArray(state.injections) ? state.injections.map(injection => ({
       ...injection,
       fileEndpointIds: normalizeFileEndpointIds(injection),
@@ -137,6 +144,9 @@ function validateReferences(state: SshState): void {
   const ftpIds = new Set(state.ftpProfiles.map(profile => profile.id))
   const credentialIds = new Set(state.credentialEntries.map(entry => entry.id))
   const proxyIds = new Set(state.proxyEntries.map(entry => entry.id))
+  const groups = (state.groupProxies ?? []).map(parseGroupProxy)
+  if (new Set(groups.map(group => group.id)).size !== groups.length) throw new Error('Duplicate group proxy configuration')
+  for (const group of groups) if (group.proxyId !== undefined && !proxyIds.has(group.proxyId)) throw Object.assign(new Error(`Group ${group.name} references a missing proxy`), { status: 400 })
   if (ids.size !== state.profiles.length) throw new Error('duplicate SSH profile id')
   if (ftpIds.size !== state.ftpProfiles.length) throw new Error('duplicate FTP profile id')
   if (credentialIds.size !== state.credentialEntries.length) throw new Error('duplicate SSH credential entry id')

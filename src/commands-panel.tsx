@@ -1,10 +1,11 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { IconEditOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SavedCommand } from './domain.js'
 import { api } from './client-api.js'
 import { Dialog, Field, errorMessage } from './ui-components.js'
+import { useWorkspaceRefresh } from './use-workspace-refresh.js'
 
 export function CommandsPanel({ onChoose }: { onChoose?: ((command: string) => void) | undefined }): JSX.Element {
   const sshLocale = useSshLocale()
@@ -16,12 +17,21 @@ export function CommandsPanel({ onChoose }: { onChoose?: ((command: string) => v
   const [editing, setEditing] = useState<SavedCommand | 'new'>()
   const [deleting, setDeleting] = useState<SavedCommand>()
   const [busy, setBusy] = useState(false)
+  const refreshGeneration = useRef(0)
   const refresh = useCallback(async () => {
-    try { setItems(await api<SavedCommand[]>('/commands')); setError(undefined) }
-    catch (reason) { setError(errorMessage(reason)) }
-    finally { setLoading(false) }
+    const generation = ++refreshGeneration.current
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+    try {
+      const next = await api<SavedCommand[]>('/commands', { signal: controller.signal, cache: 'no-store' })
+      if (generation !== refreshGeneration.current) return false
+      setItems(next); setError(undefined)
+    }
+    catch (reason) { if (generation === refreshGeneration.current) setError(errorMessage(reason)); return false }
+    finally { clearTimeout(timeout); if (generation === refreshGeneration.current) setLoading(false) }
   }, [])
   useEffect(() => { void refresh() }, [refresh])
+  useWorkspaceRefresh(refresh)
   const searchIndex = useMemo(() => items.map(item => ({ item, text: `${item.name}\n${item.command}`.toLocaleLowerCase() })), [items, sshLocale])
   const filtered = useMemo(() => {
     const needle = query.toLocaleLowerCase()
@@ -42,7 +52,7 @@ export function CommandsPanel({ onChoose }: { onChoose?: ((command: string) => v
     </div>
     {filtered.length > 50 && <nav className="dsh-ssh-command-pagination" aria-label={t("commands-panel.commandPages")}><span>{currentPage + 1} / {Math.ceil(filtered.length / 50)}  {t("commands-panel.pages")} {filtered.length}  {t("commands-panel.items")}</span><button type="button" className="dsh-ssh-secondary-button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>{t("commands-panel.previousPage")}</button><button type="button" className="dsh-ssh-secondary-button" disabled={(currentPage + 1) * 50 >= filtered.length} onClick={() => setPage(currentPage + 1)}>{t("commands-panel.nextPage")}</button></nav>}
     {editing && <CommandEditor value={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); void refresh() }} />}
-    {deleting && <Dialog title={t("commands-panel.deleteSavedCommand")} subtitle={deleting.name} onClose={() => { if (!busy) setDeleting(undefined) }}><p>{t("commands-panel.onlyThisRecordIsDeletedRunningTerminalsAreNot")}</p><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={busy} onClick={() => setDeleting(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" disabled={busy} onClick={() => {
+    {deleting && <Dialog variant="confirmation" dismissible={!busy} title={t("commands-panel.deleteSavedCommand")} subtitle={deleting.name} onClose={() => { if (!busy) setDeleting(undefined) }}><p>{t("commands-panel.onlyThisRecordIsDeletedRunningTerminalsAreNot")}</p><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={busy} onClick={() => setDeleting(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" disabled={busy} onClick={() => {
       setBusy(true)
       void api(`/commands/${encodeURIComponent(deleting.id)}`, { method: 'DELETE' }).then(() => { setDeleting(undefined); return refresh() }).catch(reason => setError(errorMessage(reason))).finally(() => setBusy(false))
     }}>{busy ? t("commands-panel.deleting") : t("client.delete")}</button></div>{error && <p role="alert" className="dsh-ssh-inline-error">{error}</p>}</Dialog>}

@@ -79,7 +79,7 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
       </section>)}
       {tabs.length === 0 && <div className="dsh-ssh-command-empty"><p>{t("terminal-workspace.allTerminalsAreClosed")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => add()}>{t("terminal-workspace.newTerminal")}</button></div>}
     </div>
-    {closing !== undefined && <Dialog title={t("terminal-workspace.close2", [label(closing)])} subtitle={t("terminal-workspace.closingDisconnectsThisTabSSshConnectionAndMay")} onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => {
+    {closing !== undefined && <Dialog variant="confirmation" title={t("terminal-workspace.close2", [label(closing)])} subtitle={t("terminal-workspace.closingDisconnectsThisTabSSshConnectionAndMay")} onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => {
       const rest = tabs.filter(tab => tab.id !== closing)
       setTabs(rest)
       setView(current => closeTerminal(current, closing, rest.map(tab => tab.id)))

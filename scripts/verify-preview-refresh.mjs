@@ -31,7 +31,7 @@ const bundle = await build({
       ${['IconCheckOutline14','IconChevronDownOutline14','IconCloseOutline16','IconDataOutline16','IconFolderOpenOutline16','IconChevronLeftOutline14','IconDownloadOutline16','IconFolderClose16','IconEditOutline16','IconFullscreenOutline16','IconRefreshOutline16','IconSendOutline14','IconTrashOutline16'].map(name=>`export const ${name}=()=>createElement('svg',{width:16,height:16});`).join('')}` }))
   } }],
 })
-const css = await readFile(new URL('../src/client.css', import.meta.url), 'utf8')
+const css = (await Promise.all(['client.css', 'dialog.css'].map(name => readFile(new URL(`../src/${name}`, import.meta.url), 'utf8')))).join('\n')
 const server = createServer((req,res)=>{
   if(req.url==='/app.js'){res.setHeader('Content-Type','text/javascript');res.end(bundle.outputFiles[0].text);return}
   res.setHeader('Content-Type','text/html');res.end(`<meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}body{margin:0}.dsh-ssh-file-preview{height:500px}.dsh-ssh-preview-modal{position:fixed;inset:0}.dsh-ssh-preview-modal-shell{height:600px}</style><div id="root" class="dsh-ssh-workspace"></div><script src="/app.js"></script>`)

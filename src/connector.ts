@@ -4,6 +4,7 @@ import { connectHttpProxy, connectSocks5Proxy } from './proxy.js'
 import { SshCredentialVault } from './credentials.js'
 import type { SshCredentialPayload, SshProfile } from './domain.js'
 import { SshStore } from './store.js'
+import { effectiveHostProxy } from './group-proxy.js'
 
 export class HostKeyRequiredError extends Error {
   readonly code = 'HOST_KEY_REQUIRED'
@@ -68,9 +69,10 @@ export class SshConnector {
     config: Exclude<SshProfile['proxy'], { type: 'saved' }>
     password?: string
   }> {
-    if (profile.proxy.type !== 'saved') return { config: profile.proxy, ...(secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword }) }
-    const entry = this.store.proxyEntry(profile.proxy.proxyId)
-    if (entry === undefined) throw Object.assign(new Error(`SSH proxy entry ${profile.proxy.proxyId} was not found`), { status: 404 })
+    const proxy = effectiveHostProxy(profile, this.store.groupProxies?.() ?? [])
+    if (proxy.type !== 'saved') return { config: proxy, ...(secrets.proxyPassword === undefined ? {} : { password: secrets.proxyPassword }) }
+    const entry = this.store.proxyEntry(proxy.proxyId)
+    if (entry === undefined) throw Object.assign(new Error(`SSH proxy entry ${proxy.proxyId} was not found`), { status: 404 })
     const proxySecrets = await this.credentials.readProxyEntry(entry.id)
     return {
       config: { type: entry.proxyType, host: entry.host, port: entry.port, ...(entry.username === undefined ? {} : { username: entry.username }) },

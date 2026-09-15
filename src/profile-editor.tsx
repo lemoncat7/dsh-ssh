@@ -39,7 +39,7 @@ export function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }:
     }
   }
 
-  return <Dialog title={t("client.delete2", [profile.name])} subtitle={profileAddress(profile)} onClose={onClose}>
+  return <Dialog variant="confirmation" dismissible={!deleting} title={t("client.delete2", [profile.name])} subtitle={profileAddress(profile)} onClose={() => { if (!deleting) onClose() }}>
     <div className="dsh-ssh-delete-profile">
       <span className="dsh-ssh-delete-profile-mark"><IconTrashOutline16 size={19} /></span>
       <div><strong>{t("profile-editor.thisActionCannotBeUndone")}</strong><p>{t("profile-editor.theConnectionConfigThisHostSStandaloneCredentialsAnd")}</p></div>
@@ -177,7 +177,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
         </>}
       </div>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>{t("profile-editor.connectionPath")}</strong><small>{t("profile-editor.directProxyOrJumpChain")}</small></div>
-        <Field label={t("profile-editor.connectionMode")}><select {...field('proxyType')}><option value="none">{t("client.direct")}</option><option value="saved">{t("client.commonProxies")}</option><option value="http">{t("profile-editor.customHttpConnect")}</option><option value="socks5">{t("profile-editor.customSocks5")}</option><option value="jump">{t("client.sshJumpHost")}</option></select></Field>
+        <Field label={t("profile-editor.connectionMode")}><select {...field('proxyType')}><option value="none">{t("group-proxy.automatic")}</option><option value="saved">{t("client.commonProxies")}</option><option value="http">{t("profile-editor.customHttpConnect")}</option><option value="socks5">{t("profile-editor.customSocks5")}</option><option value="jump">{t("client.sshJumpHost")}</option></select></Field>
         {form.proxyType === 'saved' && <Field label={t("client.commonProxies")} hint={proxyEntries.length === 0 ? t("profile-editor.addAnHttpOrSocks5ProxyToTheProxy") : t("profile-editor.multipleHostsCanShareTheSameProxyConfiguration")}><select required {...field('proxyEntryId')}><option value="">{t("profile-editor.selectProxy")}</option>{proxyEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.proxyType === 'http' ? 'HTTP' : 'SOCKS5'} · {entry.host}:{entry.port}</option>)}</select></Field>}
         {(form.proxyType === 'http' || form.proxyType === 'socks5') && <><div className="dsh-ssh-form-grid is-host"><Field label={t("client.proxyHost")}><input required spellCheck={false} {...field('proxyHost')} /></Field><Field label={t("client.proxyPort")}><input required type="number" inputMode="numeric" min="1" max="65535" {...field('proxyPort')} /></Field></div><div className="dsh-ssh-form-grid"><Field label={t("client.proxyUsername")}><input autoComplete="username" {...field('proxyUsername')} /></Field><Field label={t("client.proxyPassword")}><input type="password" autoComplete="new-password" {...field('proxyPassword')} /></Field></div></>}
         {form.proxyType === 'jump' && <JumpChainEditor profiles={profiles.filter(item => item.id !== profile?.id)} value={form.jumpProfileIds} onChange={jumpProfileIds => setForm(current => ({ ...current, jumpProfileIds }))} />}

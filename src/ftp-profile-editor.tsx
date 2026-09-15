@@ -2,7 +2,7 @@ import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useMemo, useState, type FormEvent } from 'react'
 import {
-  IconChevronLeftOutline14, IconDataOutline16, IconPlusOutline16, IconTrashOutline16, IconWarningOutline16,
+  IconChevronLeftOutline14, IconDataOutline16, IconPlusOutline16, IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { api, type FtpProfileView, type ProxyEntryView, type VaultEntryView } from './client-api.js'
 import { Dialog, Field, SuggestionInput, errorMessage } from './ui-components.js'
@@ -23,12 +23,13 @@ export function FtpConnectionsDialog({ profiles, vaultEntries, proxyEntries, onC
     try { await api(`/ftp-profiles/${encodeURIComponent(profile.id)}`, { method: 'DELETE' }); setDeleting(undefined); onChanged() }
     catch (reason) { setError(errorMessage(reason)) }
   }
+  if (deleting !== undefined) return <DeleteConnection key={deleting.id} profile={deleting} error={error} onBack={() => setDeleting(undefined)} onDelete={() => remove(deleting)} />
   return <Dialog className="dsh-ssh-ftp-manager-dialog" title={t("file-transfer-workspace.fileConnections")} subtitle={t("ftp-profile-editor.manageFtpAndFtpsSftpReusesExistingSshHosts")} onClose={onClose}>
     <div className={`dsh-ssh-ftp-manager${detailOpen ? ' has-detail' : ''}`}>
       <aside className="dsh-ssh-ftp-manager-list">
         <header><span><strong>FTP / FTPS</strong><small>{profiles.length}  {t("client.connections")}</small></span><button type="button" className="dsh-ssh-primary-button" onClick={create}><IconPlusOutline16 size={15} />{t("ftp-profile-editor.new")}</button></header>
         {profiles.length === 0 ? <div className="dsh-ssh-ftp-list-empty"><span><IconDataOutline16 size={20} /></span><strong>{t("ftp-profile-editor.noStandaloneFileConnectionsYet")}</strong><p>{t("ftp-profile-editor.sftpAppearsInTheFilePaneSConnectionList")}</p><button type="button" className="dsh-ssh-secondary-button" onClick={create}>{t("ftp-profile-editor.newFtpsConnection")}</button></div> : <div className="dsh-ssh-ftp-profile-list" role="list">{profiles.map(profile => {
-          const active = (editing !== 'new' && editing?.id === profile.id) || deleting?.id === profile.id
+          const active = editing !== 'new' && editing?.id === profile.id
           return <article key={profile.id} role="listitem" data-ssh-interactive="choice" aria-selected={active} className={active ? 'is-active' : ''}>
             <button type="button" className="dsh-ssh-ftp-profile-main" onClick={() => select(profile)}>
               <span className={`dsh-ssh-protocol-badge is-${profile.protocol}`}>{protocolLabel(profile.protocol)}</span>
@@ -40,8 +41,7 @@ export function FtpConnectionsDialog({ profiles, vaultEntries, proxyEntries, onC
         })}</div>}
       </aside>
       <main className="dsh-ssh-ftp-manager-detail">
-        {deleting !== undefined ? <DeleteConnection profile={deleting} error={error} onBack={() => setDeleting(undefined)} onDelete={() => remove(deleting)} />
-          : editing !== undefined ? <FtpProfileEditor key={editing === 'new' ? 'new' : editing.id} value={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onBack={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged() }} />
+        {editing !== undefined ? <FtpProfileEditor key={editing === 'new' ? 'new' : editing.id} value={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onBack={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged() }} />
             : <div className="dsh-ssh-ftp-manager-overview"><span><IconDataOutline16 size={22} /></span><h3>{t("ftp-profile-editor.selectAConnectionToEdit")}</h3><p>{t("ftp-profile-editor.theFilePaneCombinesFtpFtpsAndSftpFrom")}</p><dl><div><dt>FTPS</dt><dd>{t("ftp-profile-editor.encryptsControlAndFileDataCertificatesStrictlyValidatedBy")}</dd></div><div><dt>FTP</dt><dd>{t("ftp-profile-editor.compatibleWithLegacyServersButCredentialsAndFileContent")}</dd></div><div><dt>SFTP</dt><dd>{t("ftp-profile-editor.managedBySshHostsNoNeedToConfigureIt")}</dd></div></dl></div>}
       </main>
     </div>
@@ -51,15 +51,11 @@ export function FtpConnectionsDialog({ profiles, vaultEntries, proxyEntries, onC
 function DeleteConnection({ profile, error, onBack, onDelete }: { profile: FtpProfileView; error?: string | undefined; onBack(): void; onDelete(): Promise<void> }): JSX.Element {
   useSshLocale()
   const [deleting, setDeleting] = useState(false)
-  return <div className="dsh-ssh-ftp-delete-panel">
-    <button type="button" className="dsh-ssh-ftp-detail-back" onClick={onBack}><IconChevronLeftOutline14 size={14} />{t("file-transfer-workspace.backToConnectionList")}</button>
-    <span className="dsh-ssh-ftp-delete-mark"><IconWarningOutline16 size={20} /></span>
-    <h3>{t("ftp-profile-editor.delete")}{profile.name}”？</h3>
-    <p>{t("ftp-profile-editor.thisRemovesTheFtpFtpsConnectionAndItsSeparately")}</p>
-    <code>{profile.username}@{profile.host}:{profile.port}</code>
+  return <Dialog variant="confirmation" dismissible={!deleting} title={t('client.delete2', [profile.name])} subtitle={t("ftp-profile-editor.thisRemovesTheFtpFtpsConnectionAndItsSeparately")} onClose={() => { if (!deleting) onBack() }}>
+    <p className="dsh-ssh-confirmation-target">{profile.username}@{profile.host}:{profile.port}</p>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={onBack} disabled={deleting}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" disabled={deleting} onClick={() => { setDeleting(true); void onDelete().finally(() => setDeleting(false)) }}>{deleting ? t("file-entry-delete-dialog.deleting") : t("ftp-profile-editor.deleteConnection")}</button></div>
-  </div>
+  </Dialog>
 }
 
 function FtpProfileEditor({ value, profiles, vaultEntries, proxyEntries, onBack, onSaved }: { value?: FtpProfileView | undefined; profiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onBack(): void; onSaved(): void }): JSX.Element {

@@ -9,6 +9,7 @@ import {
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
+import { saveGroupProxy } from './group-proxy.js'
 import { normalizeRemoteDirectory, setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
@@ -82,6 +83,19 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const relative = url.pathname.slice(prefix.length).replace(/^\/+|\/+$/g, '')
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
+
+  if (method === 'GET' && relative === 'workspace-revision') {
+    res.setHeader('Cache-Control', 'no-store')
+    return sendJson(res, 200, { revision: runtime.store.workspaceRevision() })
+  }
+  if (relative === 'group-proxies') {
+    if (method === 'GET') return sendJson(res, 200, runtime.store.groupProxies())
+    if (method === 'PUT') {
+      requireMutationHeader(req)
+      await saveGroupProxy(runtime.store, await readObject(req))
+      return sendJson(res, 200, runtime.store.groupProxies())
+    }
+  }
 
   if (segments[0] === 'commands') {
     if (method === 'GET' && segments.length === 1) return sendJson(res, 200, runtime.store.commands().sort((a, b) => b.updatedAt - a.updatedAt))
@@ -310,6 +324,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
       requiredProxyEntry(runtime.store, id)
+      if (runtime.store.groupProxies().some(group => group.proxyId === id)) throw httpError(409, '代理仍被分组使用，请先修改分组代理')
       const references = runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === id).length + runtime.store.ftpProfiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === id).length
       if (references > 0) throw httpError(409, `proxy entry is used by ${references} connection(s)`)
       await runtime.store.update(state => { state.proxyEntries = state.proxyEntries.filter(entry => entry.id !== id) })
@@ -830,7 +845,7 @@ async function proxyEntryViews(runtime: SshApiRuntime): Promise<unknown[]> {
 
 async function proxyEntryView(runtime: SshApiRuntime, entry: ProxyEntry): Promise<unknown> {
   const credential = await runtime.credentials.describeProxyEntry(entry.id)
-  return { ...entry, credential, references: runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length + runtime.store.ftpProfiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length }
+  return { ...entry, credential, references: runtime.store.profiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length + runtime.store.ftpProfiles().filter(profile => profile.proxy.type === 'saved' && profile.proxy.proxyId === entry.id).length + (runtime.store.groupProxies?.() ?? []).filter(group => group.proxyId === entry.id).length }
 }
 
 async function ftpProfileViews(runtime: SshApiRuntime): Promise<unknown[]> { return Promise.all(runtime.store.ftpProfiles().map(profile => ftpProfileView(runtime, profile))) }

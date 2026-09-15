@@ -14,6 +14,7 @@ import { ProjectSessionDialog } from './project-session-dialog.js'
 import { RemotePathInput } from './remote-path-input.js'
 import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
+import { useConfirmationDialog } from './confirmation-dialog.js'
 import { mountedProjects } from './project-mounts.js'
 
 export interface RemoteTarget {
@@ -41,6 +42,7 @@ interface RemoteWorkspaceTreeProps {
   onCreateSession(project: RemoteProjectView, workspaceId: string): Promise<void>
   onNewProfile(): void
   onProjectsChanged(): Promise<void>
+  onGroupProxy?(name: string): void
 }
 
 export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Element {
@@ -92,7 +94,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
       {groups.map(group => {
         const collapsed = collapsedGroups.has(group.name)
         return <section className="dsh-ssh-tree-group" key={group.name} data-collapsed={collapsed}>
-        <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button></h3>
+        <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button>{group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.title', [group.name])} title={t('group-proxy.title', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}</h3>
         {!collapsed && group.profiles.map(profile => {
           const open = expanded.has(profile.id)
           const enabled = props.access?.profileIds.includes(profile.id) === true
@@ -164,6 +166,7 @@ function SessionAccessFooter({ access, loading, saving, error, onPermission, onA
 
 function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: ProfileView; project?: RemoteProjectView | undefined; onClose(): void; onSaved(): Promise<void> }): JSX.Element {
   useSshLocale()
+  const { confirm, confirmation } = useConfirmationDialog()
   const [name, setName] = useState(project?.name ?? '')
   const [path, setPath] = useState(project?.path ?? '')
   const [saving, setSaving] = useState(false)
@@ -178,11 +181,11 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
     } catch (reason) { setError(message(reason)); setSaving(false) }
   }
   const remove = async (): Promise<void> => {
-    if (project === undefined || !window.confirm(t("remote-workspace-tree.deletePinnedDirectoryRelatedDshSessionsWillNotBe", [project.name]))) return
-    setSaving(true); setError(undefined)
-    try { await deleteRemoteProject(profile.id, project.id); await onSaved() } catch (reason) { setError(message(reason)); setSaving(false) }
+    if (project === undefined) return
+    confirm({ title: t('client.delete2', [project.name]), description: t('remote-workspace-tree.deletePinnedDirectoryRelatedDshSessionsWillNotBe', [project.name]), onConfirm: async () => { await deleteRemoteProject(profile.id, project.id); await onSaved() } })
   }
   return <Dialog className="dsh-ssh-project-dialog" title={project === undefined ? t("remote-workspace-tree.addPinnedDirectory") : t("remote-workspace-tree.editPinnedDirectory")} subtitle={t("remote-workspace-tree.defaultRemotePathForTheTerminalAndSftp", [profile.name])} onClose={onClose}>
+    {confirmation}
     <form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
         <label className="dsh-ssh-field"><span>{t("client.name")}</span><input required maxLength={80} value={name} placeholder={t("remote-workspace-tree.websiteProject")} onChange={event => setName(event.target.value)} /></label>
         <RemotePathInput profileId={profile.id} value={path} disabled={saving} onChange={setPath} />

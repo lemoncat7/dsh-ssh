@@ -1,0 +1,111 @@
+/* Shared dialog chrome. Feature sheets own only their content and required width. */
+:is(.dsh-ssh-dialog-modal, .dsh-ssh-preview-modal, .dsh-ssh-session-create-modal) {
+  --ssh-dialog-radius: 14px;
+  --ssh-dialog-inset: 20px;
+  border-radius: var(--ssh-dialog-radius);
+  font-family: var(--ssh-font-sans);
+}
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell, .dsh-ssh-preview-modal-shell) {
+  border-radius: var(--ssh-dialog-radius);
+  color: var(--ssh-text);
+}
+.dsh-ssh-dialog > header,
+.dsh-ssh-session-create-shell > header,
+.dsh-ssh-preview-modal-shell > header {
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 14px var(--ssh-dialog-inset);
+  gap: 12px;
+  border-bottom: 1px solid var(--ssh-glass-border);
+  background: var(--ssh-modal-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell, .dsh-ssh-preview-modal-shell) > header > span:first-child {
+  min-width: 0;
+  flex: 1;
+}
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) > header h2,
+.dsh-ssh-preview-modal-shell > header strong {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+}
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) > header p,
+.dsh-ssh-preview-modal-shell > header small {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  color: var(--ssh-text-muted);
+  overflow-wrap: anywhere;
+}
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) > header > button { flex: none; }
+.dsh-ssh-dialog > .dsh-ssh-form,
+.dsh-ssh-session-create-shell > form { padding: var(--ssh-dialog-inset); }
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) .dsh-ssh-dialog-actions {
+  position: static;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: transparent;
+}
+.dsh-ssh-session-create-modal {
+  -webkit-backdrop-filter: var(--ssh-glass-filter);
+  backdrop-filter: var(--ssh-glass-filter);
+  box-shadow: var(--ssh-glass-shadow), var(--ssh-shadow-lg);
+}
+:is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) .dsh-ssh-dialog-actions > :is(button, a) {
+  min-height: 40px;
+  border-radius: 9px;
+  padding-inline: 16px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.dsh-ssh-dialog > .dsh-ssh-dialog-actions { padding: 16px var(--ssh-dialog-inset) var(--ssh-dialog-inset); }
+.dsh-ssh-dialog.dsh-ssh-file-access-dialog { grid-template-rows: auto minmax(0, 1fr) auto; }
+
+.dsh-ssh-dialog-modal.dsh-ssh-confirmation-modal {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+.dsh-ssh-dialog.dsh-ssh-confirmation {
+  width: 100%;
+  max-height: calc(100dvh - 32px);
+  border: 1px solid var(--ssh-glass-border);
+  border-radius: var(--ssh-dialog-radius);
+}
+.dsh-ssh-dialog.dsh-ssh-confirmation > header {
+  position: static;
+  min-height: 0;
+  padding: 18px var(--ssh-dialog-inset) 0;
+  border: 0;
+  background: transparent;
+}
+.dsh-ssh-confirmation > p {
+  margin: 0;
+  padding: 0 var(--ssh-dialog-inset) 16px;
+  color: var(--ssh-text-muted);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.dsh-ssh-confirmation > .dsh-ssh-confirmation-description { padding-top: 12px; }
+.dsh-ssh-confirmation > .dsh-ssh-inline-error { margin: 0; color: var(--ssh-danger); }
+.dsh-ssh-dialog.dsh-ssh-confirmation > .dsh-ssh-dialog-actions {
+  position: static;
+  padding: 4px var(--ssh-dialog-inset) var(--ssh-dialog-inset);
+}
+.dsh-ssh-confirmation .dsh-ssh-delete-profile { padding: 0 var(--ssh-dialog-inset) var(--ssh-dialog-inset); }
+.dsh-ssh-confirmation .dsh-ssh-delete-profile > .dsh-ssh-dialog-actions { position: static; padding-top: 12px; }
+.dsh-ssh-confirmation .dsh-ssh-file-delete-copy { padding: 0 var(--ssh-dialog-inset) 16px; gap: 12px; grid-template-columns: 38px minmax(0, 1fr); }
+.dsh-ssh-confirmation .dsh-ssh-file-delete-copy > span { width: 38px; height: 38px; border-radius: 11px; }
+.dsh-ssh-confirmation .dsh-ssh-file-delete-list { margin: 0 var(--ssh-dialog-inset) 16px; }
+.dsh-ssh-confirmation .dsh-ssh-file-delete-copy p { font-size: 13px; line-height: 1.65; }
+@media (max-width: 820px) {
+  .dsh-ssh-dialog-modal { width: calc(100vw - 32px); max-height: calc(100dvh - 32px); }
+  .dsh-ssh-dialog { max-height: calc(100dvh - 32px); border: 1px solid var(--ssh-glass-border); }
+  :is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) .dsh-ssh-dialog-actions > :is(button, a) { min-height: 44px; }
+}

@@ -14,6 +14,8 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 
 - `src/api.ts` translates HTTP routes into explicit store, terminal, file-transfer, forwarding, and credential operations.
 - `src/store.ts` owns persistent SSH configuration.
+- `src/group-proxy.ts` owns group configuration validation and host-over-group route precedence; `src/connector.ts` resolves the chosen shared proxy and its credentials for all new SSH connections. Group proxy references block unsafe deletion, and group records participate in portable sync without rewriting individual host routes.
+- `src/workspace-refresh.ts` coordinates shared, non-overlapping revision checks and retryable list refreshes; `src/use-workspace-refresh.ts` owns browser visibility/focus scheduling. The revision endpoint reads an in-memory token, never credentials or cloud data. Editors retain their local draft state while collections refresh.
 - `src/gist-sync.ts` owns portable configuration snapshots, encrypted secret export/import, three-way conflict resolution, tombstones, explicit backups, and serialized background synchronization.
 - `src/github-device-auth.ts` owns the bounded GitHub Device Flow state machine. Device codes remain server-side and completed access tokens are written directly to the credential service.
 - `src/session-access.ts` and `src/tools.ts` define the session authorization boundary used by AI tools.

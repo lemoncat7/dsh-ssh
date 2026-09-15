@@ -64,10 +64,14 @@
 }
 
 .dsh-ssh-tree-group > h3 {
+  display: flex;
   height: 26px;
   margin: 0;
   padding: 0;
 }
+
+.dsh-ssh-tree-group > h3 > button:first-child { flex: 1; min-width: 0; }
+.dsh-ssh-tree-group > h3 > .dsh-ssh-group-proxy-button { display: grid; flex: none; width: 28px; padding: 0; grid-template-columns: 1fr; place-items: center; }
 
 .dsh-ssh-tree-group > h3 > button {
   appearance: none;

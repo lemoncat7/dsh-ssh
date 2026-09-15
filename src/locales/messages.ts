@@ -1,6 +1,12 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "group-proxy.title": { "zh": "分组代理 · {0}", "en": "Group proxy · {0}" },
+  "group-proxy.selection": { "zh": "默认代理", "en": "Default proxy" },
+  "group-proxy.hint": { "zh": "主机自身代理优先；未设置代理的主机使用本分组代理。", "en": "A host's own proxy takes priority. Hosts without one use this group proxy." },
+  "group-proxy.reconnect": { "zh": "仅影响本分组 SSH 主机的新连接，不会打断现有终端。", "en": "Applies to new SSH connections in this group. Existing terminals stay connected." },
+  "group-proxy.none": { "zh": "不设置（默认直连）", "en": "None (direct by default)" },
+  "group-proxy.automatic": { "zh": "默认（分组代理 / 直连）", "en": "Default (group proxy / direct)" },
   "sftp-client.followTerminal": { "zh": "跟随终端目录", "en": "Follow terminal directory" },
   "sftp-client.followWaiting": { "zh": "尚未收到终端目录。请重连终端；支持 Bash/Zsh/sh，其他 Shell 需支持 OSC 7 或 CurrentDir", "en": "No terminal directory received. Reconnect the terminal; Bash/Zsh/sh are supported. Other shells need OSC 7 or CurrentDir." },
   "sftp-client.followHint": { "zh": "跟随当前选中的终端；预览、上传或操作文件时暂停", "en": "Follow the focused terminal; pause while previewing, uploading or managing files" },
@@ -524,8 +530,8 @@ export const messages = {
     "en": "GitHub Gist sync"
   },
   "client.endToEndEncryptedSyncOfHostsFtpFtps": {
-    "zh": "主机、FTP/FTPS、项目目录、代理与密钥库端到端加密同步",
-    "en": "End-to-end encrypted sync of hosts, FTP/FTPS, project directories, proxies, and the credential vault"
+    "zh": "同步主机、FTP、目录、分组代理、密钥库与常用命令；密码和私钥单独加密",
+    "en": "Sync hosts, FTP, directories, group proxies, credentials and saved commands; passwords and private keys are encrypted separately"
   },
   "client.checkGithubAuthorization": {
     "zh": "GitHub 授权需检查",

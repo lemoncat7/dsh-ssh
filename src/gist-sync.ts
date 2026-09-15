@@ -15,11 +15,15 @@ import {
   type SshProfile,
   type SshCredentialPayload,
   type SshState,
+  type SavedCommand,
+  type GroupProxy,
 } from './domain.js'
 import { SshCredentialVault } from './credentials.js'
 import { GitHubDeviceAuthService, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus } from './github-device-auth.js'
 import { createGitHubHttpTransport, type GitHubHttpTransport } from './github-http.js'
 import { SshStore } from './store.js'
+import { commandDraft } from './commands.js'
+import { parseGroupProxy } from './group-proxy.js'
 
 const MAIN_FILE = 'dsh-ssh.config.json'
 const BACKUP_PREFIX = 'dsh-ssh.backup.'
@@ -27,11 +31,11 @@ const MAX_GIST_BYTES = 1_048_576
 const AUTO_SYNC_DELAY_MS = 3_000
 const AUTO_PULL_INTERVAL_MS = 5 * 60_000
 const GIST_CREDENTIAL_SCOPE = 'dsh-ssh-gist-sync'
-const COLLECTION_NAMES = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries'] as const
+const COLLECTION_NAMES = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies'] as const
 
 export type GistSyncStrategy = 'smart' | 'local-first' | 'cloud-first'
 type CollectionName = typeof COLLECTION_NAMES[number]
-type PortableItem = SshProfile | FtpProfile | RemoteProject | CredentialEntry | ProxyEntry
+type PortableItem = SshProfile | FtpProfile | RemoteProject | CredentialEntry | ProxyEntry | SavedCommand | GroupProxy
 type SecretScope = 'ssh-profile' | 'ftp-profile' | 'vault-entry' | 'proxy-entry'
 
 export interface GistSyncSettings {
@@ -67,6 +71,8 @@ export interface PortableSshSnapshot {
     remoteProjects: RemoteProject[]
     credentialEntries: CredentialEntry[]
     proxyEntries: ProxyEntry[]
+    commands?: SavedCommand[]
+    groupProxies?: GroupProxy[]
   }
   tombstones: Record<CollectionName, Record<string, number>>
   secrets: EncryptedSecretRecord[]
@@ -422,6 +428,14 @@ export class GistSyncService {
       }
 
       const remote = parsePortableSnapshot(content)
+      const missingCollections = (['commands', 'groupProxies'] as const).filter(name => remote.collections[name] === undefined)
+      const legacyRemote = missingCollections.length ? structuredClone(remote) : undefined
+      for (const name of missingCollections) {
+        // Missing means an old client/backup, not an explicit deletion.
+        ;(remote.collections[name] as PortableItem[]) = structuredClone(local.collections[name] ?? [])
+        remote.tombstones[name] = { ...local.tombstones[name] }
+      }
+      assertPortableReferences(remote.collections)
       const remoteDigest = snapshotDigest(remote)
       const isFreshEmptyDevice = this.metadata.lastSyncedDigest === undefined
         && !snapshotHasPortableData(local)
@@ -430,16 +444,18 @@ export class GistSyncService {
         ? 'remote'
         : resolveSyncDecision(localDigest, remoteDigest, this.metadata.lastSyncedDigest, this.metadata.settings.strategy)
       if (decision === 'unchanged') {
+        if (legacyRemote) gist = await this.writeMain(client, gist, remote, legacyRemote)
         this.complete(remote, remoteDigest, 'unchanged', gist.version, generation)
       } else if (decision === 'remote') {
         if (localDigest !== remoteDigest) gist = await this.writeBackup(client, gist, local)
+        if (legacyRemote) gist = await this.writeMain(client, gist, remote, legacyRemote)
         await this.apply(remote, passphrase)
         this.complete(remote, remoteDigest, 'downloaded', gist.version, generation)
       } else {
         const result = decision === 'merge' ? mergePortableSnapshots(local, remote, this.metadata.deviceId) : local
         const resultDigest = snapshotDigest(result)
-        if (remoteDigest !== resultDigest) {
-          gist = await this.writeMain(client, gist, result, remote)
+        if (legacyRemote || remoteDigest !== resultDigest) {
+          gist = await this.writeMain(client, gist, result, legacyRemote ?? remote)
         }
         if (localDigest !== resultDigest) await this.apply(result, passphrase)
         this.complete(result, resultDigest, decision === 'merge' ? 'merged' : 'uploaded', gist.version, generation)
@@ -534,10 +550,14 @@ export class GistSyncService {
         state.remoteProjects = structuredClone(snapshot.collections.remoteProjects)
         state.credentialEntries = structuredClone(snapshot.collections.credentialEntries)
         state.proxyEntries = structuredClone(snapshot.collections.proxyEntries)
+        if (snapshot.collections.commands !== undefined) state.commands = structuredClone(snapshot.collections.commands)
+        if (snapshot.collections.groupProxies !== undefined) state.groupProxies = structuredClone(snapshot.collections.groupProxies)
       })
       await this.replaceSecrets(previous, snapshot, secrets)
     } finally {
       this.applying = false
+      // Credential replacement may finish after a UI reader sees the durable collections.
+      this.store.markWorkspaceChanged()
     }
   }
 
@@ -580,13 +600,13 @@ export class GistSyncService {
     let changed = false
     const now = Date.now()
     for (const name of COLLECTION_NAMES) {
-      const previousIds = new Set(previous[name].map(item => item.id))
-      const nextIds = new Set(next[name].map(item => item.id))
+      const previousIds = new Set((previous[name] ?? []).map(item => item.id))
+      const nextIds = new Set((next[name] ?? []).map(item => item.id))
       for (const id of previousIds) if (!nextIds.has(id)) {
         this.metadata.tombstones[name][id] = now
         changed = true
       }
-      if (!changed && snapshotCollectionDigest(previous[name]) !== snapshotCollectionDigest(next[name])) changed = true
+      if (!changed && snapshotCollectionDigest(previous[name] ?? []) !== snapshotCollectionDigest(next[name] ?? [])) changed = true
     }
     if (!changed) return
     void this.persist()
@@ -642,6 +662,8 @@ export function createPortableSnapshot(
       remoteProjects: sortItems(state.remoteProjects),
       credentialEntries: sortItems(state.credentialEntries),
       proxyEntries: sortItems(state.proxyEntries),
+      commands: sortItems(state.commands ?? []),
+      groupProxies: sortItems(state.groupProxies ?? []),
     },
     tombstones: cloneTombstones(tombstones),
     secrets: [],
@@ -688,6 +710,8 @@ export function parsePortableSnapshot(content: string): PortableSshSnapshot {
       remoteProjects: array(collections.remoteProjects, 'remoteProjects').map(parseRemoteProject),
       credentialEntries: array(collections.credentialEntries, 'credentialEntries').map(parseCredentialEntry),
       proxyEntries: array(collections.proxyEntries, 'proxyEntries').map(parseProxyEntry),
+      ...(collections.commands === undefined ? {} : { commands: array(collections.commands, 'commands').map(parseSavedCommand) }),
+      ...(collections.groupProxies === undefined ? {} : { groupProxies: array(collections.groupProxies, 'groupProxies').map(parseGroupProxy) }),
     },
     tombstones: parseTombstones(input.tombstones),
     secrets: input.secrets === undefined ? [] : array(input.secrets, 'secrets').map(parseEncryptedSecretRecord).sort((a, b) => secretKey(a.scope, a.id).localeCompare(secretKey(b.scope, b.id))),
@@ -701,10 +725,10 @@ export function mergePortableSnapshots(local: PortableSshSnapshot, remote: Porta
   const tombstones = emptyTombstones()
   const collections = {} as PortableSshSnapshot['collections']
   for (const name of COLLECTION_NAMES) {
-    const localItems = new Map(local.collections[name].map(item => [item.id, item] as const))
-    const remoteItems = new Map(remote.collections[name].map(item => [item.id, item] as const))
+    const localItems = new Map((local.collections[name] ?? []).map(item => [item.id, item] as const))
+    const remoteItems = new Map((remote.collections[name] ?? []).map(item => [item.id, item] as const))
     const deleted = { ...local.tombstones[name] }
-    for (const [id, deletedAt] of Object.entries(remote.tombstones[name])) deleted[id] = Math.max(deleted[id] ?? 0, deletedAt)
+    for (const [id, deletedAt] of Object.entries(remote.tombstones[name] ?? {})) deleted[id] = Math.max(deleted[id] ?? 0, deletedAt)
     tombstones[name] = deleted
     const ids = new Set([...localItems.keys(), ...remoteItems.keys(), ...Object.keys(deleted)])
     const merged: PortableItem[] = []
@@ -717,8 +741,10 @@ export function mergePortableSnapshots(local: PortableSshSnapshot, remote: Porta
     ;(collections[name] as PortableItem[]) = sortItems(merged)
   }
   const result: PortableSshSnapshot = { schemaVersion: 1, exportedAt: now, sourceDeviceId: deviceId, collections, tombstones, secrets: [] }
+  if ((collections.commands?.length ?? 0) > 500) throw new Error('合并后常用命令超过 500 条，请先整理后重试')
   result.secrets = mergeSecretRecords(local.secrets, remote.secrets, result)
   repairReferences(result, now)
+  assertPortableReferences(result.collections)
   result.secrets = result.secrets.filter(record => secretOwnerExists(record, result.collections))
   return result
 }
@@ -763,7 +789,7 @@ function normalizeSettings(value: unknown): GistSyncSettings {
 
 function defaultSettings(): GistSyncSettings { return { autoSync: false, strategy: 'smart', backupRetention: 5 } }
 function emptyTombstones(): PortableSshSnapshot['tombstones'] {
-  return { profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {} }
+  return { profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {}, commands: {}, groupProxies: {} }
 }
 function cloneTombstones(value: PortableSshSnapshot['tombstones']): PortableSshSnapshot['tombstones'] {
   return Object.fromEntries(COLLECTION_NAMES.map(name => [name, { ...value[name] }])) as PortableSshSnapshot['tombstones']
@@ -905,6 +931,11 @@ function parseProxyEntry(value: unknown): ProxyEntry {
   return { id: text(input.id, 'proxy.id', 1, 100), ...draft, createdAt: timestamp(input.createdAt, 'createdAt'), updatedAt: timestamp(input.updatedAt, 'updatedAt') }
 }
 
+function parseSavedCommand(value: unknown): SavedCommand {
+  const input = asRecord(value, 'saved command')
+  return { ...commandDraft(input), id: text(input.id, 'command.id', 1, 100), createdAt: timestamp(input.createdAt, 'createdAt'), updatedAt: timestamp(input.updatedAt, 'updatedAt') }
+}
+
 function parseEncryptedSecretRecord(value: unknown): EncryptedSecretRecord {
   const input = asRecord(value, 'encrypted secret')
   const scope = input.scope
@@ -1023,8 +1054,9 @@ function parseTombstones(value: unknown): PortableSshSnapshot['tombstones'] {
 }
 
 function assertUniqueIds(snapshot: PortableSshSnapshot): void {
+  if ((snapshot.collections.commands?.length ?? 0) > 500) throw new Error('Gist 常用命令超过 500 条')
   for (const name of COLLECTION_NAMES) {
-    const ids = snapshot.collections[name].map(item => item.id)
+    const ids = (snapshot.collections[name] ?? []).map(item => item.id)
     if (new Set(ids).size !== ids.length) throw new Error(`Gist 配置包含重复的 ${name} ID`)
   }
   const secretIds = snapshot.secrets.map(item => secretKey(item.scope, item.id))
@@ -1036,6 +1068,7 @@ function assertPortableReferences(collections: PortableSshSnapshot['collections'
   const profiles = new Set(collections.profiles.map(item => item.id))
   const credentials = new Set(collections.credentialEntries.map(item => item.id))
   const proxies = new Set(collections.proxyEntries.map(item => item.id))
+  for (const group of collections.groupProxies ?? []) if (group.proxyId !== undefined && !proxies.has(group.proxyId)) throw new Error(`分组 ${group.name} 引用了缺失的代理，请先处理代理引用后重试同步`)
   for (const profile of collections.profiles) {
     if (profile.credentialId !== undefined && !credentials.has(profile.credentialId)) throw new Error(`主机 ${profile.name} 引用了缺失的凭据条目`)
     if (profile.proxy.type === 'saved' && !proxies.has(profile.proxy.proxyId)) throw new Error(`主机 ${profile.name} 引用了缺失的代理`)
@@ -1082,7 +1115,7 @@ function sortItems<T extends PortableItem>(items: T[]): T[] { return structuredC
 function uniqueIds(...groups: Array<Array<{ id: string }>>): string[] { return [...new Set(groups.flatMap(group => group.map(item => item.id)))] }
 function snapshotCollectionDigest(items: PortableItem[]): string { return createHash('sha256').update(stableJson(sortItems(items))).digest('hex') }
 function snapshotHasPortableData(snapshot: PortableSshSnapshot): boolean {
-  return COLLECTION_NAMES.some(name => snapshot.collections[name].length > 0 || Object.keys(snapshot.tombstones[name]).length > 0)
+  return COLLECTION_NAMES.some(name => (snapshot.collections[name]?.length ?? 0) > 0 || Object.keys(snapshot.tombstones[name] ?? {}).length > 0)
     || snapshot.secrets.length > 0
 }
 function stableJson(value: unknown): string { return JSON.stringify(stableValue(value)) }

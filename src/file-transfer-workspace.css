@@ -374,13 +374,6 @@
 .dsh-ssh-ftp-protocol-options small { overflow: hidden; color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); text-overflow: ellipsis; white-space: nowrap; }
 .dsh-ssh-ftp-editor-actions { display: flex; gap: 8px; align-items: center; min-height: 58px; padding: 9px 15px; border-top: 1px solid var(--ssh-border); background: color-mix(in srgb, var(--ssh-surface-raised) 94%, transparent); }
 .dsh-ssh-ftp-editor-actions > span { flex: 1; }
-.dsh-ssh-ftp-delete-panel { display: grid; place-items: center; align-content: center; height: 100%; padding: 40px; text-align: center; }
-.dsh-ssh-ftp-delete-mark { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 12px; border: 1px solid color-mix(in srgb, var(--ssh-danger) 25%, var(--ssh-border)); border-radius: 14px; color: var(--ssh-danger); background: color-mix(in srgb, var(--ssh-danger) 7%, var(--ssh-surface)); }
-.dsh-ssh-ftp-delete-panel h3 { margin: 0; color: var(--ssh-text); font-size: 15px; }
-.dsh-ssh-ftp-delete-panel > p { max-width: 430px; margin: 9px 0; color: var(--ssh-text-subtle); font-size: var(--ssh-type-body); line-height: var(--ssh-leading-body); }
-.dsh-ssh-ftp-delete-panel > p.dsh-ssh-inline-error { color: var(--ssh-danger); }
-.dsh-ssh-ftp-delete-panel code { max-width: 100%; margin: 9px 0 17px; overflow: hidden; color: var(--ssh-text-muted); font-size: var(--ssh-type-caption); text-overflow: ellipsis; white-space: nowrap; }
-.dsh-ssh-ftp-delete-panel .dsh-ssh-dialog-actions { width: min(310px, 100%); justify-content: center; }
 .dsh-ssh-file-access-dialog-modal {
   --ssh-access-edge: var(--ssh-border);
   --ssh-access-divider: color-mix(in srgb, var(--ssh-border) 76%, transparent);
@@ -939,8 +932,6 @@
   .dsh-ssh-ftp-manager.has-detail .dsh-ssh-ftp-manager-list,
   .dsh-ssh-ftp-manager:not(.has-detail) .dsh-ssh-ftp-manager-detail { display: none; }
   .dsh-ssh-ftp-detail-back { display: inline-flex; }
-  .dsh-ssh-ftp-delete-panel { position: relative; padding: 26px 22px; }
-  .dsh-ssh-ftp-delete-panel > .dsh-ssh-ftp-detail-back { position: absolute; top: 14px; left: 14px; }
   .dsh-ssh-ftp-editor-scroll { padding-inline: 13px; }
   .dsh-ssh-ftp-protocol-options { grid-template-columns: 1fr; }
   .dsh-ssh-ftp-editor-form .dsh-ssh-form-grid,

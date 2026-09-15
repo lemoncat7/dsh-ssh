@@ -15,7 +15,7 @@ export function FileEntryDeleteDialog({ locationName, locationKind, entries, onC
     try { await onDelete(); setDeleting(false); onClose() }
     catch (reason) { setError(errorMessage(reason)); setDeleting(false) }
   }
-  return <Dialog className="dsh-ssh-file-delete-dialog" title={t("file-entry-delete-dialog.deleteItems", [entries.length])} subtitle={t("file-entry-delete-dialog.thisCannotBeUndone", [locationName])} onClose={() => { if (!deleting) onClose() }}>
+  return <Dialog variant="confirmation" dismissible={!deleting} className="dsh-ssh-file-delete-dialog" title={t("file-entry-delete-dialog.deleteItems", [entries.length])} subtitle={t("file-entry-delete-dialog.thisCannotBeUndone", [locationName])} onClose={() => { if (!deleting) onClose() }}>
     <div className="dsh-ssh-file-delete-copy"><span><IconTrashOutline16 size={18} /></span><p>{t("file-entry-delete-dialog.deleteFromLocation", [locationKind === 'local' ? t("file-entry-delete-dialog.theCurrentSessionDirectory") : t("client.theRemote")])}{directories > 0 ? t("file-entry-delete-dialog.ofTheseDirectoriesAndAllTheirContentsWillBe", [directories]) : ''}</p></div>
     <div className="dsh-ssh-file-delete-list">{entries.slice(0, 6).map(entry => <div key={entry.path}>{entry.kind === 'directory' ? <IconFolderClose16 size={17} /> : <IconDataOutline16 size={17} />}<span><strong>{entry.name}</strong><small title={entry.path}>{entry.path}</small></span></div>)}{entries.length > 6 && <p>{t("file-entry-delete-dialog.andAnother")} {entries.length - 6}  {t("file-entry-delete-dialog.items")}</p>}</div>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}

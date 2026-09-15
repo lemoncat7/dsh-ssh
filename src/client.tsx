@@ -28,6 +28,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
+import dialogCss from './dialog.css'
 import remoteWorkspaceCss from './remote-workspace-tree.css'
 import hostWorkbenchCss from './host-workbench.css'
 import {
@@ -39,6 +40,9 @@ import {
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ProfileSftpPane } from './sftp-client.js'
 import { TerminalWorkspace } from './terminal-workspace.js'
+import { refreshWorkspace, useWorkspaceRefresh } from './use-workspace-refresh.js'
+import { GroupProxyEditor } from './group-proxy-editor.js'
+import type { GroupProxy } from './domain.js'
 import { CommandsPanel } from './commands-panel.js'
 import workbenchPagesCss from './workbench-pages.css'
 import { RemoteWorkspaceTree, type RemoteTarget } from './remote-workspace-tree.js'
@@ -46,6 +50,7 @@ import { emptyAccess, useSessionAccess } from './session-access.js'
 import { subscribeSessionAccess } from './session-access-channel.js'
 import { ResizableSplit } from './resizable-split.js'
 import { Dialog, EmptyState, Field, PasswordInput, Segment, ServerGlyph, errorMessage } from './ui-components.js'
+import { useConfirmationDialog } from './confirmation-dialog.js'
 import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
 import { FileTransferWorkspace } from './file-transfer-workspace.js'
 import fileTransferCss from './file-transfer-workspace.css'
@@ -332,6 +337,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
   const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
+  const [groupProxies, setGroupProxies] = useState<GroupProxy[]>([])
+  const [editingGroup, setEditingGroup] = useState<string>()
   const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
   const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'commands'>('workspace')
@@ -349,16 +356,24 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [error, setError] = useState<string>()
   const access = useSessionAccess(sessionId === undefined ? undefined : String(sessionId))
   const openedSessionRef = useRef(sessionId)
+  const refreshGeneration = useRef(0)
   const refresh = useCallback(async () => {
+    const generation = ++refreshGeneration.current
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
     try {
-      const [next, ftp, credentials, proxies] = await Promise.all([loadProfiles(), loadFtpProfiles(), loadVaultEntries(), loadProxyEntries()])
+      const options = { signal: controller.signal, cache: 'no-store' as const }
+      const [next, ftp, credentials, proxies, groups] = await Promise.all([api<ProfileView[]>('/profiles', options), api<FtpProfileView[]>('/ftp-profiles', options), api<VaultEntryView[]>('/vault', options), api<ProxyEntryView[]>('/proxies', options), api<GroupProxy[]>('/group-proxies', options)])
+      if (generation !== refreshGeneration.current) return false
       setProfiles(next)
       setFtpProfiles(ftp)
       setVaultEntries(credentials)
       setProxyEntries(proxies)
+      setGroupProxies(groups)
       setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : next[0] === undefined ? null : { profileId: next[0].id, path: '~' })
       setError(undefined)
-    } catch (reason) { setError(message(reason)) }
+    } catch (reason) { if (generation === refreshGeneration.current) setError(message(reason)); return false }
+    finally { clearTimeout(timeout) }
   }, [])
   useEffect(() => {
     const sync = (): void => {
@@ -369,6 +384,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     return props.controller.subscribe(sync)
   }, [props.controller])
   useEffect(() => { void refresh() }, [refresh, refreshKey])
+  useWorkspaceRefresh(refresh)
   useEffect(() => {
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
@@ -399,6 +415,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       navigationIcon={<IconDataOutline16 size={15} />}
       navigation={controls => <RemoteWorkspaceTree
         profiles={profiles}
+        onGroupProxy={setEditingGroup}
         access={access.value}
         accessLoading={access.loading}
         accessSaving={access.saving}
@@ -435,7 +452,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
           : <ForwardPane profiles={profiles} selected={selected} />}
       </section>
     </AdaptiveWorkspace>
-    {closingAllTerminals && <Dialog title={t("client.closeTerminalsOnAllHosts")} subtitle={t("client.thisClosesAllTerminalTabsInThisWorkspaceIncluding", [totalTerminals])} onClose={() => setClosingAllTerminals(false)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosingAllTerminals(false)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => { setCloseAllRequest(value => value + 1); setClosingAllTerminals(false) }}>{t("client.closeAll")}</button></div></Dialog>}
+{closingAllTerminals && <Dialog variant="confirmation" title={t("client.closeTerminalsOnAllHosts")} subtitle={t("client.thisClosesAllTerminalTabsInThisWorkspaceIncluding", [totalTerminals])} onClose={() => setClosingAllTerminals(false)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosingAllTerminals(false)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => { setCloseAllRequest(value => value + 1); setClosingAllTerminals(false) }}>{t("client.closeAll")}</button></div></Dialog>}
+    {editingGroup !== undefined && <GroupProxyEditor key={editingGroup} name={editingGroup} value={groupProxies.find(group => group.name === editingGroup)} proxies={proxyEntries} onClose={() => setEditingGroup(undefined)} onSaved={() => { setEditingGroup(undefined); setRefreshKey(value => value + 1) }} />}
     {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
     {deleting !== undefined && <ProfileDeleteDialog profile={deleting} dependents={profiles.filter(profile => profile.id !== deleting.id && profile.proxy.type === 'jump' && profile.proxy.profileIds.includes(deleting.id))} onClose={() => setDeleting(undefined)} onDeleted={() => { setDeleting(undefined); setEditing(undefined); setRefreshKey(value => value + 1) }} />}
   </>
@@ -478,6 +496,7 @@ function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected
   const [rules, setRules] = useState<ForwardView[]>([])
   const [statuses, setStatuses] = useState<ForwardStatus[]>([])
   const [editing, setEditing] = useState<ForwardView | 'new'>()
+  const { confirm, confirmation } = useConfirmationDialog()
   const [error, setError] = useState<string>()
   const refresh = useCallback(async () => { try { const result = await loadForwards(); setRules(result.rules); setStatuses(result.statuses) } catch (reason) { setError(message(reason)) } }, [])
   useEffect(() => {
@@ -495,8 +514,13 @@ function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected
   }, [refresh])
   const visible = rules.filter(rule => rule.profileId === selected.id)
   const action = async (id: string, name: 'start' | 'stop'): Promise<void> => { try { await api(`/forwards/${id}/${name}`, { method: 'POST', body: '{}' }); await refresh() } catch (reason) { setError(message(reason)) } }
-  const remove = async (id: string): Promise<void> => { try { await api(`/forwards/${id}`, { method: 'DELETE' }); await refresh() } catch (reason) { setError(message(reason)) } }
+  const remove = (id: string): void => {
+    const rule = rules.find(item => item.id === id)
+    if (!rule) return
+    confirm({ title: t('client.delete2', [rule.name]), description: forwardSummary(rule, statuses.find(item => item.ruleId === id)), onConfirm: async () => { await api(`/forwards/${id}`, { method: 'DELETE' }); await refresh() } })
+  }
   return <div className="dsh-ssh-forward-pane">
+    {confirmation}
     <div className="dsh-ssh-content-heading"><div><h1>{t("client.portForwarding")}</h1><p>{selected.name}  {t("client.localRemoteAndDynamicSocks5")}</p></div><button className="dsh-ssh-primary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />{t("client.newRule")}</button></div>
     {error && <p className="dsh-ssh-inline-error">{error}</p>}
     <div className="dsh-ssh-forward-list">
@@ -520,15 +544,15 @@ function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected
 function VaultPane({ entries, onChanged }: { entries: VaultEntryView[]; onChanged(): void }): JSX.Element {
   useSshLocale()
   const [editing, setEditing] = useState<VaultEntryView | 'new'>()
-  const [error, setError] = useState<string>()
-  const remove = async (entry: VaultEntryView): Promise<void> => {
-    if (!window.confirm(t("client.deleteTheCredentialVaultEntryThisActionCannotBe", [entry.name]))) return
-    try { await api(`/vault/${entry.id}`, { method: 'DELETE' }); onChanged() }
-    catch (reason) { setError(message(reason)) }
-  }
+  const { confirm, confirmation } = useConfirmationDialog()
+  const remove = (entry: VaultEntryView): void => confirm({
+    title: t("client.delete2", [entry.name]),
+    description: t("client.deleteTheCredentialVaultEntryThisActionCannotBe", [entry.name]),
+    onConfirm: async () => { await api(`/vault/${entry.id}`, { method: 'DELETE' }); onChanged() },
+  })
   return <div className="dsh-ssh-vault-pane">
     <div className="dsh-ssh-content-heading"><div><h1>{t("client.credentialVault")}</h1><p>{t("client.keepCommonAccountsInOnePlaceConnectionConfigsOnly")}</p></div><button type="button" className="dsh-ssh-primary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />{t("client.newCredential")}</button></div>
-    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    {confirmation}
     {entries.length === 0 ? <div className="dsh-ssh-vault-empty"><span><IconUserOutline16 size={20} /></span><strong>{t("client.noSavedCredentialsYet")}</strong><p>{t("client.passwordsAndPrivateKeysAreStoredOnlyInThe")}</p><button type="button" className="dsh-ssh-secondary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={15} />{t("client.addCredential")}</button></div>
       : <div className="dsh-ssh-vault-list">{entries.map(entry => <article className="dsh-ssh-vault-row" key={entry.id}><span className="dsh-ssh-vault-glyph"><IconUserOutline16 size={16} /></span><span><strong>{entry.name}</strong><small>{entry.username} · {entry.authType === 'password' ? t("client.password") : t("client.privateKey")}</small></span><span className={`dsh-ssh-vault-state${entry.credential.configured ? ' is-ready' : ''}`}>{entry.credential.configured ? t("client.available") : t("client.missingCredentials")}</span><small>{entry.references}  {t("client.connections")}</small><button type="button" className="dsh-ssh-icon-button" aria-label={t("client.edit2", [entry.name])} onClick={() => setEditing(entry)}><IconEditOutline16 size={16} /></button><button type="button" className="dsh-ssh-icon-button is-danger" disabled={entry.references > 0} aria-label={t("client.delete2", [entry.name])} title={entry.references > 0 ? t("client.stillInUseByConnections") : t("client.deleteCredential")} onClick={() => { void remove(entry) }}><IconTrashOutline16 size={16} /></button></article>)}</div>}
     {editing !== undefined && <VaultEditor value={editing === 'new' ? undefined : editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onChanged() }} />}
@@ -559,15 +583,15 @@ function VaultEditor({ value, onClose, onSaved }: { value?: VaultEntryView | und
 function ProxyPane({ entries, onChanged }: { entries: ProxyEntryView[]; onChanged(): void }): JSX.Element {
   useSshLocale()
   const [editing, setEditing] = useState<ProxyEntryView | 'new'>()
-  const [error, setError] = useState<string>()
-  const remove = async (entry: ProxyEntryView): Promise<void> => {
-    if (!window.confirm(t("client.deleteTheProxyThisActionCannotBeUndone", [entry.name]))) return
-    try { await api(`/proxies/${entry.id}`, { method: 'DELETE' }); onChanged() }
-    catch (reason) { setError(message(reason)) }
-  }
+  const { confirm, confirmation } = useConfirmationDialog()
+  const remove = (entry: ProxyEntryView): void => confirm({
+    title: t("client.delete2", [entry.name]),
+    description: t("client.deleteTheProxyThisActionCannotBeUndone", [entry.name]),
+    onConfirm: async () => { await api(`/proxies/${entry.id}`, { method: 'DELETE' }); onChanged() },
+  })
   return <div className="dsh-ssh-proxy-pane">
     <div className="dsh-ssh-content-heading"><div><h1>{t("client.proxyVault")}</h1><p>{t("client.keepCommonHttpAndSocks5ProxiesInOnePlace")}</p></div><button type="button" className="dsh-ssh-primary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />{t("client.newProxy")}</button></div>
-    {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    {confirmation}
     {entries.length === 0 ? <div className="dsh-ssh-vault-empty"><span><IconDataOutline16 size={20} /></span><strong>{t("client.noSavedProxiesYet")}</strong><p>{t("client.saveOnceAndMultipleSshHostsCanShareThe")}</p><button type="button" className="dsh-ssh-secondary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={15} />{t("client.addProxy")}</button></div>
       : <div className="dsh-ssh-proxy-list">{entries.map(entry => <article className="dsh-ssh-proxy-row" key={entry.id}>
         <span className="dsh-ssh-vault-glyph"><IconDataOutline16 size={16} /></span>
@@ -688,6 +712,7 @@ function SettingsPane(): JSX.Element {
         return next
       }
       const synced = await api<GistSyncView>('/gist-sync/run', { method: 'POST' })
+      refreshWorkspace()
       setGist(synced); setNotice(syncResultLabel(synced.lastResult)); return synced
     } catch (reason) {
       setError(message(reason))
@@ -884,7 +909,7 @@ function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
 function forwardState(status?: ForwardStatus): string { return status?.state === 'running' ? t("client.running", [status.connections]) : status?.state === 'starting' ? t("client.starting") : status?.state === 'error' ? t("client.failed") : t("client.stopped") }
 
 function installStyles(): () => void {
-  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}`
+  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}\n${dialogCss}`
   document.getElementById(STYLE_ID)?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID

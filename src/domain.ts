@@ -45,6 +45,14 @@ export interface ProxyEntry {
   updatedAt: number
 }
 
+export interface GroupProxy {
+  id: string
+  name: string
+  proxyId?: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface SshCredentialPayload {
   password?: string
   privateKey?: string
@@ -147,6 +155,7 @@ export interface SshState {
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
   commands?: SavedCommand[]
+  groupProxies?: GroupProxy[]
   settings: SshSettings
 }
 

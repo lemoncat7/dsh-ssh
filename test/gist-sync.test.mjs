@@ -12,6 +12,7 @@ import {
   GistTokenVault,
   GitHubGistClient,
   mergePortableSnapshots,
+  parsePortableSnapshot,
   resolveSyncDecision,
   snapshotDigest,
 } from '../lib/gist-sync.js'
@@ -327,6 +328,41 @@ function emptyState() {
 }
 
 function emptyTombstones() { return { profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {} } }
+
+test('commands round-trip, smart-merge edits and deletions, and reject malformed remote commands', () => {
+  const state = emptyState()
+  state.commands = [{ id: 'cmd-one', name: '状态', command: 'pwd\nls', createdAt: 10, updatedAt: 10 }]
+  const local = createPortableSnapshot(state, 'device-local', undefined, 100)
+  assert.deepEqual(parsePortableSnapshot(JSON.stringify(local)).collections.commands, state.commands)
+  const remote = structuredClone(local)
+  remote.collections.commands[0].command = 'ls -la'; remote.collections.commands[0].updatedAt = 20
+  assert.equal(mergePortableSnapshots(local, remote, 'device-merge').collections.commands[0].command, 'ls -la')
+  local.tombstones.commands['cmd-one'] = 30
+  assert.deepEqual(mergePortableSnapshots(local, remote, 'device-merge').collections.commands, [])
+  remote.collections.commands[0].command = '\x1b[2J'
+  assert.throws(() => parsePortableSnapshot(JSON.stringify(remote)), /命令/)
+})
+
+test('legacy cloud snapshots preserve local commands and migrate them into cloud even with cloud-first', async t => {
+  const target = await createFixture(t, 'legacy-commands')
+  const command = { id: 'local-command', name: '本地命令', command: 'pwd', createdAt: 10, updatedAt: 10 }
+  await target.store.update(state => { state.commands = [command] })
+  const legacy = createPortableSnapshot(emptyState(), 'old-device', undefined, 100)
+  delete legacy.collections.commands; delete legacy.tombstones.commands
+  const github = new MemoryGistApi()
+  github.files['dsh-ssh.config.json'] = JSON.stringify(legacy)
+  const service = await GistSyncService.open(target.store, target.credentials, new GistTokenVault(target.provider), join(target.directory, 'gist.json'), token => new GitHubGistClient(token, github.fetch))
+  t.after(() => service.close())
+  await service.configure({ settings: { autoSync: false, strategy: 'cloud-first', backupRetention: 2, gistId: github.id }, token: 'github-token-value-for-tests', encryptionPassphrase: '123456' })
+  await service.sync()
+  assert.deepEqual(target.store.commands(), [command])
+  assert.deepEqual(JSON.parse(github.files['dsh-ssh.config.json']).collections.commands, [command])
+  const remote = JSON.parse(github.files['dsh-ssh.config.json'])
+  remote.collections.commands = []; remote.tombstones.commands[command.id] = 200
+  github.files['dsh-ssh.config.json'] = JSON.stringify(remote)
+  await service.sync()
+  assert.deepEqual(target.store.commands(), [], 'explicit new-format deletions still apply')
+})
 
 class MemoryCredentialProvider {
   records = new Map()
