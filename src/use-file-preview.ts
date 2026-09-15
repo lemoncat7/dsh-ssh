@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import type { SftpEntryView, SftpFilePreviewView } from './client-api.js'
 
@@ -28,7 +29,7 @@ export function useFilePreview(path: string, load: (path: string, signal?: Abort
     try {
       const meta = await stat(path, controller.signal)
       if (epoch !== generation.current) return
-      if (meta.kind === 'directory') throw new Error('文件已变为目录，请返回目录重新打开')
+      if (meta.kind === 'directory') throw new Error(t("use-file-preview.thisFileIsNowADirectoryGoBackAnd"))
       const stamp = `${meta.size}:${meta.modifiedAt}`
       if (automatic && current.current && stamp === signature.current) { setError(undefined); return }
       const next = await load(path, controller.signal)

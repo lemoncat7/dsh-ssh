@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { IconCloseOutline16, IconFolderClose16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -15,6 +17,7 @@ interface ProjectSessionDialogProps {
 }
 
 export function ProjectSessionDialog({ profile, project, workspaces, currentWorkspaceId, recentWorkspaceId, returnFocus, onClose, onCreate }: ProjectSessionDialogProps): JSX.Element {
+  useSshLocale()
   const preferredWorkspaceId = workspaces.some(workspace => String(workspace.workspaceId) === currentWorkspaceId)
     ? currentWorkspaceId
     : workspaces.some(workspace => String(workspace.workspaceId) === recentWorkspaceId) ? recentWorkspaceId : workspaces[0] === undefined ? undefined : String(workspaces[0].workspaceId)
@@ -38,21 +41,21 @@ export function ProjectSessionDialog({ profile, project, workspaces, currentWork
     try { await onCreate(project, workspaceId) } catch (reason) { setError(message(reason)); setCreating(false) }
   }
 
-  return <Modal open onClose={close} title="选择会话归属空间" headless className="dsh-ssh-session-create-modal">
+  return <Modal open onClose={close} title={t("project-session-dialog.selectSessionWorkspace")} headless className="dsh-ssh-session-create-modal">
     <section className="dsh-ssh-session-create-shell" onKeyDown={trapDialogFocus}>
-      <header><span><h2>新建远端会话</h2><p>选择这个会话在 DSH 中归属的本地项目</p></span><button ref={closeButtonRef} type="button" className="dsh-ssh-icon-button" disabled={creating} onClick={close} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
+      <header><span><h2>{t("project-session-dialog.newRemoteSession")}</h2><p>{t("project-session-dialog.chooseTheLocalProjectThisSessionBelongsToIn")}</p></span><button ref={closeButtonRef} type="button" className="dsh-ssh-icon-button" disabled={creating} onClick={close} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></header>
       <form onSubmit={event => { void submit(event) }}>
-        <dl className="dsh-ssh-session-create-target"><div><dt>远端主机</dt><dd>{profile.name}<small>{profile.username}@{profile.host}:{profile.port}</small></dd></div><div><dt>远端工作目录</dt><dd>{project.name}<small title={project.path}>{project.path}</small></dd></div></dl>
-        <fieldset className="dsh-ssh-workspace-picker"><legend>会话归属空间</legend><p>会话记录保存在所选 DSH 项目中，SSH 命令与终端固定使用上面的远端目录。</p>
-          {workspaces.length === 0 ? <div className="dsh-ssh-workspace-picker-empty"><IconFolderClose16 size={18} /><span><strong>还没有可用的 DSH 项目</strong><small>请先关闭此窗口，在 DSH 左侧空间中新建或添加项目。</small></span></div>
-            : <div className="dsh-ssh-workspace-options dsh-ssh-scroll-surface" role="radiogroup" aria-label="选择 DSH 项目">{workspaces.map(workspace => {
+        <dl className="dsh-ssh-session-create-target"><div><dt>{t("project-session-dialog.remoteHost")}</dt><dd>{profile.name}<small>{profile.username}@{profile.host}:{profile.port}</small></dd></div><div><dt>{t("project-session-dialog.remoteWorkingDirectory")}</dt><dd>{project.name}<small title={project.path}>{project.path}</small></dd></div></dl>
+        <fieldset className="dsh-ssh-workspace-picker"><legend>{t("project-session-dialog.sessionWorkspace")}</legend><p>{t("project-session-dialog.sessionRecordsAreStoredInTheSelectedDshProject")}</p>
+          {workspaces.length === 0 ? <div className="dsh-ssh-workspace-picker-empty"><IconFolderClose16 size={18} /><span><strong>{t("project-session-dialog.noDshProjectsAvailableYet")}</strong><small>{t("project-session-dialog.closeThisWindowFirstThenCreateOrAddA")}</small></span></div>
+            : <div className="dsh-ssh-workspace-options dsh-ssh-scroll-surface" role="radiogroup" aria-label={t("project-session-dialog.selectDshProject")}>{workspaces.map(workspace => {
               const id = String(workspace.workspaceId)
-              const status = id === currentWorkspaceId ? '当前项目' : id === recentWorkspaceId ? '最近使用' : undefined
+              const status = id === currentWorkspaceId ? t("project-session-dialog.currentProject") : id === recentWorkspaceId ? t("project-session-dialog.recentlyUsed") : undefined
               return <label className="dsh-ssh-workspace-option" key={id}><input ref={id === preferredWorkspaceId ? preferredOptionRef : undefined} className="sr-only" type="radio" name="dsh-ssh-session-workspace" value={id} checked={workspaceId === id} disabled={creating} onChange={() => setWorkspaceId(id)} /><span><span className="dsh-ssh-workspace-option-icon"><IconFolderClose16 size={16} /></span><span className="dsh-ssh-workspace-option-copy"><strong>{workspace.title}</strong><small title={workspace.path}>{workspace.path}</small></span>{status && <em>{status}</em>}<i aria-hidden="true" /></span></label>
             })}</div>}
         </fieldset>
         {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-        <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={creating} onClick={close}>取消</button><button type="submit" className="dsh-ssh-primary-button" disabled={creating || workspaceId === undefined}>{creating ? '正在新建…' : '新建并打开'}</button></div>
+        <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" disabled={creating} onClick={close}>{t("client.cancel")}</button><button type="submit" className="dsh-ssh-primary-button" disabled={creating || workspaceId === undefined}>{creating ? t("project-session-dialog.creating") : t("project-session-dialog.createAndOpen")}</button></div>
       </form>
     </section>
   </Modal>

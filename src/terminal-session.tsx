@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -8,6 +10,7 @@ import { Dialog, errorMessage } from './ui-components.js'
 import { CommandsPanel } from './commands-panel.js'
 
 export function TerminalSession({ profile, path, label, onControls, onConnected }: { profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void }): JSX.Element {
+  const sshLocale = useSshLocale()
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal>()
   const idRef = useRef<string>()
@@ -52,7 +55,7 @@ export function TerminalSession({ profile, path, label, onControls, onConnected 
       read: async cursor => {
         try { return await api<TerminalOutputDelta>(`/terminals/${id}/output?cursor=${cursor}`) }
         catch (reason) {
-          if (reason instanceof ApiError && reason.status === 404) return { data: '\r\n[连接已结束，可以重新连接]\r\n', cursor, closed: true, truncated: false }
+          if (reason instanceof ApiError && reason.status === 404) return { data: t("terminal-session.connectionEndedYouCanReconnect"), cursor, closed: true, truncated: false }
           throw reason
         }
       },
@@ -61,7 +64,7 @@ export function TerminalSession({ profile, path, label, onControls, onConnected 
     transportRef.current = transport
     const input = terminal.onData(text => transport.sendInput(text, reason => setError(errorMessage(reason))))
     const stop = transport.observe({ output: value => {
-      if (value.truncated) terminal.write('\r\n[较早输出已截断]\r\n')
+      if (value.truncated) terminal.write(t("terminal-session.earlierOutputTruncated"))
       if (value.data) terminal.write(value.data)
       if (value.closed) { idRef.current = undefined; setId(undefined); setPhase('idle') }
     }, error: reason => setError(errorMessage(reason)) })
@@ -93,17 +96,17 @@ export function TerminalSession({ profile, path, label, onControls, onConnected 
   actions.current = { connect, disconnect }
   useEffect(() => {
     if (!onControls) return
-    onControls(<><button type="button" className="dsh-ssh-secondary-button" aria-label="常用命令" title={`常用命令 · ${label}`} onClick={() => setPicking(true)}>命令</button>{id ? <button type="button" className="dsh-ssh-secondary-button" title={`断开 ${label}`} onClick={() => { void actions.current.disconnect() }}>断开</button> : <button type="button" className="dsh-ssh-primary-button" title={`连接 ${label}`} disabled={phase === 'connecting'} onClick={() => { void actions.current.connect() }}>{phase === 'connecting' ? '连接中…' : '连接'}</button>}</>)
+    onControls(<><button type="button" className="dsh-ssh-secondary-button" aria-label={t("client.savedCommands")} title={t("terminal-session.savedCommands", [label])} onClick={() => setPicking(true)}>{t("commands-panel.command")}</button>{id ? <button type="button" className="dsh-ssh-secondary-button" title={t("terminal-session.disconnect", [label])} onClick={() => { void actions.current.disconnect() }}>{t("client.disconnect")}</button> : <button type="button" className="dsh-ssh-primary-button" title={t("terminal-session.connect", [label])} disabled={phase === 'connecting'} onClick={() => { void actions.current.connect() }}>{phase === 'connecting' ? t("client.connecting") : t("terminal-session.connect2")}</button>}</>)
     return () => onControls(null)
-  }, [onControls, label, id, phase])
+  }, [onControls, label, id, phase, sshLocale])
   return <div className="dsh-ssh-terminal-pane is-embedded">
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span>{label} · {id ? '已连接' : phase === 'connecting' ? '连接中…' : '未连接'}</span><span title={`初始目录：${path}\n${profileAddress(profile)}`}>{path}</span></div></div>
-    {draft !== undefined && <div className="dsh-ssh-command-draft"><label className="dsh-ssh-field"><span>发送目标：{profile.name} · 请先确认终端处于命令提示符</span><textarea aria-label="待发送命令" rows={3} value={draft} onChange={event => setDraft(event.target.value)} /></label><div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setDraft(undefined)}>取消</button><button type="button" className="dsh-ssh-primary-button" disabled={!id || !draft.trim()} onClick={() => {
+    <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span>{label} · {id ? t("terminal-session.connected") : phase === 'connecting' ? t("client.connecting") : t("terminal-session.disconnected")}</span><span title={t("terminal-session.initialDirectory", [path, profileAddress(profile)])}>{path}</span></div></div>
+    {draft !== undefined && <div className="dsh-ssh-command-draft"><label className="dsh-ssh-field"><span>{t("terminal-session.target")}{profile.name}  {t("terminal-session.makeSureTheTerminalIsAtACommandPrompt")}</span><textarea aria-label={t("terminal-session.commandToSend")} rows={3} value={draft} onChange={event => setDraft(event.target.value)} /></label><div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setDraft(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-primary-button" disabled={!id || !draft.trim()} onClick={() => {
       if (!transportRef.current) return
       transportRef.current.sendInput(`${draft.replace(/\r\n/g, '\n')}\r`, reason => setError(errorMessage(reason)))
       setDraft(undefined); terminalRef.current?.focus()
-    }}>确认执行{draft.includes('\n') ? '多行命令' : ''}</button></div></div>}
-    {picking && <Dialog title="选择常用命令" subtitle="选用后先预览，不会立即执行" onClose={() => setPicking(false)}><CommandsPanel onChoose={command => { setDraft(command); setPicking(false) }} /></Dialog>}
+    }}>{t("terminal-session.runCommand")}{draft.includes('\n') ? t("terminal-session.multiLineCommand") : ''}</button></div></div>}
+    {picking && <Dialog title={t("terminal-session.selectSavedCommand")} subtitle={t("terminal-session.previewBeforeRunningSelectingDoesNotExecuteTheCommand")} onClose={() => setPicking(false)}><CommandsPanel onChoose={command => { setDraft(command); setPicking(false) }} /></Dialog>}
   </div>
 }

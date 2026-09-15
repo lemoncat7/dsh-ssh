@@ -28,6 +28,11 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 
 ### Browser features
 
+- `src/locales/messages.ts` owns the UI-only Chinese/English catalog, with explicit namespaced keys and numbered interpolation parameters. Selected English copy is adapted from [knownasmobin's PR #2](https://github.com/lemoncat7/dsh-ssh/pull/2) (MIT); none of that PR's backend translations are included.
+- `src/i18n.ts` owns pure formatting and the per-browser-module locale store. `src/ssh-locale-binding.ts` optionally consumes DSH's active locale and disposes subscriptions; absent/unsupported locale services fall back to Chinese without preventing plugin startup. `src/use-ssh-locale.ts` subscribes React components without replacing their keys or resource-owning effects. Locale-only changes never trigger terminal reconnection, preview reloading or writes to saved configuration.
+- Translate presentation only: filesystem paths, protocol punctuation, state discriminants, group identities and user input never go through translation. Generated transfer-tab names keep their existing stored representation and are translated at render time. Backend errors and tool descriptions remain unchanged in this phase; a future error-code presentation layer must not infer codes from arbitrary error prose.
+- `test/i18n.test.mjs` verifies keys, parameter parity and that the entire server import graph cannot reach translation modules. `scripts/verify-i18n.mjs` exercises live language switching with preserved forms, groups, tags, stored transfer tabs and connected terminals at mobile/desktop widths. The preview regression additionally verifies that language changes preserve editor identity, dirty drafts and scroll position.
+
 - `src/activity-panel.tsx` owns the session-scoped details panel and terminal observation lifecycle.
 - `src/profile-editor.tsx` owns connection editing, validation, jump chains, and deletion safeguards.
 - `src/remote-workspace-tree.tsx` owns host mounting, fixed directories, and remote-session creation.

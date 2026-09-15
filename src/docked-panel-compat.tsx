@@ -17,10 +17,11 @@ export function supportsDockedPanels(ctx: Context): boolean {
 export function createDockedPanel(
   ctx: Context,
   id: string,
-  title: string,
+  title: string | (() => string),
   render: (props: PanelProps) => JSX.Element,
   notify: () => void,
 ) {
+  const displayTitle = (): string => typeof title === 'function' ? title() : title
   const records = new Map<string, Map<string, { visible: boolean; close(): void }>>()
   let pending: string | undefined
   let frame: number | undefined
@@ -62,7 +63,7 @@ export function createDockedPanel(
       inject(name: string, effect: () => () => void): () => void
       register(options: { name: string; key: string }, body: typeof Body): () => void
     }
-    child.effect(() => registry.register({ id, kind: id, title: () => title }), id + ': tab type')
+    child.effect(() => registry.register({ id, kind: id, title: displayTitle }), id + ': tab type')
     child.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register({
       name: 'sidebar.right.pane.tab', key: id,
     }, Body)), id + ': tab body')
@@ -87,7 +88,7 @@ export function createDockedPanel(
           notify()
         } catch (error) {
           if (++attempts < 30) frame = window.requestAnimationFrame(reveal)
-          else { cancel(); notify(); console.error(title + ': could not open sidebar', error) }
+          else { cancel(); notify(); console.error(displayTitle() + ': could not open sidebar', error) }
         }
       }
       frame = window.requestAnimationFrame(reveal)

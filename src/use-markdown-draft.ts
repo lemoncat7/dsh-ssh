@@ -1,3 +1,4 @@
+import { t } from './i18n.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SftpFilePreviewView } from './client-api.js'
 
@@ -23,7 +24,7 @@ export function useMarkdownDraft(key: string, path: string, preview: SftpFilePre
         if (value && typeof value.text === 'string' && typeof value.baseText === 'string' && /^[a-f0-9]{64}$/.test(value.expectedHash)) cached = value
       } catch { /* Storage can be disabled; keep in-memory drafts. */ }
     }
-    if (cached) { setDraft(cached); setMessage(cached.expectedHash === preview.contentHash ? '已恢复未保存草稿' : '文件版本已变化，草稿已保留；保存时会检查冲突') }
+    if (cached) { setDraft(cached); setMessage(cached.expectedHash === preview.contentHash ? t("use-markdown-draft.unsavedDraftRestored") : t("use-markdown-draft.theFileHasChangedYourDraftIsKeptSaving")) }
     else setDraft({ text: preview.text, baseText: preview.text, expectedHash: preview.contentHash })
   }, [key, storageKey, preview])
   const persist = useCallback((value: MarkdownDraft | undefined) => {
@@ -32,7 +33,7 @@ export function useMarkdownDraft(key: string, path: string, preview: SftpFilePre
     try {
       if (value && value.text !== value.baseText) sessionStorage.setItem(storageKey, JSON.stringify(value))
       else sessionStorage.removeItem(storageKey)
-    } catch { setMessage('浏览器无法持久保存草稿，请保持此页面打开并及时保存') }
+    } catch { setMessage(t("use-markdown-draft.theBrowserCannotPersistThisDraftKeepThisPage")) }
   }, [key, storageKey])
   const change = useCallback((text: string) => {
     if (busy.current || !current.current) return
@@ -46,15 +47,15 @@ export function useMarkdownDraft(key: string, path: string, preview: SftpFilePre
   const save = useCallback(async () => {
     const value = current.current
     if (!value || !saveFile || busy.current || value.text === value.baseText) return
-    busy.current = true; setSaving(true); setMessage('正在保存…')
+    busy.current = true; setSaving(true); setMessage(t("client.saving"))
     try {
       const result = await saveFile({ path, text: value.text, expectedHash: value.expectedHash })
       if (drafts.get(key)?.text === value.text) persist(undefined)
       if (alive.current) {
         const next = { text: value.text, baseText: value.text, expectedHash: result.contentHash }
-        current.current = next; setDraft(next); setMessage('已保存'); await refresh()
+        current.current = next; setDraft(next); setMessage(t("sftp-client.saved")); await refresh()
       }
-    } catch (error) { if (alive.current) setMessage(`保存失败，草稿仍保留：${error instanceof Error ? error.message : String(error)}`) }
+    } catch (error) { if (alive.current) setMessage(t("use-markdown-draft.saveFailedDraftKept", [error instanceof Error ? error.message : String(error)])) }
     finally { busy.current = false; if (alive.current) setSaving(false) }
   }, [key, path, saveFile, persist, refresh])
   const discard = useCallback(async () => {

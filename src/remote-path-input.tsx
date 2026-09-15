@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { IconChevronRightOutline14, IconFolderClose16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { loadFileEndpointDirectory, type SftpDirectoryView } from './client-api.js'
@@ -21,6 +23,7 @@ type LookupState =
 
 /** Keeps the path free-form while asynchronously offering verified remote subdirectories. */
 export function RemotePathInput({ profileId, value, disabled, onChange }: RemotePathInputProps): JSX.Element {
+  const sshLocale = useSshLocale()
   const inputId = useId()
   const feedbackId = useId()
   const requestGenerationRef = useRef(0)
@@ -28,7 +31,7 @@ export function RemotePathInput({ profileId, value, disabled, onChange }: Remote
   const endpointId = `sftp:${profileId}`
   const folders = useMemo(() => lookup.kind === 'ready'
     ? lookup.directory.entries.filter(isNavigableRemoteEntry)
-    : [], [lookup])
+    : [], [lookup, sshLocale])
 
   useEffect(() => {
     const generation = ++requestGenerationRef.current
@@ -53,17 +56,17 @@ export function RemotePathInput({ profileId, value, disabled, onChange }: Remote
   }, [endpointId, value])
 
   const feedback = lookup.kind === 'idle'
-    ? '可直接输入；停止输入后会自动检查远端路径。'
+    ? t("remote-path-input.typeDirectlyTheRemotePathIsCheckedAutomaticallyAfter")
     : lookup.kind === 'checking'
-      ? '正在检查远端路径…'
+      ? t("remote-path-input.checkingTheRemotePath")
       : lookup.kind === 'error'
-        ? `路径不存在或无法访问：${lookup.message}。仍可按当前输入保存。`
+        ? t("remote-path-input.thePathDoesNotExistOrCannotBeAccessed", [lookup.message])
         : folders.length === 0
-          ? '路径可访问，当前没有子目录。'
-          : `路径可访问，找到 ${folders.length} 个子目录。`
+          ? t("remote-path-input.thePathIsAccessibleNoSubdirectoriesYet")
+          : t("remote-path-input.thePathIsAccessibleFoundSubdirectories", [folders.length])
 
   return <div className="dsh-ssh-field dsh-ssh-remote-path-field">
-    <label htmlFor={inputId}>远端路径</label>
+    <label htmlFor={inputId}>{t("file-transfer-workspace.remotePath")}</label>
     <input
       id={inputId}
       required
@@ -81,12 +84,12 @@ export function RemotePathInput({ profileId, value, disabled, onChange }: Remote
       className={`dsh-ssh-remote-path-feedback is-${lookup.kind}`}
       role={lookup.kind === 'error' ? 'alert' : 'status'}
     >{feedback}</small>
-    {lookup.kind === 'ready' && folders.length > 0 && <div className="dsh-ssh-remote-path-options" aria-label="可选择的远端子目录">
+    {lookup.kind === 'ready' && folders.length > 0 && <div className="dsh-ssh-remote-path-options" aria-label={t("remote-path-input.selectableRemoteSubdirectories")}>
       {folders.map(folder => <button
         type="button"
         key={folder.path}
         disabled={disabled}
-        title={`选择 ${folder.path}`}
+        title={t("remote-path-input.select", [folder.path])}
         onClick={() => onChange(folder.path)}
       ><IconFolderClose16 size={15} aria-hidden="true" /><span>{folder.name}</span><IconChevronRightOutline14 size={13} aria-hidden="true" /></button>)}
     </div>}

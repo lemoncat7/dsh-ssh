@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { messages } from '../lib/locales/messages.js'
 
 const inputSourceUrl = new URL('../src/remote-path-input.tsx', import.meta.url)
 const treeSourceUrl = new URL('../src/remote-workspace-tree.tsx', import.meta.url)
@@ -19,7 +20,8 @@ test('fixed remote projects keep free-form paths with debounced remote suggestio
   assert.match(inputSource, /onChange=\{event => onChange\(event\.target\.value\)\}/)
   assert.match(inputSource, /directory\.entries\.filter\(isNavigableRemoteEntry\)/)
   assert.match(inputSource, /aria-invalid=\{lookup\.kind === 'error'/)
-  assert.match(inputSource, /仍可按当前输入保存/)
+  assert.match(inputSource, /t\("remote-path-input.thePathDoesNotExistOrCannotBeAccessed", \[lookup.message\]\)/)
+  assert.match(messages['remote-path-input.thePathDoesNotExistOrCannotBeAccessed'].zh, /仍可按当前输入保存/)
   assert.match(treeSource, /<RemotePathInput profileId=\{profile\.id\} value=\{path\}/)
   assert.match(treeSource, /const \[path, setPath\] = useState\(project\?\.path \?\? ''\)/)
   assert.match(treeSource, /className="dsh-ssh-primary-button" disabled=\{saving\}/)

@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import {
   useEffect, useId, useMemo, useRef, useState,
   type InputHTMLAttributes, type KeyboardEvent, type MouseEvent, type ReactNode,
@@ -14,6 +16,7 @@ interface DialogProps {
 }
 
 export function Dialog({ title, subtitle, className, onClose, children }: DialogProps): JSX.Element {
+  useSshLocale()
   const titleId = useId()
   const descriptionId = useId()
   const surfaceRef = useRef<HTMLElement>(null)
@@ -27,7 +30,7 @@ export function Dialog({ title, subtitle, className, onClose, children }: Dialog
 
   return <Modal open onClose={closeWithMotion} title={title} headless className={`dsh-ssh-dialog-modal${className === undefined ? '' : ` ${className}-modal`}`}>
     <section ref={surfaceRef} className={`dsh-ssh-dialog dsh-ssh-scroll-surface${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>
-      <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={closeWithMotion} aria-label="关闭"><IconCloseOutline16 size={16} /></button></header>
+      <header><span><h2 id={titleId}>{title}</h2>{subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" onClick={closeWithMotion} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></header>
       {children}
     </section>
   </Modal>
@@ -49,20 +52,21 @@ interface SuggestionInputProps {
 
 /** A fully styled combobox that keeps free-form values while reusing existing metadata. */
 export function SuggestionInput({ value, options, placeholder, maxLength, multiple = false, ariaLabel, onChange }: SuggestionInputProps): JSX.Element {
+  const sshLocale = useSshLocale()
   const listId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const suppressFocusOpenRef = useRef(false)
-  const normalizedOptions = useMemo(() => dedupeLabels(options).sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })), [options])
+  const normalizedOptions = useMemo(() => dedupeLabels(options).sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })), [options, sshLocale])
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-  const selected = useMemo(() => multiple ? splitLabels(value) : value.trim() ? [value.trim()] : [], [multiple, value])
+  const selected = useMemo(() => multiple ? splitLabels(value) : value.trim() ? [value.trim()] : [], [multiple, value, sshLocale])
   const filtered = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase()
     return normalizedOptions.filter(option => (!multiple || !selected.some(item => sameLabel(item, option)))
       && (query.length === 0 || option.toLocaleLowerCase().includes(query)))
-  }, [filter, multiple, normalizedOptions, selected])
+  }, [filter, multiple, normalizedOptions, selected, sshLocale])
 
   useEffect(() => {
     if (!open) return
@@ -131,15 +135,15 @@ export function SuggestionInput({ value, options, placeholder, maxLength, multip
     <button
       type="button"
       className="dsh-ssh-suggestion-toggle"
-      aria-label={`${open ? '收起' : '展开'}${ariaLabel}已有选项`}
+      aria-label={t("ui-components.existingOptions", [open ? t("ui-components.collapse") : t("ui-components.expand"), ariaLabel])}
       aria-expanded={open}
       onClick={() => {
         if (open) { setOpen(false); return }
         setFilter(''); setActiveIndex(0); setOpen(true); inputRef.current?.focus()
       }}
     ><IconChevronDownOutline14 size={14} /></button>
-    {open && <div id={listId} className="dsh-ssh-suggestion-menu dsh-ssh-scroll-surface" role="listbox" aria-label={`${ariaLabel}已有选项`}>
-      {filtered.length === 0 ? <p>{normalizedOptions.length === 0 ? '暂无已有选项，可直接输入' : '没有匹配项，可直接输入新内容'}</p>
+    {open && <div id={listId} className="dsh-ssh-suggestion-menu dsh-ssh-scroll-surface" role="listbox" aria-label={t("ui-components.existingOptions2", [ariaLabel])}>
+      {filtered.length === 0 ? <p>{normalizedOptions.length === 0 ? t("ui-components.noExistingOptionsYetTypeDirectly") : t("ui-components.noMatchesTypeANewValue")}</p>
         : filtered.map((option, index) => <button
           id={`${listId}-${index}`}
           type="button"
@@ -155,10 +159,11 @@ export function SuggestionInput({ value, options, placeholder, maxLength, multip
 }
 
 export function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>): JSX.Element {
+  useSshLocale()
   const [visible, setVisible] = useState(false)
   return <div className="dsh-ssh-password-input">
     <input {...props} type={visible ? 'text' : 'password'} />
-    <button type="button" aria-label={visible ? '隐藏密码' : '显示密码'} aria-pressed={visible} onClick={() => setVisible(current => !current)}>{visible ? '隐藏' : '显示'}</button>
+    <button type="button" aria-label={visible ? t("ui-components.hidePassword") : t("ui-components.showPassword")} aria-pressed={visible} onClick={() => setVisible(current => !current)}>{visible ? t("ui-components.hide") : t("ui-components.show")}</button>
   </div>
 }
 
@@ -169,9 +174,10 @@ export function Segment({ active, onClick, children }: { active: boolean; onClic
 }
 
 export function EmptyState(): JSX.Element {
+  useSshLocale()
   const surfaceRef = useRef<HTMLDivElement>(null)
   useStaggeredEntrance(surfaceRef)
-  return <div ref={surfaceRef} className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>连接你的第一台远端主机</h1><p>使用“主机与项目”旁的添加按钮保存 SSH 配置，随后即可打开终端、建立端口转发，并按会话授权给 AI。</p></div>
+  return <div ref={surfaceRef} className="dsh-ssh-empty-state"><span><ServerGlyph /></span><h1>{t("ui-components.connectYourFirstRemoteHost")}</h1><p>{t("ui-components.useTheAddButtonNextToHostsProjectsTo")}</p></div>
 }
 
 export function ServerGlyph(): JSX.Element {

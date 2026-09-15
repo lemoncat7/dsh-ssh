@@ -11,6 +11,7 @@ const bundle = await build({
   stdin: { resolveDir: root, loader: 'tsx', contents: `
     import React from 'react'; import {createRoot} from 'react-dom/client';
     import {SftpFilePreview} from './src/sftp-client.tsx';
+    import {sshLocale} from './src/i18n.ts';window.setSshLocale=sshLocale.setLocale;
     window.reads=0;window.stats=0;window.version=1;window.fail=false;
     window.html=${JSON.stringify(htmlFixture)};window.isHtml=location.search.includes('html');
     window.editMode=location.search.includes('edit');window.hash='a'.repeat(64);window.conflict=false;window.savedText=null;
@@ -49,6 +50,12 @@ try {
   await body.evaluate(el=>{el.scrollTop=800})
   const top=await body.evaluate(el=>el.scrollTop)
   assert.ok(top>0)
+  await page.evaluate(()=>window.setSshLocale('en'))
+  await page.getByRole('button',{name:'Refresh preview',exact:true}).waitFor()
+  assert.equal(await body.evaluate(el=>el.scrollTop),top,'language switch preserves reading position')
+  assert.equal(await page.evaluate(()=>window.reads),1,'language switch must not reread the file')
+  await page.evaluate(()=>window.setSshLocale('zh'))
+  await refresh.waitFor()
   await page.evaluate(()=>window.version++)
   await refresh.click();await page.getByText('version 2',{exact:true}).waitFor()
   assert.equal(await body.evaluate(el=>el.scrollTop),top,'manual refresh preserves scroll')
@@ -120,6 +127,14 @@ try {
   assert.equal(await save.isDisabled(),true,'opening rich Markdown must not mark the file dirty')
   await editor.locator('p').first().click();await editPage.keyboard.press('End');await editPage.keyboard.type(' Edited')
   assert.equal(await save.isEnabled(),true)
+  const editorIdentity=await editor.evaluate(el=>{window.originalEditor=el;return el.innerHTML})
+  await editPage.evaluate(()=>window.setSshLocale('en'))
+  await editPage.getByRole('textbox',{name:'Markdown body'}).waitFor()
+  assert.equal(await editPage.getByRole('textbox',{name:'Markdown body'}).evaluate(el=>el===window.originalEditor),true,'language change must not recreate the editor')
+  assert.equal(await editPage.getByRole('textbox',{name:'Markdown body'}).innerHTML(),editorIdentity,'language change preserves unsaved content')
+  assert.equal(await editPage.getByRole('button',{name:'Save Markdown',exact:true}).isEnabled(),true)
+  await editPage.evaluate(()=>window.setSshLocale('zh'))
+  await editor.waitFor()
   assert.equal(await editPage.getByRole('button',{name:'刷新预览',exact:true}).isDisabled(),true)
   assert.equal(await editPage.getByRole('button',{name:'自动刷新',exact:true}).isDisabled(),true)
   await editPage.keyboard.press('Control+s')

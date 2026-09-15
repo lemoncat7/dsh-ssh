@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import {
   useRef,
   useState,
@@ -61,6 +63,7 @@ function boundsFor(containerWidth: number): SplitBounds {
 }
 
 export function ResizableSplit({ primary, secondary, storageKey, label, secondaryHidden = false }: ResizableSplitProps): JSX.Element {
+  useSshLocale()
   const [secondaryWidth, setSecondaryWidth] = useState(() => readStoredWidth(storageKey))
   const rootRef = useRef<HTMLDivElement>(null)
   const separatorRef = useRef<HTMLDivElement>(null)
@@ -140,7 +143,7 @@ export function ResizableSplit({ primary, secondary, storageKey, label, secondar
       aria-valuemax={MAX_SECONDARY_WIDTH}
       aria-valuenow={Math.round(secondaryWidth)}
       tabIndex={0}
-      title="拖动调整宽度，双击恢复默认"
+      title={t("resizable-split.dragToResizeDoubleClickToReset")}
       onDoubleClick={resetWidth}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}

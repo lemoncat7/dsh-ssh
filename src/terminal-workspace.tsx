@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { IconCloseOutline16, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ProfileView } from './client-api.js'
@@ -7,6 +9,7 @@ import { Dialog } from './ui-components.js'
 
 interface TerminalTab { id: number; number: number; path: string }
 export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest = 0, onCountChange }: { profile: ProfileView; path: string; onConnected(): void; closeAllRequest?: number; onCountChange?: (count: number) => void }): JSX.Element {
+  useSshLocale()
   const [tabs, setTabs] = useState<TerminalTab[]>([{ id: 1, number: 1, path }])
   const [serial, setSerial] = useState(1)
   const [view, setView] = useState<TerminalLayout>({ panes: [1], focused: 1 })
@@ -22,7 +25,7 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
     setClosing(undefined)
   }, [closeAllRequest])
   useEffect(() => { onCountChange?.(tabs.length) }, [onCountChange, tabs.length])
-  const label = (id: number): string => `终端 ${tabs.find(tab => tab.id === id)?.number ?? ''}`
+  const label = (id: number): string => t("activity-panel.terminal2", [tabs.find(tab => tab.id === id)?.number ?? ''])
   const choose = (id: number): void => setView(current => selectTerminal(current, id))
   const add = (split = false): void => {
     if (tabs.length >= 8 || (split && view.panes.length >= 4)) return
@@ -44,9 +47,9 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
   const count = view.panes.length
   return <div className="dsh-ssh-terminal-workspace">
     <div className="dsh-ssh-terminal-tabbar">
-      <div className="dsh-ssh-terminal-tabs" role="tablist" aria-label={`${profile.name} 终端标签`}>
+      <div className="dsh-ssh-terminal-tabs" role="tablist" aria-label={t("terminal-workspace.terminalTabs", [profile.name])}>
         {tabs.map(tab => <span key={tab.id} className={`dsh-ssh-terminal-tab${view.focused === tab.id ? ' is-active' : ''}`} data-ssh-interactive="choice">
-          <button type="button" role="tab" aria-selected={view.focused === tab.id} aria-controls={`ssh-terminal-${profile.id}-${tab.id}`} title={`${label(tab.id)}${view.panes.includes(tab.id) ? ` · 窗格 ${view.panes.indexOf(tab.id) + 1}` : ' · 在当前窗格打开'}`} onClick={() => choose(tab.id)} onKeyDown={event => {
+          <button type="button" role="tab" aria-selected={view.focused === tab.id} aria-controls={`ssh-terminal-${profile.id}-${tab.id}`} title={`${label(tab.id)}${view.panes.includes(tab.id) ? t("terminal-workspace.pane", [view.panes.indexOf(tab.id) + 1]) : t("terminal-workspace.openInCurrentPane")}`} onClick={() => choose(tab.id)} onKeyDown={event => {
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
             event.preventDefault()
             const index = tabs.findIndex(item => item.id === tab.id)
@@ -54,32 +57,32 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
             const next = tabs[nextIndex]
             if (next) { choose(next.id); event.currentTarget.parentElement?.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus() }
           }}>{label(tab.id)}</button>
-          <button type="button" aria-label={`关闭${label(tab.id)}`} title="关闭终端" onClick={() => setClosing(tab.id)}><IconCloseOutline16 size={13} /></button>
+          <button type="button" aria-label={t("terminal-workspace.close", [label(tab.id)])} title={t("terminal-workspace.closeTerminal")} onClick={() => setClosing(tab.id)}><IconCloseOutline16 size={13} /></button>
         </span>)}
       </div>
-      <button type="button" className="dsh-ssh-icon-button" disabled={tabs.length >= 8} title={tabs.length >= 8 ? '每台主机最多 8 个标签' : '新建终端标签'} aria-label="新建终端标签" onClick={() => add()}><IconPlusOutline16 size={16} /></button>
-      <div className="dsh-ssh-terminal-layout-actions" role="group" aria-label="终端布局">
+      <button type="button" className="dsh-ssh-icon-button" disabled={tabs.length >= 8} title={tabs.length >= 8 ? t("terminal-workspace.upTo8TabsPerHost") : t("terminal-workspace.newTerminalTab")} aria-label={t("terminal-workspace.newTerminalTab")} onClick={() => add()}><IconPlusOutline16 size={16} /></button>
+      <div className="dsh-ssh-terminal-layout-actions" role="group" aria-label={t("terminal-workspace.terminalLayout")}>
         {count < 3 && <>
-          <button type="button" className="dsh-ssh-icon-button" aria-label="左右分屏" title="左右分屏" aria-pressed={count === 2 && direction === 'horizontal'} disabled={!count} onClick={() => orient('horizontal')}><SplitIcon direction="horizontal" /></button>
-          <button type="button" className="dsh-ssh-icon-button" aria-label="上下分屏" title="上下分屏" aria-pressed={count === 2 && direction === 'vertical'} disabled={!count} onClick={() => orient('vertical')}><SplitIcon direction="vertical" /></button>
+          <button type="button" className="dsh-ssh-icon-button" aria-label={t("terminal-workspace.splitHorizontally")} title={t("terminal-workspace.splitHorizontally")} aria-pressed={count === 2 && direction === 'horizontal'} disabled={!count} onClick={() => orient('horizontal')}><SplitIcon direction="horizontal" /></button>
+          <button type="button" className="dsh-ssh-icon-button" aria-label={t("terminal-workspace.splitVertically")} title={t("terminal-workspace.splitVertically")} aria-pressed={count === 2 && direction === 'vertical'} disabled={!count} onClick={() => orient('vertical')}><SplitIcon direction="vertical" /></button>
         </>}
-        {count >= 2 && <button type="button" className="dsh-ssh-icon-button" aria-label="增加分屏" title={count >= 4 ? '最多 4 个分屏' : '增加分屏，最多 4 个'} disabled={count >= 4} onClick={addSplit}><SplitIcon direction="grid" /></button>}
-        {count > 1 && <button type="button" className="dsh-ssh-icon-button" aria-label="单屏" title="仅显示当前终端，其他连接保留" onClick={() => setView(current => ({ panes: [current.focused], focused: current.focused }))}><SplitIcon /></button>}
+        {count >= 2 && <button type="button" className="dsh-ssh-icon-button" aria-label={t("terminal-workspace.addPane")} title={count >= 4 ? t("terminal-workspace.upTo4Panes") : t("terminal-workspace.addPaneUpTo4")} disabled={count >= 4} onClick={addSplit}><SplitIcon direction="grid" /></button>}
+        {count > 1 && <button type="button" className="dsh-ssh-icon-button" aria-label={t("terminal-workspace.singlePane")} title={t("terminal-workspace.showOnlyTheCurrentTerminalKeepOtherConnections")} onClick={() => setView(current => ({ panes: [current.focused], focused: current.focused }))}><SplitIcon /></button>}
       </div>
-      <div className="dsh-ssh-terminal-session-actions" role="group" aria-label={`${label(view.focused)} 操作`}>{controls}</div>
+      <div className="dsh-ssh-terminal-session-actions" role="group" aria-label={t("terminal-workspace.actions", [label(view.focused)])}>{controls}</div>
     </div>
     <div className={`dsh-ssh-terminal-panes${count > 2 ? ' is-grid' : count === 2 ? ` is-split is-${direction}` : ''}`}>
       {tabs.map(tab => <section key={tab.id} id={`ssh-terminal-${profile.id}-${tab.id}`} aria-label={label(tab.id)} className="dsh-ssh-terminal-slot" hidden={!view.panes.includes(tab.id)} style={{ order: view.panes.indexOf(tab.id) }} data-focused={view.focused === tab.id} onPointerDown={() => setView(current => ({ ...current, focused: tab.id }))} onFocusCapture={() => setView(current => ({ ...current, focused: tab.id }))}>
         <TerminalSession profile={profile} path={tab.path} label={label(tab.id)} onControls={view.focused === tab.id ? setControls : undefined} onConnected={onConnected} />
       </section>)}
-      {tabs.length === 0 && <div className="dsh-ssh-command-empty"><p>所有终端均已关闭。</p><button type="button" className="dsh-ssh-primary-button" onClick={() => add()}>新建终端</button></div>}
+      {tabs.length === 0 && <div className="dsh-ssh-command-empty"><p>{t("terminal-workspace.allTerminalsAreClosed")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => add()}>{t("terminal-workspace.newTerminal")}</button></div>}
     </div>
-    {closing !== undefined && <Dialog title={`关闭${label(closing)}？`} subtitle="关闭将断开此标签的 SSH 连接，可能中断正在运行的命令。" onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>取消</button><button type="button" className="dsh-ssh-danger-button" onClick={() => {
+    {closing !== undefined && <Dialog title={t("terminal-workspace.close2", [label(closing)])} subtitle={t("terminal-workspace.closingDisconnectsThisTabSSshConnectionAndMay")} onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => {
       const rest = tabs.filter(tab => tab.id !== closing)
       setTabs(rest)
       setView(current => closeTerminal(current, closing, rest.map(tab => tab.id)))
       setClosing(undefined)
-    }}>关闭连接</button></div></Dialog>}
+    }}>{t("terminal-workspace.closeConnection")}</button></div></Dialog>}
   </div>
 }
 

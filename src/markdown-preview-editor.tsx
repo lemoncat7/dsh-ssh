@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import { useEffect, useRef } from 'react'
 import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
@@ -17,6 +19,7 @@ export function supportsMarkdownEditing(text: string): boolean {
 export function MarkdownPreviewEditor({ text, editable, onChange, onSave }: {
   text: string; editable: boolean; onChange(text: string): void; onSave(): void
 }): JSX.Element {
+  const sshLocale = useSshLocale()
   const host = useRef<HTMLDivElement>(null)
   const instance = useRef<Editor>()
   const callbacks = useRef({ onChange, onSave })
@@ -27,7 +30,7 @@ export function MarkdownPreviewEditor({ text, editable, onChange, onSave }: {
       extensions: [StarterKit.configure({ link: { openOnClick: false } }), Markdown, TableKit, Image, TaskList, TaskItem.configure({ nested: true })],
       content: text, contentType: 'markdown', editable,
       editorProps: {
-        attributes: { class: 'dsh-ssh-markdown-preview dsh-ssh-markdown-editor', role: 'textbox', 'aria-label': 'Markdown 正文', 'aria-multiline': 'true', spellcheck: 'false' },
+        attributes: { class: 'dsh-ssh-markdown-preview dsh-ssh-markdown-editor', role: 'textbox', 'aria-label': t("markdown-preview-editor.markdownBody"), 'aria-multiline': 'true', spellcheck: 'false' },
         handleKeyDown: (_view, event) => {
           if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); callbacks.current.onSave(); return true }
           return false
@@ -39,6 +42,9 @@ export function MarkdownPreviewEditor({ text, editable, onChange, onSave }: {
     return () => { instance.current = undefined; editor.destroy() }
   }, [])
   useEffect(() => { instance.current?.setEditable(editable, false) }, [editable])
+  useEffect(() => {
+    instance.current?.view.dom.setAttribute('aria-label', t('markdown-preview-editor.markdownBody'))
+  }, [sshLocale])
   useEffect(() => {
     const editor = instance.current
     const comparable = (value: string) => value.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\n+$/, '')

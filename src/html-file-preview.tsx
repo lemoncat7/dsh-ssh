@@ -1,3 +1,5 @@
+import { useSshLocale } from './use-ssh-locale.js'
+import { t } from './i18n.js'
 import { useLayoutEffect, useRef, useState } from 'react'
 
 /** Static, offline HTML only. The iframe additionally disables script execution. */
@@ -19,6 +21,7 @@ export function staticHtmlDocument(source: string): string {
 }
 
 export function HtmlFilePreview({ text, name, truncated }: { text: string; name: string; truncated: boolean }): JSX.Element {
+  useSshLocale()
   const [source, setSource] = useState(false)
   const frame = useRef<HTMLIFrameElement>(null)
   const code = useRef<HTMLPreElement>(null)
@@ -47,8 +50,8 @@ export function HtmlFilePreview({ text, name, truncated }: { text: string; name:
   }
 
   return <section className="dsh-ssh-html-preview">
-    <div className="dsh-ssh-html-preview-toolbar"><small title="静态隔离预览：不执行脚本，不加载外部或相对路径资源">HTML · {truncated ? '内容已截断' : '静态预览'}</small><button type="button" onClick={toggle} aria-pressed={source} aria-label="查看 HTML 源码">{source ? '页面' : '源码'}</button></div>
-    <iframe ref={frame} hidden={source} title={`HTML 预览：${name}`} sandbox="allow-same-origin" referrerPolicy="no-referrer" onLoad={() => frame.current?.contentWindow?.scrollTo(position.current.x, position.current.y)} />
+    <div className="dsh-ssh-html-preview-toolbar"><small title={t("html-file-preview.isolatedStaticPreviewScriptsAndExternalOrRelativeResources")}>HTML · {truncated ? t("html-file-preview.contentTruncated") : t("html-file-preview.staticPreview")}</small><button type="button" onClick={toggle} aria-pressed={source} aria-label={t("html-file-preview.viewHtmlSource")}>{source ? t("html-file-preview.page") : t("html-file-preview.source")}</button></div>
+    <iframe ref={frame} hidden={source} title={t("html-file-preview.htmlPreview", [name])} sandbox="allow-same-origin" referrerPolicy="no-referrer" onLoad={() => frame.current?.contentWindow?.scrollTo(position.current.x, position.current.y)} />
     {source && <pre ref={code} onScroll={event => { codePosition.current = { x: event.currentTarget.scrollLeft, y: event.currentTarget.scrollTop } }}>{text}</pre>}
   </section>
 }
