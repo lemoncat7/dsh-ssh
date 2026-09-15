@@ -33,6 +33,8 @@ const MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 interface SftpExplorerProps {
   nativeSessionId?: string
   initialPath: string
+  followPath?: string | undefined
+  followControl?: ReactNode
   header?: ReactNode
   mountedDirectories?: Array<{ id: string; name: string; path: string }> | undefined
   workspace?: boolean
@@ -98,8 +100,9 @@ export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, o
   return <SftpExplorer key={`${sessionId}:${profile.id}`} initialPath={profile.cwd} mountedDirectories={profile.mountedDirectories} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
 }
 
-export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean }): JSX.Element {
+export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false, terminalPath }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean; terminalPath?: string | undefined }): JSX.Element {
   useSshLocale()
+  const [following, setFollowing] = useState(true)
   const saveMarkdown = useCallback((input: MarkdownSaveInput) => saveProfileMarkdown(profile.id, input), [profile.id])
   const loadPathEntry = useCallback((path: string, signal?: AbortSignal) => loadProfileSftpPathEntry(profile.id, path, signal), [profile.id])
   const loadDirectory = useCallback((path: string) => loadProfileSftpDirectory(profile.id, path), [profile.id])
@@ -111,11 +114,11 @@ export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, 
   const remove = useCallback((directory: string, paths: string[]) => deleteFileEndpointEntries({ paneId, endpointId, directory, paths }), [endpointId, paneId])
   return <div className={`dsh-ssh-profile-sftp-pane${embedded ? ' is-embedded' : ''}`}>
     <div className="dsh-ssh-content-heading"><div><h1>{embedded ? 'SFTP' : `${profile.name} · SFTP`}</h1><p>{embedded ? initialPath : `${profileAddress(profile)} · ${initialPath}`}</p></div><div className="dsh-ssh-heading-actions">{onDelete && <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={t("client.deleteHost", [profile.name])} title={t("client.deleteHost2")} onClick={onDelete}><IconTrashOutline16 size={16} /></button>}{onEdit && <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />{t("client.editHost")}</button>}</div></div>
-    <SftpExplorer key={profile.id} workspace initialPath={initialPath} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
+    <SftpExplorer key={profile.id} workspace initialPath={initialPath} followPath={embedded && following ? terminalPath : undefined} followControl={embedded && <button type="button" className="dsh-ssh-follow-directory" aria-label={t('sftp-client.followTerminal')} aria-pressed={following} data-waiting={following && terminalPath === undefined} title={terminalPath === undefined ? t('sftp-client.followWaiting') : t('sftp-client.followHint')} onClick={() => setFollowing(value => !value)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l2-2" /></svg></button>} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
   </div>
 }
 
-function SftpExplorer({ initialPath, nativeSessionId, header, mountedDirectories, workspace = false, loadDirectory, loadPreview, saveMarkdown, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+function SftpExplorer({ initialPath, followPath, followControl, nativeSessionId, header, mountedDirectories, workspace = false, loadDirectory, loadPreview, saveMarkdown, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
   useSshLocale()
   const [expanded, setExpanded] = useState(false)
   const navigationId = useRef(0)
@@ -134,6 +137,7 @@ function SftpExplorer({ initialPath, nativeSessionId, header, mountedDirectories
   const [deleteTarget, setDeleteTarget] = useState<SftpEntryView>()
   const [operationMessage, setOperationMessage] = useState<string>()
   const [error, setError] = useState<string>()
+  const lastFollowed = useRef<string>()
   const browse = useCallback(async (target: string, persist: boolean) => {
     const request = ++navigationId.current
     setLoading(true); setError(undefined); setOpenedFile(undefined); setPendingOverwrite(undefined)
@@ -144,6 +148,16 @@ function SftpExplorer({ initialPath, nativeSessionId, header, mountedDirectories
     } catch (reason) { if (request === navigationId.current) setError(errorMessage(reason)) } finally { if (request === navigationId.current) setLoading(false) }
   }, [loadDirectory])
   useEffect(() => { void browse(initialPath, false); return () => { navigationId.current++ } }, [browse, initialPath])
+  useEffect(() => {
+    if (followPath === undefined) { lastFollowed.current = undefined; return }
+    // Never dismiss a preview/draft, a confirmation, a path being typed, or an upload.
+    if (loading || openedFile || uploading || pendingOverwrite || deleteTarget || !directory || path !== directory.path || lastFollowed.current === followPath) return
+    const timer = window.setTimeout(() => {
+      lastFollowed.current = followPath
+      if (followPath !== directory.path) void browse(followPath, false)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [followPath, loading, openedFile, uploading, pendingOverwrite, deleteTarget, directory, path, browse])
   const openEntry = (entry: SftpEntryView): void => {
     if (isNavigableRemoteEntry(entry)) { void browse(entry.path, true); return }
     navigationId.current++; setLoading(false); setError(undefined); setPath(directory?.path ?? initialPath); setOpenedFile(entry)
@@ -241,10 +255,11 @@ function SftpExplorer({ initialPath, nativeSessionId, header, mountedDirectories
     {header}
     {mountedDirectories && mountedDirectories.length > 0 && <nav className="dsh-ssh-mounted-directories" aria-label={t("sftp-client.mountedDirectories")}>{mountedDirectories.map(project => <button key={project.id} type="button" data-ssh-interactive="choice" className={directory?.path === project.path ? 'is-active' : ''} title={project.path} disabled={loading} onClick={() => { void browse(project.path, true) }}><IconFolderClose16 size={14} /><span>{project.name}</span></button>)}</nav>}
     {openedFile ? <SftpFilePreview key={openedFile.path} entry={openedFile} loadPreview={loadPreview} saveMarkdown={saveMarkdown} loadPathEntry={loadPathEntry} fileUrl={fileUrl} onBack={() => setOpenedFile(undefined)} inDirectoryModal={expanded} /> : <>
-      <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}${nativeSessionId === undefined ? '' : ' has-native-open'}`} aria-busy={loading} onSubmit={event => { void submit(event) }}>
+      <form className={`dsh-ssh-sftp-pathbar${uploadFile === undefined ? '' : ' has-upload'}${nativeSessionId === undefined ? '' : ' has-native-open'}${followControl ? ' has-follow' : ''}`} aria-busy={loading} onSubmit={event => { void submit(event) }}>
         <button type="button" aria-label={t("sftp-client.goToParentDirectory")} title={t("sftp-client.goToParentDirectory")} disabled={directory?.parent == null || loading} onClick={() => { if (directory?.parent) void browse(directory.parent, true) }}><IconChevronLeftOutline14 size={14} /></button>
         <input aria-label={t("sftp-client.directoryOrFilePath")} title={t("sftp-client.enterADirectoryToBrowseOrAFileTo")} placeholder={t("sftp-client.directoryOrFilePathPressEnterToOpen")} value={path} readOnly={loading} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} spellCheck={false} onChange={event => { setPath(event.target.value); setError(undefined) }} onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault() }} />
         <button type="button" aria-label={t("file-transfer-workspace.refreshDirectory")} title={t("file-transfer-workspace.refreshDirectory")} disabled={loading} onClick={() => { void browse(directory?.path ?? path, false) }}><IconRefreshOutline16 size={15} /></button>
+        {followControl}
         <button type="button" aria-label={expanded ? t("sftp-client.closeDirectoryDialog") : t("sftp-client.expandDirectory")} title={expanded ? t("sftp-client.closeDirectoryDialog") : t("sftp-client.openDirectoryInADialog")} disabled={directory === undefined} onClick={() => setExpanded(value => !value)}><IconFullscreenOutline16 size={16} /></button>
         {nativeSessionId !== undefined && <NativeDirectoryButton sessionId={nativeSessionId} path={directory?.path} onMessage={setOperationMessage} />}
         {uploadFile !== undefined && <><input ref={fileInputRef} className="sr-only" type="file" multiple tabIndex={-1} onChange={event => { const files = Array.from(event.target.files ?? []); event.target.value = ''; if (files.length > 0) void uploadFiles(files) }} /><button type="button" className="dsh-ssh-sftp-upload-button" disabled={directory === undefined || uploading !== undefined || pendingOverwrite !== undefined} onClick={() => fileInputRef.current?.click()}><IconSendOutline14 size={14} />{uploading === undefined ? t("sftp-client.upload") : t("sftp-client.uploading")}</button></>}
@@ -271,7 +286,10 @@ function SftpExplorer({ initialPath, nativeSessionId, header, mountedDirectories
               <FileNameTooltip name={entry.name}>{directoryEntry ? <IconFolderClose16 size={16} /> : <IconDataOutline16 size={16} />}<strong>{entry.name}</strong></FileNameTooltip>
               <small>{directoryEntry ? '-' : formatBytes(entry.size)}</small>
               <small>{formatFileTime(entry.modifiedAt)}</small>
-              {deletion !== undefined && <button type="button" className="dsh-ssh-sftp-row-delete dsh-ssh-context-action" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); setDeleteTarget(entry) }}><IconTrashOutline16 size={14} /></button>}
+              <div className="dsh-ssh-sftp-row-actions">
+                {entry.kind === 'file' && <a className="dsh-ssh-sftp-row-download dsh-ssh-context-action" draggable={false} href={fileUrl(entry.path)} download={entry.name} aria-label={t('sftp-client.downloadEntry', [entry.name])} title={t('sftp-client.downloadEntry', [entry.name])} onClick={event => event.stopPropagation()}><IconDownloadOutline16 size={14} /></a>}
+                {deletion !== undefined && <button type="button" className="dsh-ssh-sftp-row-delete dsh-ssh-context-action" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); setDeleteTarget(entry) }}><IconTrashOutline16 size={14} /></button>}
+              </div>
             </div>})}
       </div>
     </>}

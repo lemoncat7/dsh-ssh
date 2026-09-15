@@ -445,6 +445,7 @@ function HostWorkbench({ profile, initialPath, active, onEdit, onDelete, closeAl
   useSshLocale()
   const [sftpReady, setSftpReady] = useState(false)
   const [sftpHidden, setSftpHidden] = useState(false)
+  const [terminalPath, setTerminalPath] = useState<string>()
   const onTerminalCount = useCallback((count: number) => reportTerminalCount(profile.id, count), [profile.id, reportTerminalCount])
   const headingGlow = useBorderGlowSurface<HTMLElement>()
   return <div className="dsh-ssh-host-workbench">
@@ -462,9 +463,9 @@ function HostWorkbench({ profile, initialPath, active, onEdit, onDelete, closeAl
       storageKey="dsh-ssh:workbench:sftp-width"
       label={t("client.adjustTheTerminalAndSftpWidths")}
       secondaryHidden={sftpHidden}
-      primary={<section className="dsh-ssh-workbench-terminal" aria-label={t("client.terminal", [profile.name])}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={onTerminalCount} /></section>}
+      primary={<section className="dsh-ssh-workbench-terminal" aria-label={t("client.terminal", [profile.name])}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={onTerminalCount} onDirectory={setTerminalPath} /></section>}
       secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady && active
-        ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} embedded />
+        ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} terminalPath={terminalPath} embedded />
         : <div className="dsh-ssh-sftp-deferred"><span>SFTP</span><strong>{t("client.waitingForTerminalConnection")}</strong><p>{t("client.theRemoteDirectoryLoadsOnceATerminalIsOpen")}</p></div>}
       </section>}
     />

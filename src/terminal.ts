@@ -8,6 +8,8 @@ import type {
 import { SshConnector, type ManagedSshConnection } from './connector.js'
 import { SshStore } from './store.js'
 import { directoryPrelude } from './exec.js'
+import { detectPromptShell, directoryPromptHook } from './terminal-shell-integration.js'
+import { TerminalBootstrapEcho } from './terminal-bootstrap-echo.js'
 import { OrderedTerminalInput, TerminalOutputBuffer, type TerminalOutputListener } from './terminal-io.js'
 import type { TerminalOpenedEvent } from './activity-events.js'
 
@@ -205,10 +207,12 @@ export class BrowserTerminalManager {
     let connection: ManagedSshConnection | undefined
     try {
       connection = await this.connector.connect(profileId, signal)
+      const promptShell = await detectPromptShell(connection.client)
       const channel = await openShell(connection, clamp(cols, 20, 400), clamp(rows, 5, 200))
       if (this.closing || signal?.aborted) { channel.destroy(); throw new Error('SSH terminal opening was cancelled') }
       const terminal = new BrowserTerminal(randomUUID(), profileId, connection, channel, () => this.sessions.delete(terminal.id))
       this.sessions.set(terminal.id, terminal)
+      if (promptShell) terminal.initializeDirectoryHook()
       if (cwd !== undefined && cwd !== '~') channel.write(`${directoryPrelude(cwd)}\n`)
       return { id: terminal.id, profileId }
     } catch (error) {
@@ -462,6 +466,8 @@ export interface AiTerminalActivity {
 export class BrowserTerminal {
   private readonly output = new TerminalOutputBuffer(1_000_000, 750_000)
   private closed = false
+  private bootstrapEcho: TerminalBootstrapEcho | undefined
+  private bootstrapTimer: ReturnType<typeof setTimeout> | undefined
   private idleTimer: ReturnType<typeof setTimeout>
   private readonly orderedInput = new OrderedTerminalInput(text => this.write(text))
 
@@ -478,12 +484,32 @@ export class BrowserTerminal {
     channel.stderr?.setEncoding('utf8')
     channel.stderr?.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
     channel.once('close', () => {
+      this.finishBootstrap()
       this.closed = true
       clearTimeout(this.idleTimer)
       this.output.close()
       connection.close()
       onClose()
     })
+  }
+
+  initializeDirectoryHook(): void {
+    const token = randomUUID()
+    const start = `: 'dsh-init-${token}'; `
+    const end = `; : 'dsh-init-end-${token}'`
+    const completed = `\x1b]1337;DshInitDone=${token}\x07`
+    const command = start + directoryPromptHook().trimEnd() + `; printf '\\033]1337;DshInitDone=${token}\\007'` + end
+    this.bootstrapEcho = new TerminalBootstrapEcho(command, start, end, completed)
+    this.bootstrapTimer = setTimeout(() => this.finishBootstrap(), 5000)
+    // Leading space respects shells configured to omit internal commands from history.
+    this.channel.write(` ${command}\n`)
+  }
+
+  private finishBootstrap(): void {
+    clearTimeout(this.bootstrapTimer); this.bootstrapTimer = undefined
+    const pending = this.bootstrapEcho?.flush()
+    this.bootstrapEcho = undefined
+    if (pending) this.output.append(pending)
   }
 
   write(text: string): void { this.touch(); if (this.closed) throw new Error('terminal is closed'); this.channel.write(text) }
@@ -502,6 +528,7 @@ export class BrowserTerminal {
 
   async close(): Promise<void> {
     if (this.closed) return
+    this.finishBootstrap()
     this.closed = true
     clearTimeout(this.idleTimer)
     this.output.close()
@@ -511,7 +538,8 @@ export class BrowserTerminal {
   }
 
   private append(text: string): void {
-    this.output.append(text)
+    const visible = this.bootstrapEcho?.push(text) ?? text
+    if (visible) this.output.append(visible)
   }
 
   private touch(): void {

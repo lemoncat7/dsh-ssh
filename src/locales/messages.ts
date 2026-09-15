@@ -1,6 +1,10 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "sftp-client.followTerminal": { "zh": "跟随终端目录", "en": "Follow terminal directory" },
+  "sftp-client.followWaiting": { "zh": "尚未收到终端目录。请重连终端；支持 Bash/Zsh/sh，其他 Shell 需支持 OSC 7 或 CurrentDir", "en": "No terminal directory received. Reconnect the terminal; Bash/Zsh/sh are supported. Other shells need OSC 7 or CurrentDir." },
+  "sftp-client.followHint": { "zh": "跟随当前选中的终端；预览、上传或操作文件时暂停", "en": "Follow the focused terminal; pause while previewing, uploading or managing files" },
+  "sftp-client.downloadEntry": { "zh": "下载 {0}", "en": "Download {0}" },
   "client.deviceCodeExpiry": { "zh": "代码将在 {0} 失效", "en": "Code expires at {0}" },
   "file-entry-delete-dialog.deleteFromLocation": { "zh": "将直接从{0}删除所选内容。", "en": "The selected items will be deleted directly from {0}. " },
   "activity-panel.sshActivity": {

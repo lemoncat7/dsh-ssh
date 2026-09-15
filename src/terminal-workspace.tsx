@@ -7,8 +7,8 @@ import { TerminalSession } from './terminal-session.js'
 import { closeTerminal, nextTerminalNumber, selectTerminal, splitTerminal, type TerminalLayout } from './terminal-layout.js'
 import { Dialog } from './ui-components.js'
 
-interface TerminalTab { id: number; number: number; path: string }
-export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest = 0, onCountChange }: { profile: ProfileView; path: string; onConnected(): void; closeAllRequest?: number; onCountChange?: (count: number) => void }): JSX.Element {
+interface TerminalTab { id: number; number: number; path: string; directory?: string | undefined }
+export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest = 0, onCountChange, onDirectory }: { profile: ProfileView; path: string; onConnected(): void; closeAllRequest?: number; onCountChange?: (count: number) => void; onDirectory?(path: string | undefined): void }): JSX.Element {
   useSshLocale()
   const [tabs, setTabs] = useState<TerminalTab[]>([{ id: 1, number: 1, path }])
   const [serial, setSerial] = useState(1)
@@ -17,6 +17,8 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
   const [closing, setClosing] = useState<number>()
   const [controls, setControls] = useState<ReactNode>(null)
   const handledCloseRequest = useRef(closeAllRequest)
+  const focusedDirectory = tabs.find(tab => tab.id === view.focused)?.directory
+  useEffect(() => { onDirectory?.(focusedDirectory) }, [focusedDirectory, view.focused, onDirectory])
   useEffect(() => {
     if (handledCloseRequest.current === closeAllRequest) return
     handledCloseRequest.current = closeAllRequest
@@ -73,7 +75,7 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
     </div>
     <div className={`dsh-ssh-terminal-panes${count > 2 ? ' is-grid' : count === 2 ? ` is-split is-${direction}` : ''}`}>
       {tabs.map(tab => <section key={tab.id} id={`ssh-terminal-${profile.id}-${tab.id}`} aria-label={label(tab.id)} className="dsh-ssh-terminal-slot" hidden={!view.panes.includes(tab.id)} style={{ order: view.panes.indexOf(tab.id) }} data-focused={view.focused === tab.id} onPointerDown={() => setView(current => ({ ...current, focused: tab.id }))} onFocusCapture={() => setView(current => ({ ...current, focused: tab.id }))}>
-        <TerminalSession profile={profile} path={tab.path} label={label(tab.id)} onControls={view.focused === tab.id ? setControls : undefined} onConnected={onConnected} />
+        <TerminalSession profile={profile} path={tab.path} label={label(tab.id)} onControls={view.focused === tab.id ? setControls : undefined} onConnected={onConnected} onDirectory={directory => setTabs(current => current.find(item => item.id === tab.id)?.directory === directory ? current : current.map(item => item.id === tab.id ? { ...item, directory } : item))} />
       </section>)}
       {tabs.length === 0 && <div className="dsh-ssh-command-empty"><p>{t("terminal-workspace.allTerminalsAreClosed")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => add()}>{t("terminal-workspace.newTerminal")}</button></div>}
     </div>

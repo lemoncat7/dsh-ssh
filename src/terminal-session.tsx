@@ -8,10 +8,13 @@ import { TerminalTransport } from './terminal-transport.js'
 import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
 import { Dialog, errorMessage } from './ui-components.js'
 import { CommandsPanel } from './commands-panel.js'
+import { terminalDirectory } from './terminal-directory.js'
 
-export function TerminalSession({ profile, path, label, onControls, onConnected }: { profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void }): JSX.Element {
+export function TerminalSession({ profile, path, label, onControls, onConnected, onDirectory }: { profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const hostRef = useRef<HTMLDivElement>(null)
+  const directoryCallback = useRef(onDirectory)
+  directoryCallback.current = onDirectory
   const terminalRef = useRef<Terminal>()
   const idRef = useRef<string>()
   const transportRef = useRef<TerminalTransport>()
@@ -31,6 +34,11 @@ export function TerminalSession({ profile, path, label, onControls, onConnected 
     const host = hostRef.current
     if (!host) return
     const terminal = createSshTerminal({ scrollback: 3000 })
+    for (const osc of [7, 1337] as const) terminal.parser.registerOscHandler(osc, value => {
+      const directory = terminalDirectory(value, osc, profile.host)
+      if (directory !== undefined) directoryCallback.current?.(directory)
+      return true
+    })
     const fit = new FitAddon()
     terminal.loadAddon(fit); terminal.open(host)
     terminalRef.current = terminal; fitRef.current = fit
@@ -66,7 +74,7 @@ export function TerminalSession({ profile, path, label, onControls, onConnected 
     const stop = transport.observe({ output: value => {
       if (value.truncated) terminal.write(t("terminal-session.earlierOutputTruncated"))
       if (value.data) terminal.write(value.data)
-      if (value.closed) { idRef.current = undefined; setId(undefined); setPhase('idle') }
+      if (value.closed) { idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
     }, error: reason => setError(errorMessage(reason)) })
     return () => { stop(); input.dispose(); transport.dispose(); transportRef.current = undefined }
   }, [id])
@@ -88,7 +96,7 @@ export function TerminalSession({ profile, path, label, onControls, onConnected 
   }
   const disconnect = async (): Promise<void> => {
     if (!idRef.current) return
-    try { await close(idRef.current); idRef.current = undefined; setId(undefined); setPhase('idle') }
+    try { await close(idRef.current); idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
     catch (reason) { setError(errorMessage(reason)) }
   }
   // Publish only the selected session's controls; keep transport ownership here.

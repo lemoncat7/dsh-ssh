@@ -2505,6 +2505,9 @@ body[data-ds-dark-theme] :is(
   line-height: 1.4;
 }
 .dsh-ssh-sftp-table {
+  min-width: 0;
+  container-type: inline-size;
+  container-name: ssh-file-table;
   min-height: 0;
   flex: 1;
   overflow: auto;
@@ -2516,11 +2519,13 @@ body[data-ds-dark-theme] :is(
 .dsh-ssh-sftp-columns,
 .dsh-ssh-sftp-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 58px 72px 28px;
+  grid-template-columns: minmax(0, 1fr) 58px 72px 60px;
   align-items: center;
   gap: 7px;
 }
 .dsh-ssh-sftp-columns {
+  box-sizing: border-box;
+  width: 100%;
   position: sticky;
   z-index: 1;
   top: 0;
@@ -3561,6 +3566,8 @@ body[data-ds-dark-theme] :is(
   font: var(--ssh-type-caption)/1.4 var(--ssh-font-sans);
 }
 .dsh-ssh-profile-sftp-pane {
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
   display: flex;
   min-height: 100%;
@@ -3581,13 +3588,7 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns,
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row {
-  grid-template-columns: minmax(180px, 1fr) 90px 120px 28px;
-}
-@media (max-width: 600px) {
-  .dsh-ssh-directory-modal-body .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns,
-  .dsh-ssh-directory-modal-body .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-row { grid-template-columns: minmax(0, 1fr) 56px 28px; }
-  .dsh-ssh-directory-modal-body .dsh-ssh-sftp-columns > :nth-child(3),
-  .dsh-ssh-directory-modal-body .dsh-ssh-sftp-row > :nth-child(3) { display: none; }
+  grid-template-columns: minmax(0, 1fr) 90px 120px 60px;
 }
 .dsh-ssh-sftp.is-workspace .dsh-ssh-sftp-columns {
   min-height: 34px;
@@ -3655,4 +3656,23 @@ body[data-ds-dark-theme] :is(
   border-color: color-mix(in srgb, var(--ssh-accent-strong) 56%, transparent);
   color: var(--ssh-on-accent);
   background: var(--ssh-accent-strong);
+}
+
+/* Fit the file pane itself, not the browser viewport beside a wide terminal. */
+.dsh-ssh-sftp-row-actions { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; }
+.dsh-ssh-sftp-row-download { display: grid; flex: none; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 7px; color: var(--ssh-text-muted); background: transparent; text-decoration: none; }
+.dsh-ssh-sftp-row-download:hover { color: var(--ssh-text); background: var(--ssh-hover); }
+.dsh-ssh-sftp-row-download:focus-visible { outline: 2px solid var(--ssh-text-muted); outline-offset: -2px; }
+.dsh-ssh-sftp-row .dsh-ssh-sftp-row-actions > .dsh-ssh-context-action { transform: none; }
+.dsh-ssh-sftp-pathbar.has-follow { grid-template-columns: 30px minmax(0, 1fr) repeat(3, 30px); }
+.dsh-ssh-sftp-pathbar.has-follow.has-upload { grid-template-columns: 30px minmax(0, 1fr) repeat(3, 30px) auto; }
+.dsh-ssh-sftp-pathbar .dsh-ssh-follow-directory[aria-pressed="true"] { background: var(--ssh-selected); color: var(--ssh-text); box-shadow: inset 0 -2px var(--ssh-text-muted); }
+.dsh-ssh-sftp-pathbar .dsh-ssh-follow-directory[data-waiting="true"] { box-shadow: none; color: var(--ssh-text-muted); }
+@container ssh-file-table (max-width: 480px) {
+  .dsh-ssh-sftp .dsh-ssh-sftp-table .dsh-ssh-sftp-columns, .dsh-ssh-sftp .dsh-ssh-sftp-table .dsh-ssh-sftp-row { grid-template-columns: minmax(0, 1fr) 56px 60px; }
+  .dsh-ssh-sftp-columns > :nth-child(3), .dsh-ssh-sftp-row > :nth-child(3) { display: none; }
+}
+@container ssh-file-table (max-width: 280px) {
+  .dsh-ssh-sftp .dsh-ssh-sftp-table .dsh-ssh-sftp-columns, .dsh-ssh-sftp .dsh-ssh-sftp-table .dsh-ssh-sftp-row { grid-template-columns: minmax(0, 1fr) 60px; gap: 4px; padding-inline: 6px; }
+  .dsh-ssh-sftp-columns > :nth-child(2), .dsh-ssh-sftp-row > :nth-child(2) { display: none; }
 }
