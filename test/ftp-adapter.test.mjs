@@ -26,6 +26,8 @@ test('FTP uses the routed dialer for both control and passive data connections',
   t.after(() => session.close())
   const directory = await session.list('/')
   assert.equal(directory.path, '/')
+  assert.equal(directory.entries.find(entry => entry.name === 'hello.txt').modifiedAtText, 'Jan 01 2026')
+  assert.equal(directory.entries.find(entry => entry.name === 'hello.txt').modifiedAt, 0, 'LIST dates are not guessed as UTC')
   assert.deepEqual(directory.entries.map(entry => [entry.name, entry.kind, entry.navigable ?? false, entry.size]), [['docs', 'directory', false, 0], ['hello.txt', 'file', false, 5], ['shortcut', 'symlink', false, 4]])
   assert.deepEqual((await session.list('/docs')).entries.map(entry => [entry.name, entry.kind, entry.size]), [['readme.md', 'file', 7]])
   assert.equal(calls.length, 3)
@@ -101,7 +103,52 @@ test('FTP legacy authentication remains password-based and validates username', 
   assert.throws(() => normalizeFtpProfileDraft({ ...base, authMode: 'invalid' }), /authMode/)
 })
 
-async function createFtpServer({ rootListing } = {}) {
+test('factless and empty MLSD fall back once to LIST with complete file metadata', async t => {
+  for (const mlsdListing of [' .\r\n ..\r\n docs\r\n', '']) {
+    const server = await createFtpServer({ mlsdListing })
+    t.after(server.close)
+    const session = await connectFtpProfile({
+      id: 'broken-mlsd', name: 'FTP', protocol: 'ftp', host: '127.0.0.1', port: server.port,
+      username: 'tester', proxy: { type: 'none' }, initialPath: '/', connectTimeoutMs: 3000,
+      createdAt: 0, updatedAt: 0,
+    }, 'secret', { connect: (host, port, _route, timeout, signal) => connectSocket(host, port, timeout, signal) })
+    t.after(() => session.close())
+    const root = await session.list('/')
+    assert.equal(root.entries.find(e => e.name === 'docs').kind, 'directory')
+    const file = root.entries.find(e => e.name === 'hello.txt')
+    assert.equal(file.kind, 'file')
+    assert.equal(file.size, 5)
+    assert.equal(file.modifiedAtText, 'Jan 01 2026')
+    assert.equal((await session.list('/docs')).entries[0].name, 'readme.md')
+    assert.equal((await session.stat('/hello.txt')).size, 5)
+    assert.equal(server.commands.filter(c => c.startsWith('MLSD')).length, 1)
+    assert.equal(server.commands.filter(c => c === 'LIST').length, 3)
+  }
+})
+
+test('routed passive sockets retain listing data arriving before the control reply', async t => {
+  const server = await createFtpServer({ earlyData: true })
+  t.after(server.close)
+  const session = await connectFtpProfile({
+    id: 'early-data', name: 'FTP', protocol: 'ftp', host: '127.0.0.1', port: server.port,
+    username: 'tester', proxy: { type: 'none' }, initialPath: '/', connectTimeoutMs: 3000,
+    createdAt: 0, updatedAt: 0,
+  }, 'secret', { async connect(host, port, _route, timeout, signal) {
+    const socket = await connectSocket(host, port, timeout, signal)
+    // Reproduce the flowing socket returned after HTTP/SOCKS proxy negotiation.
+    if (port !== server.port) socket.resume()
+    return socket
+  } })
+  t.after(() => session.close())
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await session.list('/')).entries.find(e => e.name === 'hello.txt')?.size, 5)
+    assert.equal((await session.stat('/docs')).kind, 'directory')
+    assert.equal((await session.list('/docs')).entries[0]?.name, 'readme.md')
+    assert.equal((await session.stat('/docs/readme.md')).size, 7)
+  }
+})
+
+async function createFtpServer({ rootListing, mlsdListing, earlyData = false } = {}) {
   const sockets = new Set()
   const commands = []
   const passiveServers = new Set()
@@ -125,7 +172,7 @@ async function createFtpServer({ rootListing } = {}) {
         const [verb] = command.split(' ', 1)
         if (verb === 'USER') socket.write('331 Password required\r\n')
         else if (verb === 'PASS') socket.write('230 Logged in\r\n')
-        else if (verb === 'FEAT') socket.write('211 No features\r\n')
+        else if (verb === 'FEAT') socket.write(mlsdListing === undefined ? '211 No features\r\n' : '211-Features\r\n MLST type*;size*;modify*;\r\n211 End\r\n')
         else if (verb === 'TYPE' || verb === 'STRU' || verb === 'OPTS') socket.write('200 OK\r\n')
         else if (verb === 'PWD') socket.write(`257 "${cwd}" is current directory\r\n`)
         else if (verb === 'CWD') {
@@ -140,13 +187,14 @@ async function createFtpServer({ rootListing } = {}) {
             const address = passive.address()
             socket.write(`229 Entering Extended Passive Mode (|||${address.port}|)\r\n`)
           })
-        } else if (verb === 'LIST') {
-          socket.write('150 Opening data connection\r\n')
+        } else if (verb === 'LIST' || verb === 'MLSD') {
+          if (earlyData) setTimeout(() => socket.write('150 Opening data connection\r\n'), 30)
+          else socket.write('150 Opening data connection\r\n')
           const requested = command.slice(4).trim().split(/\s+/).filter(token => !token.startsWith('-')).at(-1) || cwd
           const root = `${helloLocation === 'root' ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}drwxr-xr-x 1 test test 0 Jan 01 2026 docs\r\nlrwxrwxrwx 1 test test 4 Jan 01 2026 shortcut -> docs\r\n`
           const docs = `${helloLocation === 'docs' ? '-rw-r--r-- 1 test test 5 Jan 01 2026 hello.txt\r\n' : ''}-rw-r--r-- 1 test test 7 Jan 01 2026 readme.md\r\n`
-          passiveSocket?.end(requested === '/docs' ? docs : rootListing ?? root)
-          setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive); passiveSocket = undefined }, 20)
+          passiveSocket?.end(verb === 'MLSD' ? mlsdListing : requested === '/docs' ? docs : rootListing ?? root)
+          setTimeout(() => { socket.write('226 Transfer complete\r\n'); passive?.close(); passiveServers.delete(passive); passiveSocket = undefined }, earlyData ? 60 : 20)
         } else if (verb === 'RNFR') {
           socket.write(command.slice(5).trim() === '/hello.txt' && helloLocation === 'root' ? '350 Ready for destination\r\n' : '550 Not found\r\n')
         } else if (verb === 'RNTO') {

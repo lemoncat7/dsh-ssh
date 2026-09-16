@@ -65,6 +65,7 @@
   line-height: 1.4;
 }
 .dsh-ssh-dialog > .dsh-ssh-dialog-actions { padding: 16px var(--ssh-dialog-inset) var(--ssh-dialog-inset); }
+.dsh-ssh-file-download-dialog .dsh-ssh-dialog-actions > a { min-height: 44px; }
 .dsh-ssh-dialog.dsh-ssh-file-access-dialog { grid-template-rows: auto minmax(0, 1fr) auto; }
 
 .dsh-ssh-dialog-modal.dsh-ssh-confirmation-modal {

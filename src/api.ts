@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { DownloadProgressStore } from './download-progress.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
 import { HostKeyRequiredError, SshConnector } from './connector.js'
@@ -64,14 +65,25 @@ export interface SshApiRuntime {
 }
 
 export function registerSshApi(webServer: WebServerLike, prefix: string, runtime: SshApiRuntime): () => void {
+  const downloads = new DownloadProgressStore()
   return webServer.register({
     kind: 'prefix',
     path: prefix,
     handler: async (req, res) => {
+      let progress: ReturnType<DownloadProgressStore['track']> | undefined
       try {
         assertSameOrigin(req)
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        if (req.method === 'GET' && url.pathname === `${prefix}/download-progress`) {
+          const status = downloads.get(url.searchParams.get('id') ?? '')
+          return sendJson(res, status ? 200 : 404, status ?? { error: 'download not found' })
+        }
+        const id = url.searchParams.get('transferId')
+        if (req.method === 'GET' && id && /\/(?:download|local-download)$/.test(url.pathname) && url.searchParams.get('inline') !== '1') progress = downloads.track(id, res)
         await dispatch(req, res, prefix, runtime)
+        progress?.complete()
       } catch (error) {
+        progress?.fail(error)
         sendError(res, error)
       }
     },

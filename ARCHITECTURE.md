@@ -2,6 +2,10 @@
 
 This plugin is split into four boundaries. UI code never reaches SSH or file transports directly, and server code never depends on the DSH client runtime.
 
+Browser uploads use XHR byte progress and wait for the successful server response before marking the remote save complete. Native browser downloads remain streamed (no client Blob buffering); `download-progress.ts` records response-body byte counts in a bounded, runtime-local store. Random per-download IDs let `browser-transfers.ts` poll only initiated downloads. Unknown-length archives show byte counts without inventing percentages. HTTP completion is not proof of browser disk-save completion, and the UI explicitly points to the browser download list for that final status. Progress loss is distinct from transfer failure. These transient browser transfers are not resumable jobs after a page/server restart.
+
+FTP LIST timestamps are retained as `modifiedAtText` when MLSD timestamps are unavailable; no timezone/year is guessed and no per-entry MDTM/CWD probes are added to directory listing. Regular file sizes remain the listing-provided byte counts; directory sizes are not recursively computed.
+
 ## Runtime boundaries
 
 ### DSH integration
@@ -85,6 +89,9 @@ This plugin is split into four boundaries. UI code never reaches SSH or file tra
 - SSH command permission and remote-file permission are independent; authorizing one never implies the other.
 - A regular user fork copies the parent session grant once, before prompt assembly. Existing child grants win, live terminals/jobs are never copied, and `origin: subagent` lineage is excluded.
 - FTP control and passive data sockets use the same route policy. FTPS wraps both socket classes with verified TLS.
+- Passive data sockets are paused after dialling: proxy negotiation may leave them flowing, and listing/download bytes must remain buffered until the FTP preliminary response attaches the receiving pipeline. The regression test sends data before that control reply and checks repeated list/stat navigation.
+- `ftp-listing-client.ts` handles servers returning empty/factless MLSD listings: verify through LIST in the requested working directory and reuse LIST for that connection. Listing never issues per-entry metadata probes. LIST dates retain their server text instead of guessing a timezone/year.
+- File-transfer layout v3 defaults to one pane (including migration from v2). Explicit 1–4 pane choices persist; a single pane has no next-pane transfer action.
 - Remote-to-remote transfers use backpressured streams and never stage a complete file on local disk.
 - Browser browsing sessions and transfer job sessions are isolated so a long transfer cannot block pane navigation.
 - Secrets are write-only from the browser and are never returned by profile APIs.

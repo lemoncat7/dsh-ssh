@@ -9,6 +9,14 @@
   white-space: nowrap;
   border: 0;
 }
+.dsh-ssh-browser-transfers { display: flex; flex: none; gap: 8px; max-height: 156px; padding: 8px 12px; overflow: auto; border-top: 1px solid var(--ssh-border); }
+.dsh-ssh-browser-transfer { display: flex; align-items: center; gap: 8px; min-width: min(240px, 100%); max-width: 320px; flex: 1; color: var(--ssh-text); }
+.dsh-ssh-browser-transfer > span { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.dsh-ssh-browser-transfer strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.dsh-ssh-browser-transfer small { font-size: 12px; line-height: 1.4; color: var(--ssh-text-muted); overflow-wrap: anywhere; }
+.dsh-ssh-browser-transfer .dsh-ssh-transfer-progress { display: block; height: 3px; overflow: hidden; background: var(--ssh-border); border-radius: 4px; }
+.dsh-ssh-browser-transfer .dsh-ssh-transfer-progress i { display: block; height: 100%; background: var(--ssh-text-muted); transform-origin: left; }
+.dsh-ssh-sftp > .dsh-ssh-browser-transfers { grid-column: 1 / -1; }
 .dsh-ssh-sidebar,
 .dsh-ssh-workspace,
 .dsh-ssh-activity-panel,

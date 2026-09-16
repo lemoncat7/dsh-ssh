@@ -1,4 +1,5 @@
 export const SSH_API = '/ssh-local/v1'
+import { createBrowserTransfer, updateBrowserTransfer } from './browser-transfers.js'
 export function loadNativeDirectorySupport(): Promise<{ available: boolean }> { return api('/activity/native-directory') }
 export function openNativeDirectory(sessionId: string, path: string): Promise<{ opened: boolean }> {
   return api('/activity/native-directory', { method: 'POST', body: JSON.stringify({ sessionId, path }) })
@@ -82,7 +83,7 @@ export interface ActivityTerminalView {
 }
 export interface ActivityView { injection: InjectionView | null; profiles: ActivityProfileView[]; terminals: ActivityTerminalView[] }
 export interface TerminalOpenedEvent { type: 'terminal-opened'; sessionId: string; terminalId: string; profileId: string; createdAt: number }
-export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; navigable?: boolean; size: number; modifiedAt: number }
+export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; navigable?: boolean; size: number; modifiedAt: number; modifiedAtText?: string }
 export interface SftpDirectoryView { path: string; parent: string | null; entries: SftpEntryView[] }
 export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean; contentHash?: string }
 
@@ -216,14 +217,28 @@ export function profileSftpFileUrl(profileId: string, path: string, inline = fal
 export async function uploadProfileSftpFile(profileId: string, directory: string, file: File, overwrite = false): Promise<{ path: string; name: string; size: number }> {
   const query = new URLSearchParams({ directory, name: file.name })
   if (overwrite) query.set('overwrite', '1')
-  const response = await fetch(`${SSH_API}/profiles/${encodeURIComponent(profileId)}/sftp/upload?${query.toString()}`, {
-    method: 'PUT',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream', 'X-DSH-SSH-Request': '1' },
-    body: file,
+  const id = createBrowserTransfer(file.name, 'upload', file.size)
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    const failed = (error: Error): void => { updateBrowserTransfer(id, { state: 'failed', error: error.message }); reject(error) }
+    xhr.open('PUT', `${SSH_API}/profiles/${encodeURIComponent(profileId)}/sftp/upload?${query.toString()}`)
+    xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    xhr.setRequestHeader('X-DSH-SSH-Request', '1')
+    xhr.upload.onprogress = event => updateBrowserTransfer(id, { state: 'transferring', transferredBytes: event.loaded })
+    xhr.upload.onload = () => updateBrowserTransfer(id, { state: 'waiting', transferredBytes: file.size })
+    xhr.onerror = () => failed(new Error('Upload connection failed'))
+    xhr.onabort = () => failed(new Error('Upload cancelled'))
+    xhr.onload = () => {
+      let body: Record<string, unknown> = {}
+      try { body = JSON.parse(xhr.responseText) as Record<string, unknown> } catch {}
+      if (xhr.status < 200 || xhr.status >= 300) { failed(new ApiError(xhr.status, typeof body.error === 'string' ? body.error : `HTTP ${xhr.status}`, body)); return }
+      if (typeof body.path !== 'string' || typeof body.size !== 'number') { failed(new Error('Invalid upload response')); return }
+      updateBrowserTransfer(id, { state: 'completed', transferredBytes: file.size })
+      resolve(body as { path: string; name: string; size: number })
+    }
+    try { xhr.send(file) } catch (error) { failed(error instanceof Error ? error : new Error(String(error))) }
   })
-  const body = await response.json().catch(() => ({})) as Record<string, unknown>
-  if (!response.ok) throw new ApiError(response.status, typeof body.error === 'string' ? body.error : `HTTP ${response.status}`, body)
-  return body as { path: string; name: string; size: number }
 }
 export interface TerminalOutputDelta { data: string; cursor: number; truncated: boolean; closed: boolean }
 

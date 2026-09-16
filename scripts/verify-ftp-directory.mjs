@@ -16,7 +16,7 @@ const bundle = await build({
   outdir: '/tmp/ssh-ftp-fixture-bundle',
   loader: { '.css': 'css', '.module.css': 'local-css', '.woff2': 'dataurl', '.woff': 'dataurl', '.ttf': 'dataurl' },
 })
-const css = [bundle.outputFiles.find(file => file.path.endsWith('.css'))?.text ?? '', ...(await Promise.all(['client.css', 'file-transfer-workspace.css'].map(name => readFile(root + 'src/' + name, 'utf8'))))].join('\n')
+const css = [bundle.outputFiles.find(file => file.path.endsWith('.css'))?.text ?? '', ...(await Promise.all(['client.css', 'file-transfer-workspace.css', 'dialog.css'].map(name => readFile(root + 'src/' + name, 'utf8'))))].join('\n')
 const server = createServer((req, res) => {
   if (req.url === '/bundle.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(bundle.outputFiles[0].text); return }
   res.setHeader('Content-Type', 'text/html')
@@ -30,11 +30,16 @@ try {
     page.setDefaultTimeout(10000)
     const errors = [], requests = []
     page.on('pageerror', error => errors.push(error.message))
-    const entries = Array.from({ length: 10000 }, (_, i) => ({ name: `file-${i}.txt`, path: `/file-${i}.txt`, kind: 'file', size: i, modifiedAt: 1 }))
+    const entries = Array.from({ length: 10000 }, (_, i) => ({ name: `file-${i}.txt`, path: `/file-${i}.txt`, kind: 'file', size: i, modifiedAt: 0, modifiedAtText: 'Jan 01 2026' }))
     const longName = 'DSG_V5.0.1_R211B089_oe2203_x86_64.txt'
     const longPath = '/Product_Warehouse_CICD/BigData_Security/DSG/OneTrunk/20260908/DSG/oe2203_x86_64/' + longName
     entries.push({name:longName,path:longPath,kind:'file',size:0,modifiedAt:1})
     entries.push({ name: '0-shortcut', path: '/0-shortcut', kind: 'symlink', size: 4, modifiedAt: 1 })
+    entries.push(...Array.from({length:120},(_,i)=>({name:`dir-${i}`,path:`/dir-${i}`,kind:'directory',size:0,modifiedAt:1})))
+    // Existing v2 users also start with one pane; subsequent choices persist.
+    await page.addInitScript(() => {
+      if (!localStorage.getItem('dsh-ssh:file-transfer:tabs:v2')) localStorage.setItem('dsh-ssh:file-transfer:tabs:v2', JSON.stringify([{id:'old-tab',name:'任务 1',panes:[{id:'a',endpointId:'',path:'/'},{id:'b',endpointId:'',path:'/'}]}]))
+    })
     await page.route('**/ssh-local/v1/**', async route => {
       const url = new URL(route.request().url())
       const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
@@ -53,11 +58,33 @@ try {
     })
     await page.goto(`http://127.0.0.1:${server.address().port}`)
     await page.evaluate(dark => document.body.toggleAttribute('data-ds-dark-theme', dark), dark)
+    assert.equal(await page.locator('.dsh-ssh-file-pane').count(),1)
+    for(const count of [2,3,4,1]) {
+      await page.locator('.dsh-ssh-pane-layout button').nth(count-1).click()
+      assert.equal(await page.locator('.dsh-ssh-file-pane').count(),count)
+    }
     await page.getByRole('button', { name: /Test FTP/ }).first().click()
+    await page.locator('.dsh-ssh-file-row').first().waitFor()
+    assert.equal(await page.locator('.dsh-ssh-transfer-to-button').count(),0)
+    const scrollToFiles=async()=>{
+      await page.locator('.dsh-ssh-file-table-body').evaluate(el=>{el.scrollTop=120*38;el.dispatchEvent(new Event('scroll',{bubbles:true}))})
+    }
+    await scrollToFiles()
     const link = page.getByRole('row', { name: '0-shortcut，单击查看', exact: true })
     await link.waitFor()
     assert.ok(await page.locator('.dsh-ssh-file-row').count() <= 56, 'large listing stays virtualized')
     assert.equal(await link.getAttribute('draggable'), 'false', 'unverified links cannot be transferred as directories')
+    const metadata = page.getByRole('row', { name: 'file-0.txt', exact: true })
+    assert.ok(await metadata.innerText().then(text=>text.includes('0 B')&&text.includes('Jan 01 2026')))
+    assert.ok(await metadata.evaluate(row=>{
+      const rect=row.getBoundingClientRect();
+      return [row.children[1],row.children[2]].every(cell=>{const r=cell.getBoundingClientRect();return getComputedStyle(cell).display!=='none'&&r.width>0&&r.right<=rect.right})
+    }),'size and modified time stay inside each pane')
+    await page.screenshot({path:`/tmp/ssh-ftp-listing-${width}-${dark?'dark':'light'}.png`})
+    await page.locator('.dsh-ssh-file-table-body').evaluate(el=>{el.scrollTop=el.scrollHeight;el.dispatchEvent(new Event('scroll',{bubbles:true}))})
+    await page.getByRole('row',{name:'file-9999.txt',exact:true}).waitFor()
+    await scrollToFiles()
+    await metadata.waitFor()
     assert.equal(await link.getByRole('link', { name: '下载 0-shortcut 到本地' }).count(), 1)
     await page.getByRole('row', { name: 'file-0.txt', exact: true }).click()
     await page.getByRole('dialog').waitFor()
@@ -84,6 +111,8 @@ try {
     await page.waitForFunction(() => document.querySelector('input[aria-label="远端路径"]')?.value === '/docs')
     assert.deepEqual(requests, ['/', '/0-shortcut'])
     await page.getByRole('button', { name: '上一级目录' }).first().click()
+    await page.locator('.dsh-ssh-file-row').first().waitFor()
+    await scrollToFiles()
     await link.waitFor()
     await link.click()
     await page.waitForFunction(() => document.querySelector('input[aria-label="远端路径"]')?.value === '/docs')

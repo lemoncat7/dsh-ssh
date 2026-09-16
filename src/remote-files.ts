@@ -22,6 +22,7 @@ export interface RemoteFileEntry {
   navigable?: boolean
   size: number
   modifiedAt: number
+  modifiedAtText?: string
 }
 
 export interface RemoteDirectoryView {

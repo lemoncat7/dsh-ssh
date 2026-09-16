@@ -8,6 +8,7 @@ import { NetworkDialer } from './network-dialer.js'
 import type { RemoteDirectoryView, RemoteEndpointView, RemoteFileEntry, RemoteFileSystemAdapter, RemoteFileSystemSession } from './remote-files.js'
 import { endpointId, remoteJoin, remoteName, remoteParent, sortRemoteEntries } from './remote-files.js'
 import { SshStore } from './store.js'
+import { FtpListingClient } from './ftp-listing-client.js'
 
 export class FtpFileSystemAdapter implements RemoteFileSystemAdapter {
   readonly kind = 'ftp' as const
@@ -50,7 +51,7 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
 
   static async open(endpoint: RemoteEndpointView, profile: FtpProfile, password: string, dialer: NetworkDialer, signal?: AbortSignal): Promise<FtpFileSystemSession> {
     signal?.throwIfAborted()
-    const client = new Client(profile.connectTimeoutMs, { allowSeparateTransferHost: false })
+    const client = new FtpListingClient(profile.connectTimeoutMs, { allowSeparateTransferHost: false })
     client.prepareTransfer = createPassiveTransfer(profile, dialer, signal)
     const tlsOptions: tls.ConnectionOptions = {
       host: profile.host,
@@ -169,6 +170,10 @@ function createPassiveTransfer(profile: FtpProfile, dialer: NetworkDialer, defau
       port = parsePasvPort(response.message)
     }
     const raw = await dialer.connect(profile.host, port, profile.proxy, profile.connectTimeoutMs, defaultSignal)
+    // Proxy handshakes consume `data`, leaving their socket in flowing mode.
+    // LIST/RETR data can arrive before the control channel's 150 response makes
+    // basic-ftp attach its pipeline. Buffer it until that consumer is ready.
+    raw.pause()
     let socket: typeof raw | TLSSocket = raw
     if (ftp.hasTLS) {
       socket = tls.connect({
@@ -223,7 +228,11 @@ function ftpEntry(directory: string, entry: FileInfo): RemoteFileEntry {
   return {
     name: entry.name, path: remoteJoin(directory, entry.name),
     kind: entry.isDirectory ? 'directory' : entry.isFile ? 'file' : entry.isSymbolicLink ? 'symlink' : 'other',
-    size: entry.size, modifiedAt: entry.modifiedAt?.getTime() ?? 0,
+    size: Number.isFinite(entry.size) && entry.size >= 0 ? entry.size : 0,
+    modifiedAt: entry.modifiedAt?.getTime() ?? 0,
+    // LIST dates have no reliable timezone/year. Preserve the server's text
+    // rather than inventing a timestamp or issuing N extra MDTM requests.
+    ...(entry.modifiedAt === undefined && entry.rawModifiedAt.trim() ? { modifiedAtText: entry.rawModifiedAt.trim() } : {}),
   }
 }
 
