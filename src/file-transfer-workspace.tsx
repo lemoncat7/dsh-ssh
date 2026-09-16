@@ -1,10 +1,11 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { trackDownloadClick } from './browser-transfers.js'
-import { BrowserTransferStatus } from './browser-transfer-status.js'
+import { BrowserTransferTask, TransferTaskList, isBrowserTransferActive, useBrowserTransferTasks } from './transfer-task-list.js'
 import { t } from './i18n.js'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent } from 'react'
-import { IconChevronDownOutline14, IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
+  uploadFileEndpointFile,
   inspectFileEndpointEntry, cancelFileTransfer, deleteFileEndpointEntries, fileEndpointDownloadUrl, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
   type FileEndpointView, type FtpProfileView, type ProxyEntryView, type SftpDirectoryView, type SftpEntryView, type TransferJobView, type VaultEntryView,
 } from './client-api.js'
@@ -124,7 +125,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
           const destination = active.panes.length > 1 ? active.panes[(index + 1) % active.panes.length] : undefined
           return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, pane.path, paths, target.endpointId, target.path) }} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />
         })}</div>}
-      <div className="dsh-ssh-transfer-queues"><BrowserTransferStatus />
+      <div className="dsh-ssh-transfer-queues">
       <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
       </div>
     </section>
@@ -137,6 +138,10 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
 function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRevision, onChange, onTransfer, onExternalDrop, onDragSourceChange, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; dragSource?: TransferDragSource | undefined; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(source: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void; onManageConnections(): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const [openedFile, setOpenedFile] = useState<SftpEntryView>()
+  const uploadInput = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const uploadLocation = useRef({ endpointId: pane.endpointId, path: pane.path })
+  uploadLocation.current = { endpointId: pane.endpointId, path: pane.path }
   const [view, setView] = useState<SftpDirectoryView>()
   const [selected, setSelected] = useState<string[]>([])
   const [draftPath, setDraftPath] = useState(pane.path)
@@ -180,6 +185,22 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
   }
   useEffect(() => { setOpenedFile(undefined) }, [endpoint?.id])
   const submitPath = (event: FormEvent): void => { event.preventDefault(); void openEntry(draftPath) }
+  const uploadFiles = async (files: File[]): Promise<void> => {
+    if (!endpoint || !view || uploading || files.length === 0) return
+    const target = { endpointId: endpoint.id, path: view.path }
+    setUploading(true); setError(undefined)
+    const failures: string[] = []
+    try {
+      for (const file of files) {
+        try { await uploadFileEndpointFile(target.endpointId, target.path, file) }
+        catch (reason) { failures.push(`${file.name}: ${errorMessage(reason)}`) }
+      }
+      if (uploadLocation.current.endpointId === target.endpointId && uploadLocation.current.path === target.path) {
+        await load(target.path)
+        if (failures.length) setError(failures.join('\n'))
+      }
+    } finally { setUploading(false) }
+  }
   const changeSort = (key: FileEntrySortKey): void => {
     setSort(current => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' })
     setScrollTop(0)
@@ -209,7 +230,7 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
   </section>
   return <section className={`dsh-ssh-file-pane${dragOver ? ' is-drop-target' : ''}`} onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && canDropIntoPane(dragSource, pane)) { event.preventDefault(); event.dataTransfer.dropEffect = dragSource?.endpointId === pane.endpointId ? 'move' : 'copy'; setDirectoryDropTarget(undefined); setDragOver(true) } else if (dragOver) setDragOver(false) }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { setDragOver(false); setDirectoryDropTarget(undefined) } }} onDrop={drop}>
     <header><button type="button" className="dsh-ssh-pane-back" aria-label={t("file-transfer-workspace.backToConnectionList")} onClick={showConnections}><IconChevronLeftOutline14 size={14} /></button><span className="dsh-ssh-pane-endpoint"><strong>{endpoint.name}</strong><small title={endpoint.address}>{endpoint.address}</small></span><span className={`dsh-ssh-protocol-badge is-${endpoint.protocol}`}>{protocolShort(endpoint.protocol)}</span></header>
-    <form className="dsh-ssh-file-pathbar" onSubmit={submitPath}><button type="button" aria-label={t("file-transfer-workspace.parentDirectory")} disabled={view?.parent === null || loading} onClick={() => { if (view?.parent) void load(view.parent) }}><UpGlyph /></button><button type="button" aria-label={t("file-transfer-workspace.refreshDirectory")} disabled={loading} onClick={() => { void load() }}><RefreshGlyph /></button><input aria-label={t("file-transfer-workspace.remotePath")} value={draftPath} onChange={event => setDraftPath(event.target.value)} /><button type="submit" disabled={loading}>{t("file-transfer-workspace.goTo")}</button></form>
+    <form className="dsh-ssh-file-pathbar" onSubmit={submitPath}><button type="button" aria-label={t("file-transfer-workspace.parentDirectory")} disabled={view?.parent === null || loading} onClick={() => { if (view?.parent) void load(view.parent) }}><UpGlyph /></button><button type="button" aria-label={t("file-transfer-workspace.refreshDirectory")} disabled={loading} onClick={() => { void load() }}><RefreshGlyph /></button><input aria-label={t("file-transfer-workspace.remotePath")} value={draftPath} onChange={event => setDraftPath(event.target.value)} /><button type="submit" disabled={loading}>{t("file-transfer-workspace.goTo")}</button><button type="button" disabled={loading || uploading || !view} aria-label={t("local-transfer.uploadAction")} title={t("local-transfer.uploadAction")} onClick={() => uploadInput.current?.click()}>{uploading ? t("local-transfer.uploading") : t("browser-transfer.upload")}</button><input ref={uploadInput} type="file" multiple hidden onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ''; void uploadFiles(files) }} /></form>
     <div className="dsh-ssh-file-table" role="grid" aria-busy={loading}>
       <div className="dsh-ssh-file-table-head" role="row">
         <SortColumn label={t("client.name")} sortKey="name" current={sort} onSort={changeSort} />
@@ -221,7 +242,7 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
     </div>
     <footer><span>{selected.length > 0 ? t("file-transfer-workspace.selectedItems", [selected.length]) : t("file-transfer-workspace.items", [view?.entries.length ?? 0])}</span>{destination !== undefined && <span className="dsh-ssh-file-pane-actions"><button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || !destination.endpointId || loading} onClick={() => { if (destination.endpointId) onTransfer(selected, destination) }}>{t("file-transfer-workspace.sendToNextPane")} <span aria-hidden="true">→</span></button></span>}</footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>{dragSource?.endpointId === pane.endpointId ? t("file-transfer-workspace.moveToThisDirectory") : t("file-transfer-workspace.copyToThisDirectory")}</strong><span>{view?.path ?? pane.path}</span></div>}
-    {openedFile !== undefined && <Dialog variant="confirmation" className="dsh-ssh-file-download-dialog" title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><BrowserTransferStatus /><div className="dsh-ssh-dialog-actions"><a onClick={trackDownloadClick} className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path)} download><DownloadGlyph /><span>{t("file-transfer-workspace.download")}</span></a></div></Dialog>}
+    {openedFile !== undefined && <Dialog variant="confirmation" className="dsh-ssh-file-download-dialog" title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><div className="dsh-ssh-dialog-actions"><a onClick={trackDownloadClick} className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path)} download><DownloadGlyph /><span>{t("file-transfer-workspace.download")}</span></a></div></Dialog>}
     {deleteTarget !== undefined && <FileEntryDeleteDialog locationName={endpoint.name} locationKind="remote" entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
   </section>
 }
@@ -271,20 +292,25 @@ function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, 
     onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && acceptsDrop) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = dragSource?.endpointId === endpointId ? 'move' : 'copy'; onDirectoryTarget(entry.path) } }}
     onDragLeave={event => { if (dropTarget && !event.currentTarget.contains(event.relatedTarget as Node)) onDirectoryTarget(undefined) }}
     onDrop={dropIntoDirectory}
-  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span title={entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText}>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText || '—'}</span><span className="dsh-ssh-file-row-actions dsh-ssh-context-action">{<a className="dsh-ssh-file-row-download" href={fileEndpointDownloadUrl(endpointId, entry.path)} download draggable={false} aria-label={t("file-transfer-workspace.downloadLocally", [entry.name])} title={entry.kind === 'directory' ? t("file-transfer-workspace.packageAndDownloadLocally", [entry.name]) : t("file-transfer-workspace.downloadLocally", [entry.name])} onClick={trackDownloadClick}><DownloadGlyph /></a>}<button type="button" className="dsh-ssh-file-row-delete" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></span></div>
+  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span title={entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText}>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText || '—'}</span><span className="dsh-ssh-file-row-actions dsh-ssh-context-action">{<a className="dsh-ssh-file-row-download" href={fileEndpointDownloadUrl(endpointId, entry.path)} download={directory ? `${entry.name}.tar` : entry.name} draggable={false} aria-label={t("file-transfer-workspace.downloadLocally", [entry.name])} title={entry.kind === 'directory' ? t("file-transfer-workspace.packageAndDownloadLocally", [entry.name]) : t("file-transfer-workspace.downloadLocally", [entry.name])} onClick={trackDownloadClick}><DownloadGlyph /></a>}<button type="button" className="dsh-ssh-file-row-delete" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></span></div>
 }
 
 function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; onCancel(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {
   useSshLocale()
-  const [open, setOpen] = useState(true)
+  const browserJobs = useBrowserTransferTasks()
   const active = jobs.filter(job => job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring')
-  return <section className={`dsh-ssh-transfer-queue${open ? ' is-open' : ''}`}>
-    <button type="button" className="dsh-ssh-transfer-queue-heading" aria-expanded={open} title={open ? t("file-transfer-workspace.collapseTransferTasks") : t("file-transfer-workspace.expandTransferTasks")} onClick={() => setOpen(value => !value)}><span><strong>{t("file-transfer-workspace.transferTasks")}</strong><small>{active.length > 0 ? t("file-transfer-workspace.inProgress", [active.length]) : jobs.length > 0 ? t("file-transfer-workspace.recentTasks") : t("file-transfer-workspace.noTasksYet")}</small></span><span className="dsh-ssh-transfer-queue-disclosure" aria-hidden="true"><IconChevronDownOutline14 size={14} /></span></button>
-    {open && <div className="dsh-ssh-transfer-job-list">{jobs.length === 0 ? <p>{t("file-transfer-workspace.dragFromOnePaneToAnotherOrSelectFiles")}</p> : jobs.slice(0, 12).map(job => {
+  const combined = [
+    ...jobs.map(job => ({ kind: 'remote' as const, job, active: active.includes(job) })),
+    ...browserJobs.map(job => ({ kind: 'browser' as const, job, active: isBrowserTransferActive(job) })),
+  ].sort((a, b) => Number(b.active) - Number(a.active) || b.job.createdAt - a.job.createdAt)
+  return <TransferTaskList activeCount={active.length + browserJobs.filter(isBrowserTransferActive).length} count={combined.length}>
+    {combined.length === 0 ? <p>{t("file-transfer-workspace.dragFromOnePaneToAnotherOrSelectFiles")}</p> : combined.map(item => {
+      if (item.kind === 'browser') return <BrowserTransferTask key={'browser-' + item.job.id} job={item.job} />
+      const job = item.job
       const progress = job.totalBytes > 0 ? Math.min(100, job.transferredBytes / job.totalBytes * 100) : job.state === 'completed' ? 100 : 0
       return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label={t("file-transfer-workspace.cancelTransfer")} onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : job.state === 'failed' && job.error?.includes('destination already contains') ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>{t("file-transfer-workspace.handle")}</button> : null}</article>
-    })}</div>}
-  </section>
+    })}
+  </TransferTaskList>
 }
 
 function ConflictDialog({ job, onClose, onRetry }: { job: TransferJobView; onClose(): void; onRetry(policy: 'skip' | 'overwrite' | 'rename'): Promise<void> }): JSX.Element {
@@ -311,6 +337,11 @@ function FileAccessDialog({ endpoints, access, onClose }: { endpoints: FileEndpo
         <div className="dsh-ssh-file-access-options">
           <div className="dsh-ssh-file-access-policy-row"><span><strong>{t("file-transfer-workspace.fileOperationPermissions")}</strong><small>{t("file-transfer-workspace.browseModeDoesNotExposeCrossEndpointTransferTools")}</small></span><FilePermissionPicker value={value?.filePermission ?? 'browse'} onChange={access.setFilePermission} /></div>
           <div className="dsh-ssh-file-access-policy-row"><span><strong>{t("file-transfer-workspace.confirmBeforeTransfer")}</strong><small>{t("file-transfer-workspace.requireDshApprovalWhenTheAiStartsATransfer")}</small></span><FileApprovalSwitch checked={value?.requireFileApproval ?? true} onChange={access.setRequireFileApproval} /></div>
+          {(['upload', 'download'] as const).map(direction => {
+            const enabled = (direction === 'upload' ? value?.allowLocalUpload : value?.allowLocalDownload) === true
+            const label = direction === 'upload' ? t("local-transfer.allowUpload") : t("local-transfer.allowDownload")
+            return <div className="dsh-ssh-file-access-policy-row" key={direction}><span><strong>{label}</strong><small>{direction === 'upload' ? t("local-transfer.uploadScope") : t("local-transfer.downloadScope")}</small></span><button type="button" className={`dsh-ssh-file-approval-switch${enabled ? ' is-active' : ''}`} role="switch" aria-label={label} aria-checked={enabled} disabled={access.loading || !value} onClick={() => access.setLocalFileAccess(direction, !enabled)}><i aria-hidden="true"><b /></i><span>{enabled ? t("file-transfer-workspace.authorized") : t("file-transfer-workspace.notAuthorized")}</span></button></div>
+          })}
         </div>
       </section>
     </div>

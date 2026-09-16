@@ -132,6 +132,8 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
       fileEndpointIds: normalizeFileEndpointIds(injection),
       filePermission: normalizeFilePermission(injection),
       requireFileApproval: normalizeRequireFileApproval(injection),
+      allowLocalUpload: injection.allowLocalUpload === true,
+      allowLocalDownload: injection.allowLocalDownload === true,
       workingDirectories: normalizeWorkingDirectories(injection),
       workingProjectIds: normalizeWorkingProjectIds(injection),
     })) : [],

@@ -82,6 +82,8 @@ export interface SessionInjection {
   fileEndpointIds: string[]
   filePermission: 'browse' | 'transfer'
   requireFileApproval: boolean
+  allowLocalUpload?: boolean
+  allowLocalDownload?: boolean
   permission: 'exec' | 'terminal'
   requireCommandApproval: boolean
   workingDirectories: Record<string, string>

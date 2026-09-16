@@ -11,6 +11,8 @@ const root = fileURLToPath(new URL('../', import.meta.url))
 const bundle = await build({
   stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client';
     import {FileTransferWorkspace} from './src/file-transfer-workspace.tsx';
+    import {createBrowserTransfer,updateBrowserTransfer} from './src/browser-transfers.ts';
+    window.seedTransfers=()=>{const id=createBrowserTransfer('local-upload.txt','upload',100);updateBrowserTransfer(id,{state:'transferring',transferredBytes:50});};
     createRoot(document.getElementById('root')).render(<FileTransferWorkspace ftpProfiles={[]} vaultEntries={[]} proxyEntries={[]} access={{value:null}} onProfilesChanged={()=>{}}/>);`, resolveDir: root, loader: 'tsx' },
   bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic',
   outdir: '/tmp/ssh-ftp-fixture-bundle',
@@ -31,6 +33,7 @@ try {
     const errors = [], requests = []
     page.on('pageerror', error => errors.push(error.message))
     const entries = Array.from({ length: 10000 }, (_, i) => ({ name: `file-${i}.txt`, path: `/file-${i}.txt`, kind: 'file', size: i, modifiedAt: 0, modifiedAtText: 'Jan 01 2026' }))
+    entries[42].modifiedAtText = 'Sep 12 2026'
     const longName = 'DSG_V5.0.1_R211B089_oe2203_x86_64.txt'
     const longPath = '/Product_Warehouse_CICD/BigData_Security/DSG/OneTrunk/20260908/DSG/oe2203_x86_64/' + longName
     entries.push({name:longName,path:longPath,kind:'file',size:0,modifiedAt:1})
@@ -44,7 +47,13 @@ try {
       const url = new URL(route.request().url())
       const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
       if (url.pathname.endsWith('/endpoints')) return json([{ id: 'ftp:test', name: 'Test FTP', kind: 'ftp', protocol: 'ftp', address: 'test', initialPath: '/' }])
-      if (url.pathname.endsWith('/jobs')) return json([])
+      if (url.pathname.endsWith('/upload')) {
+        assert.equal(route.request().method(), 'PUT')
+        assert.equal(url.searchParams.get('endpointId'), 'ftp:test')
+        assert.equal(route.request().postData(), 'hello')
+        return json({ path: '/docs/local.txt', name: 'local.txt', size: 5 })
+      }
+      if (url.pathname.endsWith('/jobs')) return json([{id:'remote-job',ownerId:'ui',state:'completed',createdAt:1,completedAt:2,totalFiles:1,completedFiles:1,skippedFiles:0,totalBytes:100,transferredBytes:100,request:{sourcePaths:['/remote-file.txt'],sourceEndpointId:'ftp:test',destinationEndpointId:'ftp:test',destinationDirectory:'/',conflictPolicy:'fail'}}])
       if (url.pathname.endsWith('/stat')) {
         const path = url.searchParams.get('path')
         return json({ name: path.split('/').at(-1), path, kind: 'symlink', navigable: path === '/0-shortcut', size: 4 })
@@ -66,6 +75,20 @@ try {
     await page.getByRole('button', { name: /Test FTP/ }).first().click()
     await page.locator('.dsh-ssh-file-row').first().waitFor()
     assert.equal(await page.locator('.dsh-ssh-transfer-to-button').count(),0)
+    const header=page.locator('.dsh-ssh-file-table-head')
+    await header.getByRole('button',{name:'大小',exact:true}).click()
+    await header.getByRole('button',{name:'大小',exact:true}).click()
+    await page.locator('.dsh-ssh-file-table-body').evaluate(el=>{el.scrollTop=120*38;el.dispatchEvent(new Event('scroll',{bubbles:true}))})
+    await page.getByRole('row',{name:'file-9999.txt',exact:true}).waitFor()
+    const files=await page.locator('.dsh-ssh-file-row.is-file').evaluateAll(rows=>rows.map(r=>r.getAttribute('aria-label')))
+    assert.equal(files[0],'file-9999.txt','size descending uses numeric bytes, not filename order')
+    await header.getByRole('button',{name:'修改时间',exact:true}).click()
+    await header.getByRole('button',{name:'修改时间',exact:true}).click()
+    await page.locator('.dsh-ssh-file-table-body').evaluate(el=>{el.scrollTop=120*38;el.dispatchEvent(new Event('scroll',{bubbles:true}))})
+    await page.getByRole('row',{name:'file-42.txt',exact:true}).waitFor()
+    assert.equal(await page.locator('.dsh-ssh-file-row.is-file').first().getAttribute('aria-label'),'file-42.txt','LIST dates sort by their displayed date')
+    assert.equal(await header.locator('[aria-sort="descending"]').count(),1)
+    await header.getByRole('button',{name:'名称',exact:true}).click()
     const scrollToFiles=async()=>{
       await page.locator('.dsh-ssh-file-table-body').evaluate(el=>{el.scrollTop=120*38;el.dispatchEvent(new Event('scroll',{bubbles:true}))})
     }
@@ -117,6 +140,18 @@ try {
     await link.click()
     await page.waitForFunction(() => document.querySelector('input[aria-label="远端路径"]')?.value === '/docs')
     assert.deepEqual(errors, [])
+    await page.evaluate(()=>window.seedTransfers())
+    const queue=page.locator('.dsh-ssh-transfer-queue')
+    assert.equal(await queue.count(),1,'browser and remote transfers share one queue')
+    await queue.getByText('上传 · local-upload.txt',{exact:true}).waitFor()
+    assert.equal(await queue.locator('article').count(),2)
+    assert.ok((await queue.locator('article').first().innerText()).includes('local-upload.txt'),'active uploads appear before completed remote jobs')
+    assert.equal(await page.locator('.dsh-ssh-browser-transfers').count(),0)
+    await page.getByRole('button', { name: '从本机上传文件', exact: true }).waitFor()
+    await page.locator('input[type="file"]').setInputFiles({ name: 'local.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') })
+    await queue.getByText('上传 · local.txt', { exact: true }).waitFor()
+    await queue.locator('article').filter({ hasText: '上传 · local.txt' }).getByText('已保存到远端', { exact: true }).waitFor()
+    await page.screenshot({path:`/tmp/ssh-unified-queue-${width}-${dark?'dark':'light'}.png`})
     console.log(JSON.stringify({ width, dark, entries: entries.length, virtualized: true, mouseAndKeyboardNavigation: true, downloadDialog:layout }))
     await page.close()
   }

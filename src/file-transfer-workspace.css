@@ -161,7 +161,8 @@
 .dsh-ssh-endpoint-row small { color: var(--ssh-text-subtle); font: var(--ssh-type-caption)/1.35 var(--ssh-font-mono); }
 .dsh-ssh-endpoint-row > span:last-child { display: flex; align-items: center; gap: 7px; max-width: 120px; overflow: hidden; color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); text-overflow: ellipsis; white-space: nowrap; }
 .dsh-ssh-file-pane.is-connections > footer small { overflow: hidden; color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); text-overflow: ellipsis; white-space: nowrap; }
-.dsh-ssh-file-pathbar { display: grid; grid-template-columns: 30px 30px minmax(80px, 1fr) auto; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid color-mix(in srgb, var(--ssh-border) 68%, transparent); background: transparent; }
+.dsh-ssh-file-pathbar { display: grid; grid-template-columns: 30px 30px minmax(80px, 1fr) auto auto; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid color-mix(in srgb, var(--ssh-border) 68%, transparent); background: transparent; }
+.dsh-ssh-file-pathbar input[hidden] { display: none; }
 .dsh-ssh-file-pathbar button,
 .dsh-ssh-file-pathbar input {
   appearance: none;

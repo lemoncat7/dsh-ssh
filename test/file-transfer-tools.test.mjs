@@ -52,9 +52,10 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
 test('local download tool defaults to owning session cwd and follows approval, visibility and execution permissions', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ssh-download-tool-'))
   t.after(() => rm(root, { recursive: true, force: true }))
-  let permission = 'transfer', enabled = true, approval = true, connected = 0
+  let permission = 'transfer', enabled = true, approval = true, localDownload = true, connected = 0
   const store = { injection(id) { return id === 'owner' && enabled ? {
     sessionId: id, filePermission: permission, fileEndpointIds: ['sftp:allowed'], requireFileApproval: approval,
+    allowLocalDownload: localDownload,
   } : undefined } }
   const tools = new Map(), hooks = new Map()
   let assemble
@@ -72,6 +73,13 @@ test('local download tool defaults to owning session cwd and follows approval, v
   const exec = { agent, signal: new AbortController().signal }
   const download = tools.get('file_download_to_local')
   const args = { endpointId: 'sftp:allowed', remotePath: '/report.txt' }
+  localDownload = false
+  await assert.rejects(download.execute(args, exec), /本地下载/)
+  await assert.rejects(tools.get('file_upload_from_local').execute({ endpointId: 'sftp:allowed', localPath: 'a', remoteDirectory: '/' }, exec), /本地上传/)
+  const denied = { tools: [...tools.values()].map(t => ({ name: t.name })), contexts: [] }
+  await assemble(denied, {}, async () => denied)
+  assert.ok(!denied.tools.some(t => ['file_download_to_local', 'file_upload_from_local'].includes(t.name)))
+  localDownload = true
   assert.equal((await hooks.get('tools/pre-execute')({ name: download.name, agent }, async () => 'continue')).kind, 'ask')
   approval = false
   assert.equal(await hooks.get('tools/pre-execute')({ name: download.name, agent }, async () => 'continue'), 'continue')

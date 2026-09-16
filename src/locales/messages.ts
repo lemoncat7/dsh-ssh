@@ -1,13 +1,22 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "local-transfer.uploadAction": { "zh": "从本机上传文件", "en": "Upload files from this computer" },
+  "local-transfer.uploading": { "zh": "上传中", "en": "Uploading" },
+  "local-transfer.allowUpload": { "zh": "允许 Agent 本地上传", "en": "Allow agent local uploads" },
+  "local-transfer.allowDownload": { "zh": "允许 Agent 本地下载", "en": "Allow agent local downloads" },
+  "local-transfer.uploadScope": { "zh": "从 DSH 会话目录上传到已授权连接；需同时开启允许传输，不代表访问浏览器电脑。", "en": "Upload from the DSH session directory to authorized connections. Requires transfer permission; does not grant access to the browser computer." },
+  "local-transfer.downloadScope": { "zh": "从已授权连接下载到 DSH 会话目录；需同时开启允许传输，不代表访问浏览器电脑。", "en": "Download from authorized connections to the DSH session directory. Requires transfer permission; does not grant access to the browser computer." },
   "browser-transfer.title": { "zh": "本地上传与下载", "en": "Local uploads and downloads" },
   "browser-transfer.preparing": { "zh": "准备传输…", "en": "Preparing transfer…" },
   "browser-transfer.waiting": { "zh": "已发送，等待远端保存完成…", "en": "Sent; waiting for remote save…" },
-  "browser-transfer.unavailable": { "zh": "进度连接中断，请查看浏览器下载列表", "en": "Progress unavailable; check browser downloads" },
+  "browser-transfer.unavailable": { "zh": "已发起下载，当前环境无法确认进度或保存结果；无响应时请在浏览器中重试", "en": "Download requested; this environment cannot confirm progress or saving. If nothing happens, retry in a browser." },
+  "browser-transfer.savingLocal": { "zh": "正在完成本地保存…", "en": "Finalizing local save…" },
+  "browser-transfer.savedLocal": { "zh": "已保存到所选文件", "en": "Saved to the selected file" },
   "browser-transfer.failed": { "zh": "传输失败", "en": "Transfer failed" },
   "browser-transfer.delivered": { "zh": "传输完成，保存结果请查看浏览器下载列表", "en": "Transferred; check browser downloads for save status" },
   "browser-transfer.saved": { "zh": "已保存到远端", "en": "Saved remotely" },
+  "browser-transfer.finishedAt": { "zh": "结束于 {0}", "en": "Finished at {0}" },
   "browser-transfer.upload": { "zh": "上传", "en": "Upload" },
   "browser-transfer.download": { "zh": "下载", "en": "Download" },
   "group-proxy.title": { "zh": "分组代理 · {0}", "en": "Group proxy · {0}" },

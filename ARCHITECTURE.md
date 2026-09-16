@@ -2,7 +2,7 @@
 
 This plugin is split into four boundaries. UI code never reaches SSH or file transports directly, and server code never depends on the DSH client runtime.
 
-Browser uploads use XHR byte progress and wait for the successful server response before marking the remote save complete. Native browser downloads remain streamed (no client Blob buffering); `download-progress.ts` records response-body byte counts in a bounded, runtime-local store. Random per-download IDs let `browser-transfers.ts` poll only initiated downloads. Unknown-length archives show byte counts without inventing percentages. HTTP completion is not proof of browser disk-save completion, and the UI explicitly points to the browser download list for that final status. Progress loss is distinct from transfer failure. These transient browser transfers are not resumable jobs after a page/server restart.
+Browser uploads use XHR byte progress and wait for the successful server response before marking the remote save complete. Downloads use `client-download.ts` when the client exposes File System Access in a secure context: the picker runs within user activation, the response is streamed to the selected writable file, progress counts acknowledged writes, and completion waits for `close()`. Unknown or encoded lengths do not produce guessed percentages. Cancellation, HTTP/auth failures, length mismatches, disk-write errors and close failures never report completion; partial writes are aborted. No full-file Blob buffering is used. Without a client save API (including Desktop hosts lacking that capability), native link downloads remain available but their result is explicitly unknown, with no progress bar or false completion. The legacy `download-progress.ts` server endpoint remains for older loaded clients only; current clients never poll it. These transient client transfers are not resumable jobs after page/server restart.
 
 FTP LIST timestamps are retained as `modifiedAtText` when MLSD timestamps are unavailable; no timezone/year is guessed and no per-entry MDTM/CWD probes are added to directory listing. Regular file sizes remain the listing-provided byte counts; directory sizes are not recursively computed.
 
@@ -94,6 +94,7 @@ FTP LIST timestamps are retained as `modifiedAtText` when MLSD timestamps are un
 - File-transfer layout v3 defaults to one pane (including migration from v2). Explicit 1–4 pane choices persist; a single pane has no next-pane transfer action.
 - Remote-to-remote transfers use backpressured streams and never stage a complete file on local disk.
 - Browser browsing sessions and transfer job sessions are isolated so a long transfer cannot block pane navigation.
+- `transfer-task-list.tsx` provides the shared transfer task container and browser-I/O rows. The file workspace merges remote and browser tasks into one active-first queue; compact SFTP views reuse the same container/styles. Client file writes are not passed to the remote-to-remote scheduler. Only an acknowledged local file close produces a completed download; native handoffs remain unconfirmed.
 - Secrets are write-only from the browser and are never returned by profile APIs.
 - Portable sync never exports session grants, forwarding rules, or local runtime settings. Passwords and private keys are encrypted with AES-256-GCM before network I/O; the token and encryption passphrase never enter the snapshot.
 - GitHub authorization requests only the `gist` scope. The browser receives a one-time user code and flow identifier, never the OAuth access token or GitHub device code.
@@ -112,3 +113,8 @@ FTP LIST timestamps are retained as `modifiedAtText` when MLSD timestamps are un
 - Established shared motion tokens and reduced-motion fallbacks without adding an animation runtime dependency.
 
 Future feature work should extend the closest feature module instead of adding unrelated state or styles to `client.tsx`.
+# Session-local and browser uploads
+
+- `endpoint-upload.ts` owns bounded streaming, temporary remote names, size verification and commit for FTP/FTPS/SFTP uploads. Existing target names are rejected by the adapter; FTP rename cannot guarantee exclusive commit against unrelated concurrent writers.
+- `session-file-upload.ts` restricts Agent reads to regular files within the current DSH session directory, checks permission throughout streaming, and cancels on disposal. Local upload and download are separate opt-in session grants, in addition to transfer and endpoint permissions. Existing sessions default to neither grant.
+- Browser file uploads originate from the user's selected files, not the DSH host directory, and use the shared browser transfer task list. Sent bytes and remote-save acknowledgment are distinct states. Files are streamed without whole-file buffering; single files are capped at 512 MiB with a five-minute operation limit.

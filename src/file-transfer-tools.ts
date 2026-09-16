@@ -7,23 +7,50 @@ import { FileTransferManager } from './file-transfer-manager.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
 import { SshStore } from './store.js'
 import { SessionFileDownloads } from './session-file-download.js'
+import { SessionFileUploads } from './session-file-upload.js'
 
-const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'file_transfer_start', 'file_transfer_status', 'file_transfer_cancel', 'file_download_to_local'])
-const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel', 'file_download_to_local'])
+const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'file_transfer_start', 'file_transfer_status', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
+const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
 const output = { schema: { type: 'string' as const }, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String(value) }] }
 
 export function registerFileTransferTools(ctx: Context, store: SshStore, files: RemoteFileSystems, transfers: FileTransferManager): () => void {
   const downloads = new SessionFileDownloads(files)
-  const definitions = [endpointListTool(store, files), directoryListTool(store, files), transferStartTool(store, transfers), transferStatusTool(store, transfers), transferCancelTool(store, transfers), downloadTool(store, downloads)]
+  const uploads = new SessionFileUploads(files)
+  const definitions = [endpointListTool(store, files), directoryListTool(store, files), transferStartTool(store, transfers), transferStatusTool(store, transfers), transferCancelTool(store, transfers), downloadTool(store, downloads), uploadTool(store, uploads)]
   const disposers = definitions.map(definition => ctx.tools.register(definition))
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
-    if (exec.name !== 'file_transfer_start' && exec.name !== 'file_download_to_local') return next()
+    if (exec.name !== 'file_transfer_start' && exec.name !== 'file_download_to_local' && exec.name !== 'file_upload_from_local') return next()
     const injection = exec.agent === undefined ? undefined : store.injection(exec.agent.session.id)
     if (injection?.requireFileApproval !== true) return next()
-    return { kind: 'ask', reason: exec.name === 'file_download_to_local' ? 'Download an authorized remote file into the current DSH session directory.' : 'The conversation requested a remote file transfer between authorized endpoints.' }
+    return { kind: 'ask', reason: exec.name === 'file_download_to_local' ? 'Download an authorized remote file into the current DSH session directory.' : exec.name === 'file_upload_from_local' ? 'Upload a file from the current DSH session directory to an authorized remote endpoint.' : 'The conversation requested a remote file transfer between authorized endpoints.' }
   })
   const disposeVisibility = installVisibility(ctx, store)
-  return () => { downloads.close(); disposeVisibility(); disposeApproval(); for (const dispose of disposers.reverse()) dispose() }
+  return () => { uploads.close(); downloads.close(); disposeVisibility(); disposeApproval(); for (const dispose of disposers.reverse()) dispose() }
+}
+
+function requireLocalAccess(store: SshStore, exec: ToolRunContext, direction: 'upload' | 'download'): void {
+  const injection = requireFileInjection(store, exec)
+  if ((direction === 'upload' ? injection.allowLocalUpload : injection.allowLocalDownload) !== true) throw new Error(`请在文件传输 → 会话授权中开启${direction === 'upload' ? '本地上传' : '本地下载'}权限`)
+}
+
+function uploadTool(store: SshStore, uploads: SessionFileUploads): ToolDefinition {
+  return tool('file_upload_from_local', 'Upload one regular file from the current DSH session directory to an authorized FTP/FTPS/SFTP directory. localPath must be relative to the session directory, not the browser computer. Requires transfer AND explicit local upload permission; approval policy applies. Maximum 512 MiB, 5 minutes, no overwrite. Returns remotePath only after saving. Prefer this over shell/encoding/temporary servers.', {
+    endpointId: { type: 'string', required: true },
+    localPath: { type: 'string', required: true, description: 'Relative file path within the DSH session directory.' },
+    remoteDirectory: { type: 'string', required: true },
+    remoteName: { type: 'string', description: 'Optional filename, no directory separators.' },
+  }, async (raw, exec) => {
+    const args = object(raw), endpointId = text(args.endpointId, 'endpointId', 110)
+    const owner = requireEndpoint(store, exec, endpointId, true)
+    requireLocalAccess(store, exec, 'upload')
+    const sessionDirectory = owner.session.header.cwd
+    if (!sessionDirectory) throw new Error('当前会话没有本地工作目录')
+    const assertAllowed = (): void => {
+      requireEndpoint(store, exec, endpointId, true); requireLocalAccess(store, exec, 'upload')
+      if (owner.session.header.cwd !== sessionDirectory) throw new Error('会话目录已更新，请重试')
+    }
+    return json(await uploads.upload({ endpointId, sessionDirectory, localPath: rawText(args.localPath, 'localPath', 4096), remoteDirectory: rawText(args.remoteDirectory, 'remoteDirectory', 4096), ...(args.remoteName === undefined ? {} : { remoteName: rawText(args.remoteName, 'remoteName', 255) }) }, exec.signal, assertAllowed))
+  })
 }
 
 function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDefinition {
@@ -34,10 +61,12 @@ function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDef
   }, async (raw, exec) => {
     const args = object(raw), endpointId = text(args.endpointId, 'endpointId', 110)
     const owner = requireEndpoint(store, exec, endpointId, true)
+    requireLocalAccess(store, exec, 'download')
     const sessionDirectory = owner.session.header.cwd
     if (!sessionDirectory) throw new Error('当前会话没有本地工作目录，不能下载')
     const assertAllowed = (): void => {
       requireEndpoint(store, exec, endpointId, true)
+      requireLocalAccess(store, exec, 'download')
       if (owner.session.header.cwd !== sessionDirectory) throw new Error('会话目录已更新，请重新下载')
     }
     return json(await downloads.download({ endpointId, remotePath: rawText(args.remotePath, 'remotePath', 4096), sessionDirectory,
@@ -48,7 +77,7 @@ function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDef
 function endpointListTool(store: SshStore, files: RemoteFileSystems): ToolDefinition {
   return tool('file_endpoint_list', 'List remote file endpoints explicitly authorized for this DSH conversation. Credentials and unauthorized endpoints are never returned.', {}, async (_raw, exec) => {
     const injection = requireFileInjection(store, exec)
-    return json({ permission: injection.filePermission, endpoints: injection.fileEndpointIds.map(id => files.endpoint(id)).filter(Boolean) })
+    return json({ permission: injection.filePermission, allowLocalUpload: injection.allowLocalUpload === true, allowLocalDownload: injection.allowLocalDownload === true, endpoints: injection.fileEndpointIds.map(id => files.endpoint(id)).filter(Boolean) })
   }, true)
 }
 
@@ -145,11 +174,13 @@ function installVisibility(ctx: Context, store: SshStore): () => void {
 function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStore['injection']>): void {
   if (injection === undefined || (injection.fileEndpointIds ?? []).length === 0) { assembly.tools = assembly.tools.filter(schema => !FILE_TOOL_NAMES.has(schema.name)); return }
   if (injection.filePermission === 'browse') assembly.tools = assembly.tools.filter(schema => !TRANSFER_TOOL_NAMES.has(schema.name))
+  assembly.tools = assembly.tools.filter(schema => (schema.name !== 'file_upload_from_local' || injection.allowLocalUpload === true) && (schema.name !== 'file_download_to_local' || injection.allowLocalDownload === true))
   assembly.contexts.push({
     name: 'dsh-ssh:file-access',
     text: `Remote file access is limited to explicitly authorized endpoints. Permission: ${injection.filePermission}.
 For any file listing or transfer request, use file_endpoint_list, file_directory_list, and the available file_transfer_* tools before considering SSH commands. Never guess endpoint ids or paths.
 For downloading a remote file for this conversation, use file_download_to_local. It defaults to the current DSH session directory; report its returned localPath. Do not invent a sandbox URL or claim it was saved to the browser's Downloads folder.
+Use file_upload_from_local to upload a session-directory file when explicitly authorized. Local upload/download have separate opt-in permissions; do not bypass missing permission with SSH. Browser computer uploads must be selected by the user in 文件传输.
 Never start an HTTP or other file server, open a temporary port, encode a file through a terminal, or invent another transport for file delivery.
 For a download to the user's browser-local computer, do not run terminal commands: directly tell the user to select the file in SSH → 文件传输 and click “下载到本地”. The conversation tool cannot attach those remote bytes itself.
 If the requested source or destination is not authorized, explain that directly instead of attempting a workaround.`,

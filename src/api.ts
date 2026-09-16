@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { uploadEndpointFile } from './endpoint-upload.js'
 import { DownloadProgressStore } from './download-progress.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
@@ -158,6 +159,21 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   }
 
   if (segments[0] === 'file-transfer') {
+    if (method === 'PUT' && segments[1] === 'upload' && segments.length === 2) {
+      requireMutationHeader(req)
+      const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
+      const directory = requireRawText(url.searchParams.get('directory'), 'directory', 4096)
+      const name = requireRemoteFilename(url.searchParams.get('name'))
+      const length = req.headers['content-length'] === undefined ? undefined : Number(req.headers['content-length'])
+      if (length !== undefined && (!Number.isSafeInteger(length) || length < 0 || length > MAX_SFTP_UPLOAD_BYTES)) throw httpError(413, 'upload exceeds the 512 MB limit')
+      const controller = new AbortController()
+      const abort = (): void => { if (!res.writableEnded) controller.abort(new Error('上传连接已断开')) }
+      req.once('aborted', abort); res.once('close', abort)
+      try {
+        const result = await uploadEndpointFile(runtime.files, endpointId, directory, name, req, AbortSignal.any([controller.signal, AbortSignal.timeout(300_000)]), length)
+        return sendJson(res, 201, result)
+      } finally { req.off('aborted', abort); res.off('close', abort) }
+    }
     if (method === 'GET' && segments[1] === 'stat' && segments.length === 2) {
       const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
       const paneId = requireText(url.searchParams.get('paneId'), 'paneId', 100)
@@ -561,6 +577,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       requireMutationHeader(req)
       const body = await readObject(req)
       const previous = runtime.store.injection(sessionId)
+      for (const key of ['allowLocalUpload', 'allowLocalDownload']) if (body[key] !== undefined && typeof body[key] !== 'boolean') throw httpError(400, `${key} must be boolean`)
       const profileIds = parseProfileIds(body.profileIds, runtime.store)
       const fileEndpointIds = body.fileEndpointIds === undefined ? previous?.fileEndpointIds ?? [] : parseFileEndpointIds(body.fileEndpointIds, runtime.files)
       const filePermission = body.filePermission === undefined ? previous?.filePermission ?? 'browse' : body.filePermission === 'browse' ? 'browse' : body.filePermission === 'transfer' ? 'transfer' : undefined
@@ -581,6 +598,8 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       }
       const injection: SessionInjection = {
         sessionId, profileIds, fileEndpointIds, filePermission, requireFileApproval: body.requireFileApproval === undefined ? previous?.requireFileApproval ?? true : body.requireFileApproval !== false,
+        allowLocalUpload: body.allowLocalUpload === undefined ? previous?.allowLocalUpload === true : body.allowLocalUpload === true,
+        allowLocalDownload: body.allowLocalDownload === undefined ? previous?.allowLocalDownload === true : body.allowLocalDownload === true,
         permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, mountedProjectIds, updatedAt: Date.now(),
       }
       await runtime.store.update(state => { state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection] })

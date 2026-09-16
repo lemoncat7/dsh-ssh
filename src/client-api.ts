@@ -32,6 +32,7 @@ export interface ForwardStatus { ruleId: string; state: 'stopped' | 'starting' |
 export interface InjectionView {
   sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean
   fileEndpointIds: string[]; filePermission: 'browse' | 'transfer'; requireFileApproval: boolean
+  allowLocalUpload?: boolean; allowLocalDownload?: boolean
   workingDirectories: Record<string, string>; workingProjectIds: Record<string, string>; updatedAt: number
   mountedProjectIds?: Record<string, string[]>
 }
@@ -217,11 +218,20 @@ export function profileSftpFileUrl(profileId: string, path: string, inline = fal
 export async function uploadProfileSftpFile(profileId: string, directory: string, file: File, overwrite = false): Promise<{ path: string; name: string; size: number }> {
   const query = new URLSearchParams({ directory, name: file.name })
   if (overwrite) query.set('overwrite', '1')
+  return uploadBrowserFile(`${SSH_API}/profiles/${encodeURIComponent(profileId)}/sftp/upload?${query.toString()}`, file)
+}
+export function uploadFileEndpointFile(endpointId: string, directory: string, file: File): Promise<{ path: string; name: string; size: number }> {
+  const query = new URLSearchParams({ endpointId, directory, name: file.name })
+  return uploadBrowserFile(`${SSH_API}/file-transfer/upload?${query.toString()}`, file)
+}
+function uploadBrowserFile(url: string, file: File): Promise<{ path: string; name: string; size: number }> {
   const id = createBrowserTransfer(file.name, 'upload', file.size)
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     const failed = (error: Error): void => { updateBrowserTransfer(id, { state: 'failed', error: error.message }); reject(error) }
-    xhr.open('PUT', `${SSH_API}/profiles/${encodeURIComponent(profileId)}/sftp/upload?${query.toString()}`)
+    xhr.open('PUT', url)
+    xhr.timeout = 310_000
+    xhr.ontimeout = () => failed(new Error('上传超时，请检查远端文件后重试'))
     xhr.setRequestHeader('Accept', 'application/json')
     xhr.setRequestHeader('Content-Type', 'application/octet-stream')
     xhr.setRequestHeader('X-DSH-SSH-Request', '1')
