@@ -76,7 +76,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testState, setTestState] = useState<'success'>()
-  const [pendingFingerprint, setPendingFingerprint] = useState<string>()
+  const [pendingFingerprint, setPendingFingerprint] = useState<{ fingerprint: string; previousFingerprint?: string; profileId?: string; profileName?: string; draft: string }>()
   const [error, setError] = useState<string>()
   const [endpointError, setEndpointError] = useState<string>()
   const [endpointTouched, setEndpointTouched] = useState(false)
@@ -124,7 +124,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
     }
   }
 
-  const testConnection = async (confirmedFingerprint?: string): Promise<void> => {
+  const testConnection = async (confirmation?: typeof pendingFingerprint): Promise<void> => {
     setEndpointTouched(true)
     if (duplicateProfile !== undefined) { hostInputRef.current?.focus(); return }
     setTesting(true)
@@ -132,11 +132,15 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
     setTestState(undefined)
     setPendingFingerprint(undefined)
     try {
+      if (confirmation && confirmation.draft !== JSON.stringify(buildPayload())) throw Error(t('host-key.retest'))
+      const isJump = confirmation?.profileId !== undefined && confirmation.profileId !== profile?.id && profiles.some(item => item.id === confirmation.profileId)
+      if (isJump) await api(`/profiles/${encodeURIComponent(confirmation!.profileId!)}/confirm-host`, { method: 'POST', body: JSON.stringify({ fingerprint: confirmation!.fingerprint, previousFingerprint: confirmation!.previousFingerprint }) })
+      const confirmedFingerprint = isJump ? undefined : confirmation?.fingerprint
       await api('/profiles/test-draft', { method: 'POST', body: JSON.stringify({ ...buildPayload(confirmedFingerprint), ...(profile === undefined ? {} : { profileId: profile.id }) }) })
       if (confirmedFingerprint !== undefined) setForm(current => ({ ...current, hostFingerprint: confirmedFingerprint }))
       setTestState('success')
     } catch (reason) {
-      if (reason instanceof ApiError && reason.body?.code === 'HOST_KEY_REQUIRED' && typeof reason.body.fingerprint === 'string') setPendingFingerprint(reason.body.fingerprint)
+      if (reason instanceof ApiError && reason.body?.code === 'HOST_KEY_REQUIRED' && typeof reason.body.fingerprint === 'string') setPendingFingerprint({ fingerprint: reason.body.fingerprint, ...(typeof reason.body.previousFingerprint === 'string' ? { previousFingerprint: reason.body.previousFingerprint } : {}), ...(typeof reason.body.profileId === 'string' ? { profileId: reason.body.profileId } : {}), ...(typeof reason.body.profileName === 'string' ? { profileName: reason.body.profileName } : {}), draft: JSON.stringify(buildPayload()) })
       else if (reason instanceof ApiError && reason.body?.code === 'DUPLICATE_PROFILE_ENDPOINT') { setEndpointError(errorMessage(reason)); hostInputRef.current?.focus() }
       else setError(errorMessage(reason))
     } finally {
@@ -182,7 +186,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
         {(form.proxyType === 'http' || form.proxyType === 'socks5') && <><div className="dsh-ssh-form-grid is-host"><Field label={t("client.proxyHost")}><input required spellCheck={false} {...field('proxyHost')} /></Field><Field label={t("client.proxyPort")}><input required type="number" inputMode="numeric" min="1" max="65535" {...field('proxyPort')} /></Field></div><div className="dsh-ssh-form-grid"><Field label={t("client.proxyUsername")}><input autoComplete="username" {...field('proxyUsername')} /></Field><Field label={t("client.proxyPassword")}><input type="password" autoComplete="new-password" {...field('proxyPassword')} /></Field></div></>}
         {form.proxyType === 'jump' && <JumpChainEditor profiles={profiles.filter(item => item.id !== profile?.id)} value={form.jumpProfileIds} onChange={jumpProfileIds => setForm(current => ({ ...current, jumpProfileIds }))} />}
       </div>
-      {pendingFingerprint && <div className="dsh-ssh-test-result is-warning" role="alert"><span><strong>{t("profile-editor.firstConnectionVerifyTheHostFingerprint")}</strong><code>{pendingFingerprint}</code></span><button type="button" className="dsh-ssh-small-primary" disabled={testing} onClick={() => { void testConnection(pendingFingerprint) }}>{t("profile-editor.confirmAndRetry")}</button></div>}
+      {pendingFingerprint && <div className="dsh-ssh-test-result is-warning" role="alert"><span><strong>{pendingFingerprint.previousFingerprint ? t('host-key.changed') : t("profile-editor.firstConnectionVerifyTheHostFingerprint")}</strong><span>{pendingFingerprint.profileName ?? form.name}</span><span>{t('host-key.warning')}</span>{pendingFingerprint.previousFingerprint && <><span>{t('host-key.previous')}</span><code>{pendingFingerprint.previousFingerprint}</code></>}<span>{t('host-key.current')}</span><code>{pendingFingerprint.fingerprint}</code><small>{t('host-key.saveHint')}</small></span><button type="button" className="dsh-ssh-small-primary" disabled={testing} onClick={() => { void testConnection(pendingFingerprint) }}>{t('host-key.confirm')}</button></div>}
       {testState === 'success' && <p className="dsh-ssh-test-result is-success" role="status"><IconCheckOutline14 size={14} />{t("profile-editor.connectionTestSucceeded")}</p>}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
       <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button dsh-ssh-test-button" disabled={saving || testing} onClick={event => { if (event.currentTarget.form?.reportValidity()) void testConnection() }}>{testing ? t("ftp-profile-editor.testing") : t("client.testConnection")}</button><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close disabled={saving || testing} onClick={onClose}>{t("client.cancel")}</button><button className="dsh-ssh-primary-button" disabled={saving || testing}>{saving ? t("client.saving") : t("ftp-profile-editor.saveConnection")}</button></div>

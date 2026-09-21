@@ -378,7 +378,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         connection.close()
         return sendJson(res, 200, { ok: true })
       } catch (error) {
-        if (error instanceof HostKeyRequiredError) return sendJson(res, 409, { ok: false, code: error.code, fingerprint: error.fingerprint })
+        if (error instanceof HostKeyRequiredError) return sendJson(res, 409, { ok: false, code: error.code, ...error.details })
         throw error
       }
     }
@@ -510,7 +510,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         connection.close()
         return sendJson(res, 200, { ok: true })
       } catch (error) {
-        if (error instanceof HostKeyRequiredError) return sendJson(res, 409, { ok: false, code: error.code, fingerprint: error.fingerprint })
+        if (error instanceof HostKeyRequiredError) return sendJson(res, 409, { ok: false, code: error.code, ...error.details })
         throw error
       }
     }
@@ -519,15 +519,15 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const body = await readObject(req)
       const fingerprint = requireText(body.fingerprint, 'fingerprint', 256)
       const previous = requiredProfile(runtime.store, id)
+      if ((body.previousFingerprint ?? undefined) !== previous.hostFingerprint) throw httpError(409, 'Host fingerprint changed; test the connection again before confirming')
       const next = { ...previous, hostFingerprint: fingerprint, updatedAt: Date.now() }
-      await runtime.store.update(state => { state.profiles = state.profiles.map(profile => profile.id === id ? next : profile) })
-      try {
-        const connection = await runtime.connector.connect(id)
-        connection.close()
-      } catch (error) {
-        await runtime.store.update(state => { state.profiles = state.profiles.map(profile => profile.id === id ? previous : profile) })
-        throw error
-      }
+      const connection = await runtime.connector.connectDraft(next, await runtime.credentials.read(id))
+      connection.close()
+      await runtime.store.update(state => {
+        const current = state.profiles.find(profile => profile.id === id)
+        if (JSON.stringify(current) !== JSON.stringify(previous)) throw httpError(409, 'Host configuration changed; test the connection again before confirming')
+        state.profiles = state.profiles.map(profile => profile.id === id ? next : profile)
+      })
       return sendJson(res, 200, await profileView(runtime, next))
     }
   }
@@ -1180,6 +1180,6 @@ function sendError(res: ServerResponse, error: unknown): void {
   sendJson(res, status, {
     error: value instanceof Error ? value.message : String(error),
     ...value.code === undefined ? {} : { code: value.code },
-    ...value instanceof HostKeyRequiredError ? { fingerprint: value.fingerprint } : {},
+    ...value instanceof HostKeyRequiredError ? value.details : {},
   })
 }

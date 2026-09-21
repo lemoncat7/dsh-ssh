@@ -64,6 +64,35 @@ test('pins a first-seen host key and executes a bounded command', async t => {
   assert.equal(result.stdout, 'ran:cd -- "$HOME" && printf test\n')
   assert.equal(result.stderr, 'diagnostic\n')
   assert.equal(result.truncated, false)
+
+  // A reinstalled host remains blocked, but exposes both identities for explicit confirmation.
+  const oldFingerprint = 'SHA256:' + '0'.repeat(64)
+  await store.update(state => { state.profiles[0].hostFingerprint = oldFingerprint })
+  await assert.rejects(connector.connect('host-test'), error => {
+    assert(error instanceof HostKeyRequiredError)
+    assert.equal(error.profileId, 'host-test')
+    assert.equal(error.previousFingerprint, oldFingerprint)
+    assert.equal(error.fingerprint, firstError.fingerprint)
+    assert.equal(error.details.profileName, 'Test Host')
+    return true
+  })
+  assert.equal(store.profile('host-test').hostFingerprint, oldFingerprint, 'never automatically replace trust')
+
+  // A target reached through this jump host must identify the jump, not the target.
+  await store.update(state => state.profiles.push({ ...state.profiles[0], id: 'target', name: 'Target', proxy: { type: 'jump', profileIds: ['host-test'] } }))
+  await assert.rejects(connector.connect('target'), error => {
+    assert.equal(error.profileId, 'host-test')
+    assert.equal(error.previousFingerprint, oldFingerprint)
+    return true
+  })
+  const confirmed = { ...store.profile('host-test'), hostFingerprint: firstError.fingerprint }
+  const connection = await connector.connectDraft(confirmed, { password: 'correct-horse' })
+  connection.close()
+  assert.equal(store.profile('host-test').hostFingerprint, oldFingerprint, 'draft confirmation is not persisted before save')
+  await assert.rejects(connector.connectDraft(confirmed, { password: 'wrong' }), error => {
+    assert.equal(error instanceof HostKeyRequiredError, false, 'authentication failure is not a fingerprint change')
+    return true
+  })
 })
 
 class MemoryCredentialProvider {

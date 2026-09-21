@@ -8,10 +8,11 @@ import { effectiveHostProxy } from './group-proxy.js'
 
 export class HostKeyRequiredError extends Error {
   readonly code = 'HOST_KEY_REQUIRED'
-  constructor(readonly profileId: string, readonly fingerprint: string) {
-    super(`Host key confirmation required for ${profileId}: ${fingerprint}`)
+  constructor(readonly profileId: string, readonly fingerprint: string, readonly previousFingerprint?: string, readonly profileName?: string) {
+    super(`Host key ${previousFingerprint ? 'changed' : 'confirmation required'} for ${profileName ?? profileId}. Open Edit host and Test connection to verify and confirm the fingerprint: ${fingerprint}`)
     this.name = 'HostKeyRequiredError'
   }
+  get details() { return { profileId: this.profileId, fingerprint: this.fingerprint, previousFingerprint: this.previousFingerprint, profileName: this.profileName } }
 }
 
 export class SshConnector {
@@ -179,7 +180,7 @@ async function connectClient(
       if (settled) return
       settled = true
       cleanup()
-      if (profile.hostFingerprint === undefined && observedFingerprint !== undefined) reject(new HostKeyRequiredError(profile.id, observedFingerprint))
+      if (observedFingerprint !== undefined && observedFingerprint !== profile.hostFingerprint) reject(new HostKeyRequiredError(profile.id, observedFingerprint, profile.hostFingerprint, profile.name))
       else reject(error)
       client.destroy()
     }

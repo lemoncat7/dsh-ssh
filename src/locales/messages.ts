@@ -1,6 +1,13 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "host-key.changed": { "zh": "主机指纹已变化", "en": "Host fingerprint changed" },
+  "host-key.warning": { "zh": "重装系统可能导致密钥变化，也可能是连接被冒用。请通过服务器控制台核实新指纹后再确认。", "en": "Reinstallation can change the key, but this may also indicate impersonation. Verify the new fingerprint through the server console before confirming." },
+  "host-key.previous": { "zh": "原指纹", "en": "Previous fingerprint" },
+  "host-key.current": { "zh": "新指纹", "en": "New fingerprint" },
+  "host-key.confirm": { "zh": "已核实，确认并重试", "en": "Verified, confirm and retry" },
+  "host-key.retest": { "zh": "连接配置已修改，请重新测试并核对指纹。", "en": "Connection settings changed. Test again and verify the fingerprint." },
+  "host-key.saveHint": { "zh": "当前主机测试成功后请保存；跳板机确认成功后会单独更新其指纹。", "en": "Save this host after a successful test. Confirming a jump host updates its fingerprint separately." },
   "local-transfer.uploadAction": { "zh": "从本机上传文件", "en": "Upload files from this computer" },
   "local-transfer.uploading": { "zh": "上传中", "en": "Uploading" },
   "local-transfer.allowUpload": { "zh": "允许 Agent 本地上传", "en": "Allow agent local uploads" },
