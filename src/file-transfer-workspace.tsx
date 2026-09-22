@@ -337,11 +337,6 @@ function FileAccessDialog({ endpoints, access, onClose }: { endpoints: FileEndpo
         <div className="dsh-ssh-file-access-options">
           <div className="dsh-ssh-file-access-policy-row"><span><strong>{t("file-transfer-workspace.fileOperationPermissions")}</strong><small>{t("file-transfer-workspace.browseModeDoesNotExposeCrossEndpointTransferTools")}</small></span><FilePermissionPicker value={value?.filePermission ?? 'browse'} onChange={access.setFilePermission} /></div>
           <div className="dsh-ssh-file-access-policy-row"><span><strong>{t("file-transfer-workspace.confirmBeforeTransfer")}</strong><small>{t("file-transfer-workspace.requireDshApprovalWhenTheAiStartsATransfer")}</small></span><FileApprovalSwitch checked={value?.requireFileApproval ?? true} onChange={access.setRequireFileApproval} /></div>
-          {(['upload', 'download'] as const).map(direction => {
-            const enabled = (direction === 'upload' ? value?.allowLocalUpload : value?.allowLocalDownload) === true
-            const label = direction === 'upload' ? t("local-transfer.allowUpload") : t("local-transfer.allowDownload")
-            return <div className="dsh-ssh-file-access-policy-row" key={direction}><span><strong>{label}</strong><small>{direction === 'upload' ? t("local-transfer.uploadScope") : t("local-transfer.downloadScope")}</small></span><button type="button" className={`dsh-ssh-file-approval-switch${enabled ? ' is-active' : ''}`} role="switch" aria-label={label} aria-checked={enabled} disabled={access.loading || !value} onClick={() => access.setLocalFileAccess(direction, !enabled)}><i aria-hidden="true"><b /></i><span>{enabled ? t("file-transfer-workspace.authorized") : t("file-transfer-workspace.notAuthorized")}</span></button></div>
-          })}
         </div>
       </section>
     </div>

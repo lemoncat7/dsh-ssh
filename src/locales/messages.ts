@@ -1403,8 +1403,8 @@ export const messages = {
     "en": "File operation permissions"
   },
   "file-transfer-workspace.browseModeDoesNotExposeCrossEndpointTransferTools": {
-    "zh": "浏览模式不会向 AI 暴露跨端传输工具",
-    "en": "Browse mode does not expose cross-endpoint transfer tools to the AI"
+    "zh": "允许传输包含远端互传、会话目录内上传和下载；仅浏览不可传输",
+    "en": "Transfer includes remote copies and session-directory uploads/downloads; browse is read-only"
   },
   "file-transfer-workspace.confirmBeforeTransfer": {
     "zh": "传输前确认",

@@ -598,8 +598,8 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       }
       const injection: SessionInjection = {
         sessionId, profileIds, fileEndpointIds, filePermission, requireFileApproval: body.requireFileApproval === undefined ? previous?.requireFileApproval ?? true : body.requireFileApproval !== false,
-        allowLocalUpload: body.allowLocalUpload === undefined ? previous?.allowLocalUpload === true : body.allowLocalUpload === true,
-        allowLocalDownload: body.allowLocalDownload === undefined ? previous?.allowLocalDownload === true : body.allowLocalDownload === true,
+        allowLocalUpload: filePermission === 'transfer',
+        allowLocalDownload: filePermission === 'transfer',
         permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, mountedProjectIds, updatedAt: Date.now(),
       }
       await runtime.store.update(state => { state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection] })

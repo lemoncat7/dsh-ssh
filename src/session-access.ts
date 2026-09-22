@@ -16,7 +16,6 @@ export interface SessionAccessState {
   setFileEndpoints(endpointIds: string[]): void
   setFilePermission(permission: InjectionView['filePermission']): void
   setRequireFileApproval(value: boolean): void
-  setLocalFileAccess(direction: 'upload' | 'download', value: boolean): void
   replace(value: InjectionView): Promise<InjectionView>
   refresh(): Promise<void>
 }
@@ -144,7 +143,6 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
     setFileEndpoints: fileEndpointIds => update({ fileEndpointIds }),
     setFilePermission: filePermission => update({ filePermission }),
     setRequireFileApproval: requireFileApproval => update({ requireFileApproval }),
-    setLocalFileAccess: (direction, enabled) => update(direction === 'upload' ? { allowLocalUpload: enabled } : { allowLocalDownload: enabled }),
     replace,
   }
 }

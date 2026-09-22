@@ -74,11 +74,10 @@ test('local download tool defaults to owning session cwd and follows approval, v
   const download = tools.get('file_download_to_local')
   const args = { endpointId: 'sftp:allowed', remotePath: '/report.txt' }
   localDownload = false
-  await assert.rejects(download.execute(args, exec), /本地下载/)
-  await assert.rejects(tools.get('file_upload_from_local').execute({ endpointId: 'sftp:allowed', localPath: 'a', remoteDirectory: '/' }, exec), /本地上传/)
   const denied = { tools: [...tools.values()].map(t => ({ name: t.name })), contexts: [] }
   await assemble(denied, {}, async () => denied)
-  assert.ok(!denied.tools.some(t => ['file_download_to_local', 'file_upload_from_local'].includes(t.name)))
+  assert.ok(denied.tools.some(t => t.name === 'file_download_to_local'))
+  assert.ok(denied.tools.some(t => t.name === 'file_upload_from_local'))
   localDownload = true
   assert.equal((await hooks.get('tools/pre-execute')({ name: download.name, agent }, async () => 'continue')).kind, 'ask')
   approval = false
