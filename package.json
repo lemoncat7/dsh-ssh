@@ -1,6 +1,6 @@
 {
   "name": "@lemoncat7/dsh-ssh",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "description": "Secure SSH, FTP/FTPS/SFTP file transfer, browser terminals, proxies, port forwarding, and session-scoped AI access for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -39,7 +39,8 @@
     "README.md",
     "ARCHITECTURE.md",
     "docs/**/*.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/releases/1.10.0.md"
   ],
   "dsh": {
     "bundle": {
