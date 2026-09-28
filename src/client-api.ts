@@ -1,5 +1,6 @@
 export const SSH_API = '/ssh-local/v1'
 import { createBrowserTransfer, updateBrowserTransfer } from './browser-transfers.js'
+import { createSharedRead } from './shared-read.js'
 export function loadNativeDirectorySupport(): Promise<{ available: boolean }> { return api('/activity/native-directory') }
 export function openNativeDirectory(sessionId: string, path: string): Promise<{ opened: boolean }> {
   return api('/activity/native-directory', { method: 'POST', body: JSON.stringify({ sessionId, path }) })
@@ -113,13 +114,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init.headers,
     },
   })
+  if (method !== 'GET' && method !== 'HEAD' && response.ok) profilesRead.invalidate()
   if (response.status === 204) return undefined as T
   const body = await response.json().catch(() => ({})) as Record<string, unknown>
   if (!response.ok) throw new ApiError(response.status, typeof body.error === 'string' ? body.error : `HTTP ${response.status}`, body)
   return body as T
 }
 
-export function loadProfiles(): Promise<ProfileView[]> { return api('/profiles') }
+const profilesRead = createSharedRead(() => api<ProfileView[]>('/profiles'))
+export function loadProfiles(): Promise<ProfileView[]> { return profilesRead.read() }
 export function loadFtpProfiles(): Promise<FtpProfileView[]> { return api('/ftp-profiles') }
 export function loadFileEndpoints(): Promise<FileEndpointView[]> { return api('/file-transfer/endpoints') }
 export function inspectFileEndpointEntry(paneId: string, endpointId: string, path: string): Promise<SftpEntryView> {

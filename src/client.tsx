@@ -268,12 +268,16 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   useEffect(() => subscribeSessionAccess(value => {
     if (value.sessionId === currentSessionId) setInjection(value)
   }), [currentSessionId])
-  const refresh = useCallback(async () => {
-    const next = await loadProfiles().catch(() => [])
-    setProfiles(next)
-    setInjection(sessionId === undefined ? null : await loadInjection(String(sessionId)).catch(() => null))
-  }, [sessionId])
-  useEffect(() => { void refresh() }, [refresh, remoteOpen])
+  useEffect(() => {
+    let disposed = false
+    // Independent reads must not waterfall; a previous session must not win
+    // a race and overwrite the current session's mount information.
+    void Promise.all([
+      loadProfiles().catch(() => []),
+      sessionId === undefined ? Promise.resolve(null) : loadInjection(String(sessionId)).catch(() => null),
+    ]).then(([next, access]) => { if (!disposed) { setProfiles(next); setInjection(access) } })
+    return () => { disposed = true }
+  }, [sessionId, remoteOpen])
   const availableProfiles = injection === null ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
   useEffect(() => {
     if (currentSessionId === undefined || injection?.permission !== 'terminal') return
