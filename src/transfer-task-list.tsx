@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
-import { IconChevronDownOutline14, IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular as IconChevronDownOutline14, IconCloseOutlineRegular as IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { browserTransfers, dismissBrowserTransfer, isBrowserTransferActive, canCancelBrowserTransfer, cancelBrowserTransfer, type BrowserTransfer } from './browser-transfers.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'

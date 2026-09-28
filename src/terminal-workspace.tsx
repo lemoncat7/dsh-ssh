@@ -1,7 +1,7 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { IconCloseOutline16, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseOutlineRegular as IconCloseOutline16, IconPlusOutlineRegular as IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ProfileView } from './client-api.js'
 import { TerminalSession } from './terminal-session.js'
 import { closeTerminal, nextTerminalNumber, selectTerminal, splitTerminal, type TerminalLayout } from './terminal-layout.js'

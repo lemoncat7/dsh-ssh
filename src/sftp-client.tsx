@@ -6,8 +6,8 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type Dr
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
-  IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconDownloadOutline16, IconFolderClose16,
-  IconEditOutline16, IconFullscreenOutline16, IconRefreshOutline16, IconSendOutline14, IconTrashOutline16, Modal,
+  IconChevronLeftOutlineRegular as IconChevronLeftOutline14, IconCloseOutlineRegular as IconCloseOutline16, IconDataOutlineRegular as IconDataOutline16, IconDownloadOutlineRegular as IconDownloadOutline16, IconFolderCloseRegular as IconFolderClose16,
+  IconEditOutlineRegular as IconEditOutline16, IconFullscreenOutlineRegular as IconFullscreenOutline16, IconRefreshOutlineRegular as IconRefreshOutline16, IconSendOutlineRegular as IconSendOutline14, IconTrashOutlineRegular as IconTrashOutline16, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   ApiError, deleteFileEndpointEntries, deleteLocalWorkspaceEntries, loadLocalWorkspaceDirectory, loadLocalWorkspaceFilePreview, loadProfileSftpDirectory, loadProfileSftpFilePreview,

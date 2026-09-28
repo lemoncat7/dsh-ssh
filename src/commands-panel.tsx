@@ -1,7 +1,7 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { IconEditOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconEditOutlineRegular as IconEditOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SavedCommand } from './domain.js'
 import { api } from './client-api.js'
 import { Dialog, Field, errorMessage } from './ui-components.js'

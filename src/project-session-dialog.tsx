@@ -2,7 +2,7 @@ import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import { IconCloseOutline16, IconFolderClose16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseOutlineRegular as IconCloseOutline16, IconFolderCloseRegular as IconFolderClose16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ProfileView, RemoteProjectView } from './client-api.js'
 
 interface ProjectSessionDialogProps {

@@ -3,7 +3,7 @@ import { trackDownloadClick } from './browser-transfers.js'
 import { BrowserTransferTask, TransferTaskList, isBrowserTransferActive, useBrowserTransferTasks } from './transfer-task-list.js'
 import { t } from './i18n.js'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FormEvent } from 'react'
-import { IconChevronLeftOutline14, IconCloseOutline16, IconDataOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronLeftOutlineRegular as IconChevronLeftOutline14, IconCloseOutlineRegular as IconCloseOutline16, IconDataOutlineRegular as IconDataOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   uploadFileEndpointFile,
   inspectFileEndpointEntry, cancelFileTransfer, deleteFileEndpointEntries, fileEndpointDownloadUrl, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,

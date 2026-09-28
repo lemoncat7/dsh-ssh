@@ -1,6 +1,6 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconRefreshOutlineRegular as IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 
 export function PreviewRefreshControl({ busy, blocked = false, automatic, available, onRefresh, onToggle }: {
   busy: boolean; blocked?: boolean; automatic: boolean; available: boolean; onRefresh(): void; onToggle(): void

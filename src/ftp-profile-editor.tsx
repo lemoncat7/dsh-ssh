@@ -2,7 +2,7 @@ import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useMemo, useState, type FormEvent } from 'react'
 import {
-  IconChevronLeftOutline14, IconDataOutline16, IconPlusOutline16, IconTrashOutline16,
+  IconChevronLeftOutlineRegular as IconChevronLeftOutline14, IconDataOutlineRegular as IconDataOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { api, type FtpProfileView, type ProxyEntryView, type VaultEntryView } from './client-api.js'
 import { Dialog, Field, SuggestionInput, errorMessage } from './ui-components.js'

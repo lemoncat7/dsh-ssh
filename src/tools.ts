@@ -269,7 +269,7 @@ function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
     })
   }
   for (const agent of ctx.agents.list()) attach(agent)
-  const disposeCreated = ctx.on('agent/created', ({ agent }) => attach(agent))
+  const disposeCreated = ctx.on('agent/created', ({ agent }) => { attach(agent); return undefined })
   const disposeDisposed = ctx.on('agent/disposed', ({ agent }) => {
     attached.get(agent)?.()
     attached.delete(agent)

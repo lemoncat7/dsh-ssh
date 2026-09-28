@@ -3,9 +3,9 @@ import { t } from './i18n.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  IconCloseOutline16,
-  IconCodeOutline16,
-  IconFolderOpenOutline16,
+  IconCloseOutlineRegular as IconCloseOutline16,
+  IconCodeOutlineRegular as IconCodeOutline16,
+  IconFolderOpenOutlineRegular as IconFolderOpenOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'

@@ -1,7 +1,7 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useState } from 'react'
-import { IconDataOutline16, IconFolderClose16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconDataOutlineRegular as IconDataOutline16, IconFolderCloseRegular as IconFolderClose16, IconTrashOutlineRegular as IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SftpEntryView } from './client-api.js'
 import { Dialog, errorMessage } from './ui-components.js'
 

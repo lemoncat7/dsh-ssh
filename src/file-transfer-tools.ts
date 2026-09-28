@@ -158,7 +158,7 @@ function installVisibility(ctx: Context, store: SshStore): () => void {
     }))
   }
   for (const agent of ctx.agents.list()) attach(agent)
-  const created = ctx.on('agent/created', ({ agent }) => attach(agent))
+  const created = ctx.on('agent/created', ({ agent }) => { attach(agent); return undefined })
   const disposed = ctx.on('agent/disposed', ({ agent }) => { attached.get(agent)?.(); attached.delete(agent) })
   return () => { disposed(); created(); for (const dispose of attached.values()) dispose(); attached.clear() }
 }

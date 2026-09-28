@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { currentSession } from './current-session.js'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -79,8 +80,8 @@ export function createDockedPanel(
       const reveal = (): void => {
         frame = undefined
         if (disposed || pending !== sessionId) return
-        const sessions = ctx.get('sessions') as unknown as { list: { getSnapshot(): { current?: string } } }
-        if (String(sessions.list.getSnapshot().current) !== sessionId) { cancel(); notify(); return }
+        const sessions = ctx.get('sessions') as unknown as { list: { getSnapshot(): Parameters<typeof currentSession>[0] } }
+        if (currentSession(sessions.list.getSnapshot()) !== sessionId) { cancel(); notify(); return }
         try {
           if (sidebar === undefined) throw new Error('Right sidebar is not ready')
           sidebar.openTab(id)

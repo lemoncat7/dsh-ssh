@@ -1,7 +1,7 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { IconChevronRightOutline14, IconFolderClose16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronRightOutlineRegular as IconChevronRightOutline14, IconFolderCloseRegular as IconFolderClose16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { loadFileEndpointDirectory, type SftpDirectoryView } from './client-api.js'
 import { isNavigableRemoteEntry } from './file-transfer-intent.js'
 

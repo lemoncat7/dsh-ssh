@@ -1,7 +1,7 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useEffect, useState } from 'react'
-import { IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconFolderOpenOutlineRegular as IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { loadNativeDirectorySupport, openNativeDirectory } from './client-api.js'
 
 export function NativeDirectoryButton({ sessionId, path, onMessage }: { sessionId: string; path: string | undefined; onMessage(message: string): void }): JSX.Element {

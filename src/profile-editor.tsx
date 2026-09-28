@@ -2,12 +2,12 @@ import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useId, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
-  IconCheckOutline14,
-  IconChevronDownOutline14,
-  IconChevronUpOutline14,
-  IconPlusOutline16,
-  IconTrashOutline16,
-  IconUserOutline16,
+  IconCheckOutlineRegular as IconCheckOutline14,
+  IconChevronDownOutlineRegular as IconChevronDownOutline14,
+  IconChevronUpOutlineRegular as IconChevronUpOutline14,
+  IconPlusOutlineRegular as IconPlusOutline16,
+  IconTrashOutlineRegular as IconTrashOutline16,
+  IconUserOutlineRegular as IconUserOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   ApiError,

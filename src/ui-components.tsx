@@ -4,7 +4,7 @@ import {
   useEffect, useId, useMemo, useRef, useState,
   type InputHTMLAttributes, type KeyboardEvent, type MouseEvent, type ReactNode,
 } from 'react'
-import { IconCheckOutline14, IconChevronDownOutline14, IconCloseOutline16, IconDataOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCheckOutlineRegular as IconCheckOutline14, IconChevronDownOutlineRegular as IconChevronDownOutline14, IconCloseOutlineRegular as IconCloseOutline16, IconDataOutlineRegular as IconDataOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useActiveControlMotion, useDialogMotion, useStaggeredEntrance } from './motion.js'
 
 interface DialogProps {

@@ -1,4 +1,6 @@
 import { useSshLocale } from './use-ssh-locale.js'
+import { currentSession } from './current-session.js'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { t } from './i18n.js'
 import { bindHostLocale, type HostLocale } from './ssh-locale-binding.js'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
@@ -21,10 +23,10 @@ import interactiveSurfacesCss from './interactive-surfaces.css'
 import activitySurfaceCss from './activity-surface.css'
 import { activatePluginWorkspace, observePluginWorkspace } from './workspace-ownership.js'
 import {
-  IconChevronDownOutline14, IconCloseOutline16, IconDataOutline16,
-  IconEditOutline16, IconPanelLeftOutline16, IconPlusOutline16,
-  IconStopFill16, IconTrashOutline16, IconChevronLeftOutline14,
-  IconUserOutline16,
+  IconChevronDownOutlineRegular as IconChevronDownOutline14, IconCloseOutlineRegular as IconCloseOutline16, IconDataOutlineRegular as IconDataOutline16,
+  IconEditOutlineRegular as IconEditOutline16, IconPanelLeftOutlineRegular as IconPanelLeftOutline16, IconPlusOutlineRegular as IconPlusOutline16,
+  IconStopFillRegular as IconStopFill16, IconTrashOutlineRegular as IconTrashOutline16, IconChevronLeftOutlineRegular as IconChevronLeftOutline14,
+  IconUserOutlineRegular as IconUserOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
@@ -72,7 +74,7 @@ interface RemoteController {
   createProjectSession(workspaceId: string, project: RemoteProjectView, permission: InjectionView['permission'], requireCommandApproval: boolean): Promise<string>
 }
 
-export const inject = ['slots', 'layout', 'sessions', 'workspaces']
+export const inject = ['slots', 'layout', 'sessions', 'workspaces', 'uiWorkspace']
 
 export function apply(ctx: ClientContext): void {
   ctx.inject(['locale'], child => {
@@ -120,7 +122,7 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
     async createProjectSession(workspaceId, project, permission, requireCommandApproval) {
       const sessionId = await runtime.sessions.create({ workspaceId: workspaceId as WorkspaceId })
       await saveSessionAccess({ ...emptyAccess(String(sessionId)), profileIds: [project.profileId], permission, requireCommandApproval, workingDirectories: { [project.profileId]: project.path }, workingProjectIds: { [project.profileId]: project.id } })
-      runtime.sessions.open(sessionId)
+      ctx.uiWorkspace.openSession(sessionId)
       return String(sessionId)
     },
   }
@@ -132,7 +134,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
   const runtime = ctx as unknown as { sessions: ISessions }
   const listeners = new Set<() => void>()
   const states = new Map<string, { open: boolean; selectedProfileId?: string; requestedView: ActivityViewMode }>()
-  let currentSessionId = normalizeSessionId(runtime.sessions.list.getSnapshot().current)
+  let currentSessionId = normalizeSessionId(currentSession(runtime.sessions.list.getSnapshot()))
   let mountedSessionId: string | undefined
   let restoreFrame: number | undefined
   let dispose: (() => void) | undefined
@@ -161,7 +163,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
   }
   const syncCurrentSession = (): void => {
     const snapshot = runtime.sessions.list.getSnapshot()
-    const nextSessionId = normalizeSessionId(snapshot.current)
+    const nextSessionId = normalizeSessionId(currentSession(snapshot))
     if (nextSessionId === currentSessionId) return
     cancelRestore()
     const wasMounted = unmount()
@@ -237,7 +239,7 @@ function createDockedActivityController(ctx: ClientContext): ActivityController 
     },
     toggle(sessionId) { if (panel.isOpen(sessionId)) controller.close(sessionId); else controller.open(sessionId) },
     close(sessionId) {
-      const target = sessionId ?? normalizeSessionId((ctx.sessions as unknown as ISessions).list.getSnapshot().current)
+      const target = sessionId ?? normalizeSessionId(currentSession((ctx.sessions as unknown as ISessions).list.getSnapshot()))
       if (target !== undefined) panel.close(target)
     },
     isOpen: panel.isOpen,
@@ -253,7 +255,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   useSshLocale()
   const ref = useRef<HTMLElement>(null)
   useWorkspaceTopAnchor(ref)
-  const sessionId = props.useSessions((state: SessionListState) => state.current)
+  const sessionId = props.useSessions((state: SessionListState) => currentSession(state))
   const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [injection, setInjection] = useState<InjectionView | null>(null)
@@ -332,7 +334,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
 function RemoteWorkspace(props: ConversationProps & { controller: RemoteController }): JSX.Element {
   useSshLocale()
   const toolbarGlow = useBorderGlowSurface<HTMLElement>()
-  const sessionId = props.useSessions((state: SessionListState) => state.current)
+  const sessionId = props.useSessions((state: SessionListState) => currentSession(state))
   const workspaceList = props.useWorkspaces((state: WorkspaceSnapshot) => state)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])

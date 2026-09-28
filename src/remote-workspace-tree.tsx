@@ -3,8 +3,8 @@ import { t } from './i18n.js'
 import { useMemo, useState, type FormEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import {
-  IconChevronDownOutline14, IconChevronRightOutline14, IconEditOutline16, IconFolderClose16,
-  IconFolderOpenOutline16, IconPlusOutline16, IconTrashOutline16,
+  IconChevronDownOutlineRegular as IconChevronDownOutline14, IconChevronRightOutlineRegular as IconChevronRightOutline14, IconEditOutlineRegular as IconEditOutline16, IconFolderCloseRegular as IconFolderClose16,
+  IconFolderOpenOutlineRegular as IconFolderOpenOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   createRemoteProject, deleteRemoteProject, loadRemoteProjects, updateRemoteProject,
