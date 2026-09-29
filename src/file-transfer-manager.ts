@@ -87,6 +87,13 @@ export class FileTransferManager {
     return true
   }
 
+  dismiss(id: string, ownerId?: string): boolean {
+    const managed = this.jobs.get(id)
+    if (managed === undefined || ownerId !== undefined && managed.view.ownerId !== ownerId) throw Object.assign(new Error('transfer job was not found'), { status: 404 })
+    if (!isTerminal(managed.view.state)) throw Object.assign(new Error('active transfer jobs cannot be dismissed'), { status: 409 })
+    return this.jobs.delete(id)
+  }
+
   subscribe(listener: (job: TransferJobView) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener) }
 
   async closeAll(): Promise<void> {

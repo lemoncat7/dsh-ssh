@@ -212,6 +212,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       }
       const jobId = segments[2]
       if (jobId !== undefined && method === 'GET' && segments.length === 3) return sendJson(res, 200, runtime.transfers.get(jobId))
+      if (jobId !== undefined && method === 'DELETE' && segments[3] === 'history' && segments.length === 4) { requireMutationHeader(req); runtime.transfers.dismiss(jobId); return sendJson(res, 204, undefined) }
       if (jobId !== undefined && method === 'DELETE' && segments.length === 3) { requireMutationHeader(req); runtime.transfers.cancel(jobId); return sendJson(res, 204, undefined) }
     }
   }

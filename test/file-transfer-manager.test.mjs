@@ -43,6 +43,25 @@ test('waits for active streams to release both endpoint sessions during shutdown
   assert.throws(() => manager.start('session-test', job.request), /service is closed/)
 })
 
+test('dismisses handled terminal jobs without allowing active jobs to disappear', async () => {
+  const source = memoryAdapter('sftp', 'source', new Map([
+    ['/report.txt', { kind: 'file', data: Buffer.from('ready') }],
+  ]))
+  const destination = memoryAdapter('ftp', 'destination', new Map([
+    ['/target', { kind: 'directory' }],
+  ]))
+  const manager = new FileTransferManager(new RemoteFileSystems([source, destination]), 1)
+  const active = manager.start('session-test', {
+    sourceEndpointId: 'sftp:source', sourcePaths: ['/report.txt'], destinationEndpointId: 'ftp:destination', destinationDirectory: '/target', conflictPolicy: 'fail',
+  })
+  assert.throws(() => manager.dismiss(active.id, 'session-test'), error => error.status === 409)
+  await waitForJob(manager, active.id)
+  assert.equal(manager.dismiss(active.id, 'session-test'), true)
+  assert.deepEqual(manager.list('session-test'), [])
+  assert.throws(() => manager.dismiss(active.id, 'session-test'), error => error.status === 404)
+  await manager.closeAll()
+})
+
 function memoryAdapter(kind, id, files, calls = { stat: 0, list: 0 }) {
   const endpoint = { id: `${kind}:${id}`, kind, protocol: kind, name: id, address: id, initialPath: '/' }
   return {

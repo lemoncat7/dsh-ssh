@@ -828,6 +828,7 @@ body[data-ds-dark-theme] :is(
   overflow: auto;
   background: transparent;
 }
+.dsh-ssh-persistent-page:not([hidden]) { display: contents; }
 .dsh-ssh-search {
   padding: 10px 10px 6px;
 }

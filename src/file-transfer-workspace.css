@@ -243,11 +243,6 @@
 .dsh-ssh-file-error button { border: 0; color: var(--ssh-accent); background: transparent; cursor: pointer; }
 .dsh-ssh-file-pane > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 9px 5px 11px; border-top: 1px solid var(--ssh-border); background: transparent; color: var(--ssh-text-subtle); font-size: var(--ssh-type-caption); }
 .dsh-ssh-file-pane > footer > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dsh-ssh-file-pane-actions { display: flex; min-width: 0; align-items: center; gap: 5px; }
-.dsh-ssh-transfer-to-button { appearance: none; display: inline-flex; min-height: var(--ssh-control-height); align-items: center; gap: 6px; padding: 0 var(--ssh-control-padding); border: 1px solid var(--ssh-border); border-radius: 9px; color: var(--ssh-text-muted); background-color: var(--ssh-surface-raised); background-image: none; font: 600 var(--ssh-type-label)/1 var(--ssh-font-sans); cursor: pointer; }
-.dsh-ssh-transfer-to-button:hover:not(:disabled) { color: var(--ssh-text); border-color: var(--ssh-border); background-color: var(--ssh-hover); background-image: none; }
-.dsh-ssh-transfer-to-button:focus-visible { outline: 2px solid var(--ssh-focus-ring); outline-offset: 1px; }
-.dsh-ssh-transfer-to-button:disabled { opacity: .38; cursor: default; }
 .dsh-ssh-file-pane.is-drop-target { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ssh-accent) 55%, transparent); }
 .dsh-ssh-file-drop-overlay { position: absolute; z-index: 3; inset: 88px 8px 50px; display: grid; place-content: center; gap: 4px; border: 1px dashed color-mix(in srgb, var(--ssh-accent) 58%, transparent); border-radius: 10px; color: var(--ssh-text); background: color-mix(in srgb, var(--ssh-surface-raised) 90%, transparent); backdrop-filter: blur(3px); text-align: center; pointer-events: none; }
 .dsh-ssh-file-drop-overlay span { max-width: 260px; overflow: hidden; color: var(--ssh-text-muted); font: var(--ssh-type-caption)/1.4 var(--ssh-font-mono); text-overflow: ellipsis; white-space: nowrap; }
@@ -904,8 +899,6 @@
   .dsh-ssh-transfer-panes.has-4 .dsh-ssh-file-pane:nth-child(odd) { border-left: 0; }
   .dsh-ssh-transfer-panes.has-3 .dsh-ssh-file-pane:nth-child(n + 3),
   .dsh-ssh-transfer-panes.has-4 .dsh-ssh-file-pane:nth-child(n + 3) { border-top: 1px solid var(--ssh-glass-separator); }
-  .dsh-ssh-transfer-panes.has-3 .dsh-ssh-transfer-to-button,
-  .dsh-ssh-transfer-panes.has-4 .dsh-ssh-transfer-to-button { padding-inline: var(--ssh-control-padding-compact); }
 }
 @media (max-width: 720px) {
   .dsh-ssh-transfer-header { align-items: flex-start; padding: 9px 10px; }

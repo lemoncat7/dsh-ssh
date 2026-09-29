@@ -348,6 +348,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
   const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'commands'>('workspace')
+  const [transferMounted, setTransferMounted] = useState(false)
   const [visitedHosts, setVisitedHosts] = useState<string[]>([])
   const [closeAllRequest, setCloseAllRequest] = useState(0)
   const [closingAllTerminals, setClosingAllTerminals] = useState(false)
@@ -403,7 +404,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       <div className="dsh-ssh-brand"><button type="button" className="dsh-ssh-icon-button" aria-label={t("client.backToSession")} title={t("client.backToSession")} onClick={() => props.controller.close()}><IconChevronLeftOutline14 size={15} /></button><span className="dsh-ssh-brand-glyph"><ServerGlyph /></span><span><strong>{t("client.sshWorkbench")}</strong><small>{view === 'transfer' ? 'FTP · FTPS · SFTP' : selected === undefined ? t("client.selectAHost") : `${selected.username}@${selected.host}`}</small></span></div>
       <nav className="dsh-ssh-segments" role="tablist" aria-label={t("client.sshWorkbenchView")}>
         <Segment active={view === 'workspace'} onClick={() => setView('workspace')}>{t("client.terminalsFiles")}</Segment>
-        <Segment active={view === 'transfer'} onClick={() => setView('transfer')}>{t("client.fileTransfer")}</Segment>
+        <Segment active={view === 'transfer'} onClick={() => { setTransferMounted(true); setView('transfer') }}>{t("client.fileTransfer")}</Segment>
         <Segment active={view === 'commands'} onClick={() => setView('commands')}>{t("client.savedCommands")}</Segment>
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>{t("client.portForwarding")}</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>{t("client.credentialVault")}</Segment>
@@ -449,13 +450,13 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
         {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onEdit={() => setEditing(profile)} onDelete={() => setDeleting(profile)} closeAllRequest={closeAllRequest} totalTerminals={totalTerminals} onCloseAll={() => setClosingAllTerminals(true)} reportTerminalCount={reportTerminalCount} /></div>)}
-        {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? <FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} />
-          : view === 'commands' ? <CommandsPanel />
+        {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? null : view === 'commands' ? <CommandsPanel />
           : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'settings' ? <SettingsPane />
           : selected === undefined ? <EmptyState />
           : <ForwardPane profiles={profiles} selected={selected} />}
+        {transferMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'transfer'}><FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} /></div>}
       </section>
     </AdaptiveWorkspace>
 {closingAllTerminals && <Dialog variant="confirmation" title={t("client.closeTerminalsOnAllHosts")} subtitle={t("client.thisClosesAllTerminalTabsInThisWorkspaceIncluding", [totalTerminals])} onClose={() => setClosingAllTerminals(false)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosingAllTerminals(false)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => { setCloseAllRequest(value => value + 1); setClosingAllTerminals(false) }}>{t("client.closeAll")}</button></div></Dialog>}

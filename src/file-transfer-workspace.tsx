@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { IconChevronLeftOutlineRegular as IconChevronLeftOutline14, IconCloseOutlineRegular as IconCloseOutline16, IconDataOutlineRegular as IconDataOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   uploadFileEndpointFile,
-  inspectFileEndpointEntry, cancelFileTransfer, deleteFileEndpointEntries, fileEndpointDownloadUrl, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
+  inspectFileEndpointEntry, cancelFileTransfer, deleteFileEndpointEntries, dismissFileTransferJob, fileEndpointDownloadUrl, loadFileEndpointDirectory, loadFileEndpoints, loadTransferJobs, startFileTransfer,
   type FileEndpointView, type FtpProfileView, type ProxyEntryView, type SftpDirectoryView, type SftpEntryView, type TransferJobView, type VaultEntryView,
 } from './client-api.js'
 import type { SessionAccessState } from './session-access.js'
@@ -42,6 +42,8 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   const [error, setError] = useState<string>()
   const [directoryRevisions, setDirectoryRevisions] = useState<Record<string, number>>({})
   const previousJobStatesRef = useRef(new Map<string, TransferJobView['state']>())
+  const autoConflictJobIdsRef = useRef(new Set<string>())
+  const dismissedJobIdsRef = useRef(new Set<string>())
 
   const refreshEndpoints = useCallback(async () => {
     try {
@@ -69,7 +71,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     let stopped = false; let timer: number | undefined
     const poll = async (): Promise<void> => {
       if (document.visibilityState === 'hidden') { timer = window.setTimeout(() => { void poll() }, 1800); return }
-      try { const next = await loadTransferJobs(); if (!stopped) setJobs(next) } catch {}
+      try { const next = await loadTransferJobs(); if (!stopped) setJobs(next.filter(job => !dismissedJobIdsRef.current.has(job.id))) } catch {}
       if (!stopped) timer = window.setTimeout(() => { void poll() }, 800)
     }
     void poll(); return () => { stopped = true; if (timer !== undefined) clearTimeout(timer) }
@@ -88,18 +90,14 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     setTabs(next); if (activeTabId === id) setActiveTabId(next[Math.max(0, index - 1)]!.id)
   }
   const setPaneCount = (count: number): void => updateActive(tab => ({ ...tab, panes: Array.from({ length: count }, (_, index) => tab.panes[index] ?? createPane(`${tab.id}-pane-${index}`)) }))
-  const transfer = async (sourceEndpointId: string, sourceDirectory: string, sourcePaths: string[], destinationEndpointId: string, destinationDirectory: string): Promise<void> => {
-    const source = { endpointId: sourceEndpointId, directory: sourceDirectory }
-    const destination = { endpointId: destinationEndpointId, directory: destinationDirectory }
-    if (isSameRemoteTransferLocation(source, destination) || !canTransferIntoRemoteDirectory(source, sourcePaths, destination)) return
-    try { setError(undefined); const job = await startFileTransfer({ sourceEndpointId, sourcePaths, destinationEndpointId, destinationDirectory, conflictPolicy: 'fail' }); setJobs(current => [job, ...current.filter(item => item.id !== job.id)]) }
-    catch (reason) { setError(errorMessage(reason)) }
-  }
   const dropFiles = async (source: TransferDragSource, destination: PaneState, destinationDirectory: string): Promise<void> => {
     try {
       setError(undefined)
       const result = await executeRemoteFileDrop(source, { paneId: destination.id, endpointId: destination.endpointId, directory: destinationDirectory })
-      if (result.job !== undefined) setJobs(current => [result.job!, ...current.filter(item => item.id !== result.job!.id)])
+      if (result.job !== undefined) {
+        autoConflictJobIdsRef.current.add(result.job.id)
+        setJobs(current => [result.job!, ...current.filter(item => item.id !== result.job!.id)])
+      }
       if (result.operation === 'move') {
         setDirectoryRevisions(current => {
           const next = { ...current }
@@ -108,6 +106,34 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
         })
       }
     } catch (reason) { setError(errorMessage(reason)) }
+  }
+  useEffect(() => {
+    if (conflictJob !== undefined) return
+    for (const job of jobs) {
+      if (!autoConflictJobIdsRef.current.has(job.id)) continue
+      if (isTransferConflict(job)) {
+        autoConflictJobIdsRef.current.delete(job.id)
+        setConflictJob(job)
+        return
+      }
+      if (isFinished(job.state)) autoConflictJobIdsRef.current.delete(job.id)
+    }
+  }, [jobs, conflictJob])
+  const openConflict = (job: TransferJobView): void => {
+    autoConflictJobIdsRef.current.delete(job.id)
+    setConflictJob(job)
+  }
+  const retryConflict = async (conflictPolicy: 'skip' | 'overwrite' | 'rename'): Promise<void> => {
+    if (conflictJob === undefined) return
+    const previous = conflictJob
+    let next: TransferJobView
+    try { next = await startFileTransfer({ ...previous.request, conflictPolicy }) }
+    catch (reason) { setError(errorMessage(reason)); return }
+    dismissedJobIdsRef.current.add(previous.id)
+    setJobs(current => [next, ...current.filter(job => job.id !== previous.id && job.id !== next.id)])
+    setConflictJob(undefined)
+    try { await dismissFileTransferJob(previous.id) }
+    catch (reason) { setError(errorMessage(reason)) }
   }
   return <div className="dsh-ssh-transfer-workspace">
     <header className="dsh-ssh-transfer-header">
@@ -121,21 +147,18 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
         <div className="dsh-ssh-pane-layout" aria-label={t("file-transfer-workspace.panes")}>{[1, 2, 3, 4].map(count => <button key={count} type="button" data-ssh-interactive="choice" aria-pressed={active?.panes.length === count} className={active?.panes.length === count ? 'is-active' : ''} onClick={() => setPaneCount(count)}>{count}  {t("file-transfer-workspace.panes2")}</button>)}</div>
       </div>
       {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>{t("file-transfer-workspace.noFileConnectionsAvailableYet")}</strong><p>{t("file-transfer-workspace.createAnFtpFtpsConnectionOrAddAnSsh")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>{t("file-transfer-workspace.newFtpConnection")}</button></div>
-        : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map((pane, index) => {
-          const destination = active.panes.length > 1 ? active.panes[(index + 1) % active.panes.length] : undefined
-          return <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} {...destination === undefined ? {} : { destination }} onManageConnections={() => setConnectionsOpen(true)} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onTransfer={(paths, target) => { void transfer(pane.endpointId, pane.path, paths, target.endpointId, target.path) }} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />
-        })}</div>}
+        : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map(pane => <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} onManageConnections={() => setConnectionsOpen(true)} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />)}</div>}
       <div className="dsh-ssh-transfer-queues">
-      <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={setConflictJob} />
+      <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={openConflict} />
       </div>
     </section>
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
     {accessOpen && <FileAccessDialog endpoints={endpoints} access={access} onClose={() => setAccessOpen(false)} />}
-    {conflictJob && <ConflictDialog job={conflictJob} onClose={() => setConflictJob(undefined)} onRetry={async conflictPolicy => { try { const next = await startFileTransfer({ ...conflictJob.request, conflictPolicy }); setJobs(current => [next, ...current]); setConflictJob(undefined) } catch (reason) { setError(errorMessage(reason)) } }} />}
+    {conflictJob && <ConflictDialog job={conflictJob} onClose={() => setConflictJob(undefined)} onRetry={retryConflict} />}
   </div>
 }
 
-function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRevision, onChange, onTransfer, onExternalDrop, onDragSourceChange, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; destination?: PaneState; dragSource?: TransferDragSource | undefined; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onTransfer(paths: string[], destination: PaneState): void; onExternalDrop(source: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void; onManageConnections(): void }): JSX.Element {
+function FileTransferPane({ pane, endpoints, dragSource, refreshRevision, onChange, onExternalDrop, onDragSourceChange, onManageConnections }: { pane: PaneState; endpoints: FileEndpointView[]; dragSource?: TransferDragSource | undefined; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onExternalDrop(source: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void; onManageConnections(): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const [openedFile, setOpenedFile] = useState<SftpEntryView>()
   const uploadInput = useRef<HTMLInputElement>(null)
@@ -240,7 +263,7 @@ function FileTransferPane({ pane, endpoints, destination, dragSource, refreshRev
       </div>
       <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">{t("file-transfer-workspace.readingDirectory")}</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>{t("commands-panel.retry")}</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">{t("file-transfer-workspace.thisDirectoryIsEmpty")}</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * FILE_ROW_HEIGHT}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} paneId={pane.id} endpointId={endpoint.id} sourceDirectory={view?.path ?? pane.path} dragSource={dragSource} dropTarget={directoryDropTarget === entry.path} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * FILE_ROW_HEIGHT}px)` } } : {}} onDelete={() => setDeleteTarget([entry])} onDirectoryTarget={target => { setDragOver(false); setDirectoryDropTarget(target) }} onDropIntoDirectory={(payload, target) => { setDirectoryDropTarget(undefined); onDragSourceChange(undefined); onExternalDrop(payload, target) }} onDragSourceChange={onDragSourceChange} onSelect={additive => select(entry, additive)} onOpen={() => { void openEntry(entry.path) }} />)}</div>}</div>
     </div>
-    <footer><span>{selected.length > 0 ? t("file-transfer-workspace.selectedItems", [selected.length]) : t("file-transfer-workspace.items", [view?.entries.length ?? 0])}</span>{destination !== undefined && <span className="dsh-ssh-file-pane-actions"><button type="button" data-ssh-interactive="control" className="dsh-ssh-transfer-to-button" disabled={selected.length === 0 || !destination.endpointId || loading} onClick={() => { if (destination.endpointId) onTransfer(selected, destination) }}>{t("file-transfer-workspace.sendToNextPane")} <span aria-hidden="true">→</span></button></span>}</footer>
+    <footer><span>{selected.length > 0 ? t("file-transfer-workspace.selectedItems", [selected.length]) : t("file-transfer-workspace.items", [view?.entries.length ?? 0])}</span></footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>{dragSource?.endpointId === pane.endpointId ? t("file-transfer-workspace.moveToThisDirectory") : t("file-transfer-workspace.copyToThisDirectory")}</strong><span>{view?.path ?? pane.path}</span></div>}
     {openedFile !== undefined && <Dialog variant="confirmation" className="dsh-ssh-file-download-dialog" title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><div className="dsh-ssh-dialog-actions"><a onClick={trackDownloadClick} className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path)} download><DownloadGlyph /><span>{t("file-transfer-workspace.download")}</span></a></div></Dialog>}
     {deleteTarget !== undefined && <FileEntryDeleteDialog locationName={endpoint.name} locationKind="remote" entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
@@ -308,7 +331,7 @@ function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: Transf
       if (item.kind === 'browser') return <BrowserTransferTask key={'browser-' + item.job.id} job={item.job} />
       const job = item.job
       const progress = job.totalBytes > 0 ? Math.min(100, job.transferredBytes / job.totalBytes * 100) : job.state === 'completed' ? 100 : 0
-      return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label={t("file-transfer-workspace.cancelTransfer")} onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : job.state === 'failed' && job.error?.includes('destination already contains') ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>{t("file-transfer-workspace.handle")}</button> : null}</article>
+      return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label={t("file-transfer-workspace.cancelTransfer")} onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : isTransferConflict(job) ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>{t("file-transfer-workspace.handle")}</button> : null}</article>
     })}
   </TransferTaskList>
 }
@@ -404,6 +427,7 @@ function protocolShort(protocol: FileEndpointView['protocol']): string { return 
 function directoryKey(endpointId: string, value: string): string { return JSON.stringify([endpointId, value.replaceAll('\\', '/').replace(/\/+$/, '') || '/']) }
 function canDropIntoPane(source: TransferDragSource | undefined, pane: PaneState): boolean { return source === undefined || (source.paneId !== pane.id && !isSameRemoteTransferLocation(source, { endpointId: pane.endpointId, directory: pane.path })) }
 function isFinished(state: TransferJobView['state']): boolean { return state === 'completed' || state === 'failed' || state === 'cancelled' }
+function isTransferConflict(job: TransferJobView): boolean { return job.state === 'failed' && job.error?.includes('destination already contains') === true }
 function formatBytes(value: number): string { if (value < 1024) return `${value} B`; if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`; if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`; return `${(value / 1024 ** 3).toFixed(2)} GB` }
 function jobLabel(job: TransferJobView, progress: number): string { if (job.state === 'queued') return t("file-transfer-workspace.waitingToTransfer"); if (job.state === 'scanning') return t("file-transfer-workspace.scanningDirectories"); if (job.state === 'transferring') { const seconds = Math.max(1, (Date.now() - (job.startedAt ?? Date.now())) / 1000); const speed = job.transferredBytes / seconds; const remaining = speed > 0 ? Math.max(0, (job.totalBytes - job.transferredBytes) / speed) : 0; return `${progress.toFixed(0)}% · ${formatBytes(speed)}/s${remaining > 1 ? t("file-transfer-workspace.expirySuffix", [formatDuration(remaining)]) : ''}` } if (job.state === 'completed') return t("file-transfer-workspace.completedFiles", [job.completedFiles, job.skippedFiles ? t("file-transfer-workspace.skipped", [job.skippedFiles]) : '']); if (job.state === 'cancelled') return t("file-transfer-workspace.cancelled"); return t("file-transfer-workspace.transferFailed") }
 function jobTimeLabel(job: TransferJobView): string {

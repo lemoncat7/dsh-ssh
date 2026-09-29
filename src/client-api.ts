@@ -144,6 +144,7 @@ export function moveFileEndpointEntries(request: { paneId: string; endpointId: s
 export function loadTransferJobs(): Promise<TransferJobView[]> { return api('/file-transfer/jobs') }
 export function startFileTransfer(request: TransferJobView['request']): Promise<TransferJobView> { return api('/file-transfer/jobs', { method: 'POST', body: JSON.stringify(request) }) }
 export function cancelFileTransfer(jobId: string): Promise<void> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' }) }
+export function dismissFileTransferJob(jobId: string): Promise<void> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}/history`, { method: 'DELETE' }) }
 export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vault') }
 export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }
