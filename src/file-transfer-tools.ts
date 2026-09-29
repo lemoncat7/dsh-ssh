@@ -8,6 +8,7 @@ import { RemoteFileSystems } from './remote-file-systems.js'
 import { SshStore } from './store.js'
 import { SessionFileDownloads } from './session-file-download.js'
 import { SessionFileUploads } from './session-file-upload.js'
+import { canTransferFiles, requiresFileApproval } from './file-access-policy.js'
 
 const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'file_transfer_start', 'file_transfer_status', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
 const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
@@ -21,7 +22,10 @@ export function registerFileTransferTools(ctx: Context, store: SshStore, files: 
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
     if (exec.name !== 'file_transfer_start' && exec.name !== 'file_download_to_local' && exec.name !== 'file_upload_from_local') return next()
     const injection = exec.agent === undefined ? undefined : store.injection(exec.agent.session.id)
-    if (injection?.requireFileApproval !== true) return next()
+    if (!injection) return next()
+    const args = exec.arguments as Record<string, unknown> | undefined
+    const ids = [args?.endpointId, args?.sourceEndpointId, args?.destinationEndpointId].filter((id): id is string => typeof id === 'string')
+    if (ids.length ? !ids.some(id => requiresFileApproval(injection, id)) : injection.requireFileApproval !== true) return next()
     return { kind: 'ask', reason: exec.name === 'file_download_to_local' ? 'Download an authorized remote file into the current DSH session directory.' : exec.name === 'file_upload_from_local' ? 'Upload a file from the current DSH session directory to an authorized remote endpoint.' : 'The conversation requested a remote file transfer between authorized endpoints.' }
   })
   const disposeVisibility = installVisibility(ctx, store)
@@ -69,7 +73,12 @@ function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDef
 function endpointListTool(store: SshStore, files: RemoteFileSystems): ToolDefinition {
   return tool('file_endpoint_list', 'List remote file endpoints explicitly authorized for this DSH conversation. Credentials and unauthorized endpoints are never returned.', {}, async (_raw, exec) => {
     const injection = requireFileInjection(store, exec)
-    return json({ permission: injection.filePermission, allowLocalUpload: injection.filePermission === 'transfer', allowLocalDownload: injection.filePermission === 'transfer', endpoints: injection.fileEndpointIds.map(id => files.endpoint(id)).filter(Boolean) })
+    const endpoints = injection.fileEndpointIds.flatMap(id => {
+      const endpoint = files.endpoint(id)
+      return endpoint ? [{ ...endpoint, permission: canTransferFiles(injection, id) ? 'transfer' : 'browse', requireFileApproval: requiresFileApproval(injection, id) }] : []
+    })
+    const transfer = endpoints.some(endpoint => endpoint.permission === 'transfer')
+    return json({ permission: endpoints.every(endpoint => endpoint.permission === 'transfer') ? 'transfer' : transfer ? 'mixed' : 'browse', allowLocalUpload: transfer, allowLocalDownload: transfer, endpoints })
   }, true)
 }
 
@@ -120,7 +129,7 @@ function transferCancelTool(store: SshStore, transfers: FileTransferManager): To
     jobId: { type: 'string', required: true },
   }, async (raw, exec) => {
     const injection = requireFileInjection(store, exec)
-    if (injection.filePermission !== 'transfer') throw new Error('This session only permits remote file browsing')
+    if (!injection.fileEndpointIds.some(id => canTransferFiles(injection, id))) throw new Error('This session only permits remote file browsing')
     return json({ cancelled: transfers.cancel(text(object(raw).jobId, 'jobId', 200), injection.sessionId) })
   })
 }
@@ -144,7 +153,7 @@ function requireFileInjection(store: SshStore, exec: ToolRunContext) {
 function requireEndpoint(store: SshStore, exec: ToolRunContext, endpointId: string, transfer: boolean) {
   const injection = requireFileInjection(store, exec)
   if (!injection.fileEndpointIds.includes(endpointId)) throw new Error('The requested file endpoint is not authorized for this DSH session')
-  if (transfer && injection.filePermission !== 'transfer') throw new Error('This session only permits remote file browsing')
+  if (transfer && !canTransferFiles(injection, endpointId)) throw new Error('This session only permits remote file browsing for this endpoint')
   if (exec.agent === undefined) throw new Error('Remote file tools require an owning agent')
   return exec.agent
 }
@@ -165,10 +174,10 @@ function installVisibility(ctx: Context, store: SshStore): () => void {
 
 function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStore['injection']>): void {
   if (injection === undefined || (injection.fileEndpointIds ?? []).length === 0) { assembly.tools = assembly.tools.filter(schema => !FILE_TOOL_NAMES.has(schema.name)); return }
-  if (injection.filePermission === 'browse') assembly.tools = assembly.tools.filter(schema => !TRANSFER_TOOL_NAMES.has(schema.name))
+  if (!injection.fileEndpointIds.some(id => canTransferFiles(injection, id))) assembly.tools = assembly.tools.filter(schema => !TRANSFER_TOOL_NAMES.has(schema.name))
   assembly.contexts.push({
     name: 'dsh-ssh:file-access',
-    text: `Remote file access is limited to explicitly authorized endpoints. Permission: ${injection.filePermission}.
+    text: `Remote file access is limited to authorized endpoints. Mounted SSH hosts automatically authorize their SFTP endpoints for browsing and transfer, with the host command-approval policy. FTP/FTPS permission: ${injection.filePermission}. Use file_endpoint_list for each endpoint's effective permission; do not apply SFTP permissions to FTP endpoints.
 For any file listing or transfer request, use file_endpoint_list, file_directory_list, and the available file_transfer_* tools before considering SSH commands. Never guess endpoint ids or paths.
 For downloading a remote file for this conversation, use file_download_to_local. It defaults to the current DSH session directory; report its returned localPath. Do not invent a sandbox URL or claim it was saved to the browser's Downloads folder.
 Transfer permission includes file_upload_from_local and file_download_to_local within the current session directory. Endpoint restrictions and transfer approval still apply. Browser computer uploads must be selected by the user in 文件传输.

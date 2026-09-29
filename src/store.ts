@@ -4,6 +4,7 @@ import { dirname } from 'node:path'
 import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
 import { mountedProjects } from './project-mounts.js'
 import { parseGroupProxy } from './group-proxy.js'
+import { fileEndpointIds } from './file-access-policy.js'
 
 export class SshStore {
   private revision = randomBytes(16).toString('hex')
@@ -44,7 +45,14 @@ export class SshStore {
   proxyEntry(id: string): ProxyEntry | undefined { return structuredClone(this.state.proxyEntries.find(entry => entry.id === id)) }
   forwards(): ForwardRule[] { return structuredClone(this.state.forwardRules) }
   forward(id: string): ForwardRule | undefined { return structuredClone(this.state.forwardRules.find(rule => rule.id === id)) }
-  injection(sessionId: string): SessionInjection | undefined { return structuredClone(this.state.injections.find(item => item.sessionId === sessionId)) }
+  injection(sessionId: string): SessionInjection | undefined {
+    const access = structuredClone(this.state.injections.find(item => item.sessionId === sessionId))
+    if (access) {
+      access.profileIds = access.profileIds.filter(id => this.state.profiles.some(profile => profile.id === id))
+      access.fileEndpointIds = fileEndpointIds(access).filter(id => !id.startsWith('ftp:') || this.state.ftpProfiles.some(profile => id === `ftp:${profile.id}`))
+    }
+    return access
+  }
   settings(): SshSettings { return structuredClone(this.state.settings) }
   commands(): NonNullable<SshState['commands']> { return structuredClone(this.state.commands ?? []) }
   groupProxies(): NonNullable<SshState['groupProxies']> { return structuredClone(this.state.groupProxies ?? []) }

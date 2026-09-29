@@ -1151,8 +1151,8 @@ export const messages = {
     "en": "Direct streaming transfers between FTP, FTPS, and SFTP"
   },
   "file-transfer-workspace.sessionAccess": {
-    "zh": "会话访问 ·",
-    "en": "Session access ·"
+    "zh": "FTP 会话访问",
+    "en": "FTP session access"
   },
   "file-transfer-workspace.ftpManager": {
     "zh": "FTP 管理",
@@ -1371,32 +1371,32 @@ export const messages = {
     "en": "Continue transfer"
   },
   "file-transfer-workspace.sessionAccess2": {
-    "zh": "会话访问",
-    "en": "Session access"
+    "zh": "FTP 会话访问",
+    "en": "FTP session access"
   },
   "file-transfer-workspace.manageTheRemoteFileConnectionsAvailableToThisSession": {
-    "zh": "单独管理当前会话可使用的远端文件连接",
-    "en": "Manage the remote file connections available to this session"
+    "zh": "这里只管理 FTP/FTPS；SFTP 随主机挂载自动授权，卸载即撤销。",
+    "en": "Manage FTP/FTPS here. SFTP access follows host mounts and is revoked on unmount."
   },
   "file-transfer-workspace.letTheCurrentSessionBrowseSelectedFtpFtpsOr": {
-    "zh": "允许当前会话浏览指定的 FTP、FTPS 或 SFTP",
-    "en": "Let the current session browse selected FTP, FTPS, or SFTP"
+    "zh": "选择当前会话可访问的 FTP/FTPS 连接",
+    "en": "Select FTP/FTPS connections available to this session"
   },
   "file-transfer-workspace.noConnectionsAvailable": {
     "zh": "没有可用连接",
     "en": "No connections available"
   },
   "file-transfer-workspace.addAnFtpInFileTransferFirstOrAdd": {
-    "zh": "请先在文件传输中添加 FTP，或在主机面板中添加 SSH 主机。",
-    "en": "Add an FTP in File Transfer first, or add an SSH host in the hosts panel."
+    "zh": "请先在文件传输中添加 FTP/FTPS。SSH 主机的 SFTP 无需在此配置。",
+    "en": "Add an FTP/FTPS connection in File Transfer. Mounted SSH hosts need no separate SFTP grant."
   },
   "file-transfer-workspace.accessPolicy": {
     "zh": "访问策略",
     "en": "Access policy"
   },
   "file-transfer-workspace.filePermissionsAreSeparateFromSshCommandAndTerminal": {
-    "zh": "文件权限与 SSH 命令、终端权限相互独立",
-    "en": "File permissions are separate from SSH command and terminal permissions"
+    "zh": "以下仅作用于 FTP/FTPS；SFTP 允许传输并沿用主机操作确认设置。",
+    "en": "These settings only affect FTP/FTPS. SFTP permits transfers and follows host command approval."
   },
   "file-transfer-workspace.fileOperationPermissions": {
     "zh": "文件操作权限",

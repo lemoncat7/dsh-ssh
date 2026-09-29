@@ -16,7 +16,7 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
   await store.update(state => {
     state.profiles.push({ id: 'host-allowed', name: 'Allowed', host: '127.0.0.1', port: 22, username: 'test', authType: 'agent', proxy: { type: 'none' }, keepAliveIntervalMs: 0, connectTimeoutMs: 5000, terminalType: 'xterm-256color', tags: [], createdAt: now, updatedAt: now })
     state.profiles.push({ id: 'host-hidden', name: 'Hidden', host: '127.0.0.2', port: 22, username: 'test', authType: 'agent', proxy: { type: 'none' }, keepAliveIntervalMs: 0, connectTimeoutMs: 5000, terminalType: 'xterm-256color', tags: [], createdAt: now, updatedAt: now })
-    state.injections.push({ sessionId: 'session-test', profileIds: [], fileEndpointIds: ['sftp:host-allowed'], filePermission: 'transfer', requireFileApproval: false, permission: 'exec', requireCommandApproval: false, workingDirectories: {}, workingProjectIds: {}, updatedAt: now })
+    state.injections.push({ sessionId: 'session-test', profileIds: ['host-allowed'], fileEndpointIds: [], filePermission: 'transfer', requireFileApproval: false, permission: 'exec', requireCommandApproval: false, workingDirectories: {}, workingProjectIds: {}, updatedAt: now })
   })
   const tools = new Map()
   let promptHandler
@@ -47,6 +47,19 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
   const fileContext = assembly.contexts.find(context => context.name === 'dsh-ssh:file-access')
   assert.match(fileContext.text, /Never start an HTTP or other file server/)
   assert.match(fileContext.text, /下载到本地/)
+  // Mounted hosts need no separate file grant or FTP transfer permission.
+  await store.update(state => { state.injections[0].filePermission = 'browse' })
+  const automatic = JSON.parse(await tools.get('file_endpoint_list').execute({}, execution))
+  assert.equal(automatic.endpoints[0].permission, 'transfer')
+  const visible = { tools: [...tools.values()].map(tool => ({ name: tool.name })), contexts: [] }
+  await promptHandler(visible, {}, async () => visible)
+  assert.ok(visible.tools.some(tool => tool.name === 'file_download_to_local'))
+  const reopened = await SshStore.open(join(directory, 'state.json'), store.settings())
+  assert.deepEqual(reopened.injection('session-test').fileEndpointIds, ['sftp:host-allowed'])
+  // A stale SFTP grant from an old client must not survive unmounting.
+  await store.update(state => { state.injections[0].profileIds = []; state.injections[0].fileEndpointIds = ['sftp:host-allowed'] })
+  await assert.rejects(tools.get('file_endpoint_list').execute({}, execution), /No remote file endpoint/)
+  await assert.rejects(tools.get('file_transfer_start').execute({ sourceEndpointId: 'sftp:host-allowed', sourcePaths: ['/a'], destinationEndpointId: 'sftp:host-allowed', destinationDirectory: '/b' }, execution), /No remote file endpoint/)
 })
 
 test('local download tool defaults to owning session cwd and follows approval, visibility and execution permissions', async t => {
@@ -54,14 +67,14 @@ test('local download tool defaults to owning session cwd and follows approval, v
   t.after(() => rm(root, { recursive: true, force: true }))
   let permission = 'transfer', enabled = true, approval = true, localDownload = true, connected = 0
   const store = { injection(id) { return id === 'owner' && enabled ? {
-    sessionId: id, filePermission: permission, fileEndpointIds: ['sftp:allowed'], requireFileApproval: approval,
+    sessionId: id, filePermission: permission, fileEndpointIds: ['ftp:allowed'], requireFileApproval: approval,
     allowLocalDownload: localDownload,
   } : undefined } }
   const tools = new Map(), hooks = new Map()
   let assemble
   const agent = { session: { id: 'owner', header: { cwd: root } }, ctx: { on(event, handler) { assemble = handler; return () => {} } } }
   const files = { async connect(id) {
-    connected++; assert.equal(id, 'sftp:allowed')
+    connected++; assert.equal(id, 'ftp:allowed')
     return { close() {},
       async stat() { return { kind: 'file', path: '/report.txt', name: 'report.txt', size: 2 } },
       async download(_path, target, signal) { await pipeline(Readable.from(['ok']), target, { signal }) },
@@ -72,7 +85,7 @@ test('local download tool defaults to owning session cwd and follows approval, v
   t.after(dispose)
   const exec = { agent, signal: new AbortController().signal }
   const download = tools.get('file_download_to_local')
-  const args = { endpointId: 'sftp:allowed', remotePath: '/report.txt' }
+  const args = { endpointId: 'ftp:allowed', remotePath: '/report.txt' }
   localDownload = false
   const denied = { tools: [...tools.values()].map(t => ({ name: t.name })), contexts: [] }
   await assemble(denied, {}, async () => denied)
@@ -82,7 +95,7 @@ test('local download tool defaults to owning session cwd and follows approval, v
   assert.equal((await hooks.get('tools/pre-execute')({ name: download.name, agent }, async () => 'continue')).kind, 'ask')
   approval = false
   assert.equal(await hooks.get('tools/pre-execute')({ name: download.name, agent }, async () => 'continue'), 'continue')
-  await assert.rejects(download.execute({ ...args, endpointId: 'sftp:other' }, exec), /not authorized/)
+  await assert.rejects(download.execute({ ...args, endpointId: 'ftp:other' }, exec), /not authorized/)
   const result = JSON.parse(await download.execute(args, exec))
   assert.equal(result.state, 'completed'); assert.equal(result.localPath, join(root, 'report.txt'))
   assert.equal(await readFile(result.localPath, 'utf8'), 'ok'); assert.equal(connected, 1)

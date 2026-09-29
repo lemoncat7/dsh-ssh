@@ -606,7 +606,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const revoked = previous?.profileIds.filter(profileId => !profileIds.includes(profileId)) ?? []
       if (permission !== 'terminal') await runtime.aiTerminals.closeOwner(sessionId)
       else await Promise.all(revoked.map(profileId => runtime.aiTerminals.closeProfile(sessionId, profileId)))
-      return sendJson(res, 200, injection)
+      return sendJson(res, 200, runtime.store.injection(sessionId))
     }
     if (sessionId !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
