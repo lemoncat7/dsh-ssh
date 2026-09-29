@@ -5,3 +5,8 @@ export function currentSession<K extends string>(state: {
 }): K | undefined {
   return (Object.entries(state.byId ?? {}).find(([, row]) => ((row as { retainedBy?: { mainView?: number } } | undefined)?.retainedBy?.mainView ?? 0) > 0)?.[0] as K | undefined) ?? state.current
 }
+
+/** Async access reads belong to one session; never reuse them after navigation. */
+export function canSubscribeActivity(sessionId: string | undefined, injection: { sessionId: string; permission: string } | null): boolean {
+  return sessionId !== undefined && injection?.sessionId === sessionId && injection.permission === 'terminal'
+}

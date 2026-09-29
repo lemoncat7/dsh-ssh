@@ -1,5 +1,5 @@
 import { useSshLocale } from './use-ssh-locale.js'
-import { currentSession } from './current-session.js'
+import { canSubscribeActivity, currentSession } from './current-session.js'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { t } from './i18n.js'
 import { bindHostLocale, type HostLocale } from './ssh-locale-binding.js'
@@ -278,9 +278,9 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
     ]).then(([next, access]) => { if (!disposed) { setProfiles(next); setInjection(access) } })
     return () => { disposed = true }
   }, [sessionId, remoteOpen])
-  const availableProfiles = injection === null ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
+  const availableProfiles = injection === null || injection.sessionId !== currentSessionId ? [] : injection.profileIds.map(profileId => profiles.find(profile => profile.id === profileId)).filter((profile): profile is ProfileView => profile !== undefined)
   useEffect(() => {
-    if (currentSessionId === undefined || injection?.permission !== 'terminal') return
+    if (currentSessionId === undefined || !canSubscribeActivity(currentSessionId, injection)) return
     const source = new EventSource(activityEventStreamUrl(currentSessionId))
     const opened = (raw: Event): void => {
       const event = parseTerminalOpenedEvent(raw)
@@ -293,7 +293,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
       source.removeEventListener('terminal-opened', opened)
       source.close()
     }
-  }, [currentSessionId, injection?.permission, props.activityController, props.controller])
+  }, [currentSessionId, injection?.sessionId, injection?.permission, props.activityController, props.controller])
   const openActivity = (profileId?: string): void => {
     if (currentSessionId === undefined) return
     props.controller.close()
