@@ -27,6 +27,17 @@ export const messages = {
   "browser-transfer.upload": { "zh": "上传", "en": "Upload" },
   "browser-transfer.download": { "zh": "下载", "en": "Download" },
   "group-proxy.title": { "zh": "分组代理 · {0}", "en": "Group proxy · {0}" },
+  "group-proxy.newTitle": { "zh": "新增分组", "en": "Add group" },
+  "group-proxy.editTitle": { "zh": "编辑分组 · {0}", "en": "Edit group · {0}" },
+  "group-proxy.name": { "zh": "分组名", "en": "Group name" },
+  "group-proxy.saveGroup": { "zh": "保存分组", "en": "Save group" },
+  "group-proxy.resetHosts": { "zh": "一键重置主机代理", "en": "Reset host proxies" },
+  "group-proxy.resetShort": { "zh": "重置代理", "en": "Reset proxies" },
+  "group-proxy.delete": { "zh": "删除分组", "en": "Delete group" },
+  "group-proxy.deleteConfirm": { "zh": "删除“{0}”？组内主机和固定目录会保留，主机移到未分组。分组代理会移除，原本继承它的主机下次连接将改为直连；主机独立代理不变。未保存的编辑不会保存。", "en": "Delete “{0}”? Hosts and pinned directories are retained; hosts become ungrouped. The group proxy is removed: hosts inheriting it will connect directly next time. Host proxy overrides are unchanged. Unsaved edits will be discarded." },
+  "group-proxy.resetHint": { "zh": "清除组内所有主机的独立代理，统一使用分组代理。重连后生效。", "en": "Clear all host proxy overrides in this group and inherit its proxy. Reconnect to apply." },
+  "group-proxy.resetConfirm": { "zh": "将保存当前分组设置，并把“{0}”下所有主机的代理重置为默认（使用分组代理）。若未选择分组代理，则使用直连。已有连接需重连后生效。", "en": "Save the current group settings and reset every host in “{0}” to inherit the group proxy. Without a group proxy, hosts connect directly. Reconnect existing sessions to apply." },
+  "group-proxy.confirmReset": { "zh": "保存并重置", "en": "Save and reset" },
   "group-proxy.selection": { "zh": "默认代理", "en": "Default proxy" },
   "group-proxy.hint": { "zh": "主机自身代理优先；未设置代理的主机使用本分组代理。", "en": "A host's own proxy takes priority. Hosts without one use this group proxy." },
   "group-proxy.reconnect": { "zh": "仅影响本分组 SSH 主机的新连接，不会打断现有终端。", "en": "Applies to new SSH connections in this group. Existing terminals stay connected." },
@@ -2109,6 +2120,26 @@ export const messages = {
   "remote-workspace-tree.newConnection": {
     "zh": "新建连接",
     "en": "New connection"
+  },
+  "remote-workspace-tree.addHostOrGroup": {
+    "zh": "新增主机或分组",
+    "en": "Add host or group"
+  },
+  "remote-workspace-tree.addHost": {
+    "zh": "新增主机",
+    "en": "Add host"
+  },
+  "remote-workspace-tree.addGroup": {
+    "zh": "新增分组",
+    "en": "Add group"
+  },
+  "remote-workspace-tree.hostMenuFor": {
+    "zh": "{0} 的主机操作",
+    "en": "Host actions for {0}"
+  },
+  "remote-workspace-tree.moreHostActions": {
+    "zh": "更多主机操作",
+    "en": "More host actions"
   },
   "remote-workspace-tree.searchHosts": {
     "zh": "搜索主机",

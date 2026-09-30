@@ -6,6 +6,7 @@ import { build } from 'esbuild'
 
 const { chromium } = await import(process.env.SSH_PLAYWRIGHT_MODULE ?? 'playwright')
 const root = fileURLToPath(new URL('../', import.meta.url))
+const reactPath = fileURLToPath(new URL('../node_modules/react', import.meta.url))
 const sourceFiles = (await readdir(new URL('../src/', import.meta.url))).filter(name => /\.tsx?$/.test(name))
 const sources = await Promise.all(sourceFiles.map(name => readFile(new URL(`../src/${name}`, import.meta.url), 'utf8')))
 const icons = [...new Set(sources.flatMap(text => text.match(/\bIcon[A-Za-z0-9_]+\b/g) ?? []))]
@@ -52,12 +53,13 @@ const bundle = await build({
       if(mode==='group')return <GroupProxyEditor name='办公' proxies={[{id:'proxy-one',name:'临时办公',proxyType:'socks5'}]} onClose={()=>setMode('hosts')} onSaved={()=>setMode('hosts')}/>;
       if(mode==='terminal')return <TerminalWorkspace profile={profile} path='/团队/原始目录' onConnected={noop} onDirectory={reportDirectory}/>;
       if(mode==='transfers')return <FileTransferWorkspace ftpProfiles={[]} vaultEntries={[]} proxyEntries={[]} access={access} onProfilesChanged={noop}/>;
-      if(mode==='hosts')return <RemoteWorkspaceTree profiles={[profile,{...profile,id:'two',name:'second',group:'未分组'}]} onNewProfile={noop} onSelect={noop} onProfiles={noop} onDirectory={noop}/>;
+      if(mode==='hosts')return <RemoteWorkspaceTree profiles={[profile,{...profile,id:'two',name:'second',group:'未分组'}]} groupConfigs={[{id:'target',name:'目标组',createdAt:1,updatedAt:1}]} onNewProfile={()=>{window.added='host'}} onNewGroup={()=>{window.added='group'}} onEditProfile={value=>{window.edited=value.id}} onMoveProfile={async(value,group)=>{window.moved={id:value.id,group}}} onSelect={noop} onProfiles={noop} onDirectory={noop}/>;
       return <><SuggestionInput ariaLabel={t('profile-editor.hostTags')} value={value} options={['alpha','beta','运行中']} multiple onChange={setValue}/><PasswordInput aria-label='secret' defaultValue='a-password'/></>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
   ` },
   bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic', loader: { '.css': 'empty' },
+  alias: process.env.SSH_REACT_DOM_CLIENT === undefined ? {} : { react: reactPath, 'react-dom/client': process.env.SSH_REACT_DOM_CLIENT },
   plugins: [{ name: 'test-host', setup(b) {
     b.onResolve({ filter: /^@deepseek-ai\/dsh-client-ui-primitives$/ }, () => ({ path: 'host', namespace: 'stub' }))
     b.onResolve({ filter: /terminal-transport\.js$/ }, () => ({ path: 'transport', namespace: 'stub' }))
@@ -80,6 +82,8 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 800 }, reducedMotion: 'reduce' })
     const errors=[];page.on('pageerror', error => errors.push(error.message))
     await page.goto(`http://127.0.0.1:${server.address().port}`)
+    await page.waitForTimeout(100)
+    assert.deepEqual(errors, [], 'fixture must render without page errors')
     const input = page.getByRole('combobox', { name: '主机标签' })
     await input.fill('al'); await page.getByRole('option', { name: 'alpha', exact: true }).click()
     await input.fill('alpha, be'); await page.getByRole('option', { name: 'beta', exact: true }).click()
@@ -109,19 +113,41 @@ try {
     await page.screenshot({ path: `/tmp/ssh-i18n-command-${width}.png` })
     await page.evaluate(()=>{window.changeLanguage('zh');window.mode('group')})
     await page.getByRole('combobox',{name:'默认代理'}).selectOption('proxy-one')
-    assert.ok(await page.getByRole('button',{name:'保存代理',exact:true}).evaluate(el=>el.getBoundingClientRect().right<=innerWidth),'group save action fits viewport')
+    assert.ok(await page.getByRole('button',{name:'保存分组',exact:true}).evaluate(el=>el.getBoundingClientRect().right<=innerWidth),'group save action fits viewport')
     await page.screenshot({path:'/tmp/ssh-group-proxy-'+width+'.png'})
-    await page.getByRole('button',{name:'保存代理',exact:true}).click()
-    assert.ok(await page.evaluate(()=>window.calls.some(call=>call.path.endsWith('/group-proxies')&&call.method==='PUT'&&JSON.parse(call.body).proxyId==='proxy-one')))
+    await page.getByRole('button',{name:'保存分组',exact:true}).click()
+    assert.ok(await page.evaluate(()=>window.calls.some(call=>call.path.endsWith('/group-proxies')&&call.method==='PUT'&&JSON.parse(call.body).name==='办公'&&JSON.parse(call.body).proxyId==='proxy-one')))
     await page.evaluate(() => { window.changeLanguage('zh'); window.mode('hosts') })
+    assert.equal(await page.locator('.dsh-ssh-tree-group h3 button[aria-expanded="false"]').count(), 3, 'all groups default to collapsed')
+    assert.equal(await page.locator('.dsh-ssh-tree-host-row').count(), 0)
+    await page.locator('.dsh-ssh-tree-group h3 button[aria-expanded]').first().click()
+    await page.getByRole('button',{name:'新增主机或分组',exact:true}).click()
+    assert.equal(await page.getByRole('menuitem').count(),2)
+    assert.ok(await page.locator('.dsh-ssh-tree-menu.is-header').evaluate(el=>el.getBoundingClientRect().right<=innerWidth),'add menu fits viewport')
+    await page.getByRole('menuitem',{name:'新增分组',exact:true}).click()
+    assert.equal(await page.evaluate(()=>window.added),'group')
+    await page.getByRole('button',{name:'生产 主机 的主机操作',exact:true}).click()
+    assert.equal(await page.getByRole('menuitem').count(),2)
+    assert.ok(await page.locator('.dsh-ssh-tree-menu.is-host').evaluate(el=>el.getBoundingClientRect().right<=innerWidth),'host menu fits viewport')
+    await page.screenshot({path:`/tmp/ssh-host-menu-${width}.png`})
+    await page.getByRole('menuitem',{name:'编辑主机',exact:true}).click()
+    assert.equal(await page.evaluate(()=>window.edited),'one')
+    await page.locator('.dsh-ssh-tree-host-row').first().dragTo(page.locator('.dsh-ssh-tree-group').filter({hasText:'目标组'}))
+    assert.deepEqual(await page.evaluate(()=>window.moved),{id:'one',group:'目标组'})
     const groups = page.locator('.dsh-ssh-tree-group h3 button')
     await groups.first().waitFor()
-    assert.equal(await groups.count(), 2, 'user group name must not collide with ungrouped sentinel')
+    assert.equal(await groups.count(), 3, 'empty and user-named groups remain distinct from the ungrouped sentinel')
     await groups.first().click()
     await page.evaluate(() => window.changeLanguage('en'))
     assert.equal(await groups.first().getAttribute('aria-expanded'), 'false', 'group collapse survives locale switch')
     assert.ok((await groups.first().innerText()).includes('Ungrouped'))
     assert.ok((await groups.nth(1).innerText()).includes('未分组'), 'never translate user group names')
+    if (process.env.SSH_VERIFY_HOST_GROUPS_ONLY === '1') {
+      assert.deepEqual(errors, [])
+      console.log(`PASS: ${width}px host add menu, host actions, group dialog and drag move`)
+      await page.close()
+      continue
+    }
     await page.evaluate(() => { window.changeLanguage('zh'); window.mode('transfers') })
     await page.getByRole('tab', { name: '任务 1' }).waitFor()
     const stored = await page.evaluate(() => localStorage.getItem('dsh-ssh:file-transfer:tabs:v2'))

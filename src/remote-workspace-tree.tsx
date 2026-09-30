@@ -1,10 +1,10 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import {
   IconChevronDownOutlineRegular as IconChevronDownOutline14, IconChevronRightOutlineRegular as IconChevronRightOutline14, IconEditOutlineRegular as IconEditOutline16, IconFolderCloseRegular as IconFolderClose16,
-  IconFolderOpenOutlineRegular as IconFolderOpenOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16,
+  IconEllipsisOutlineRegular as IconEllipsisOutline16, IconFolderOpenOutlineRegular as IconFolderOpenOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   createRemoteProject, deleteRemoteProject, loadRemoteProjects, updateRemoteProject,
@@ -16,6 +16,9 @@ import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
 import { mountedProjects } from './project-mounts.js'
+import type { GroupProxy } from './domain.js'
+
+const HOST_DRAG_TYPE = 'application/x-dsh-ssh-profile'
 
 export interface RemoteTarget {
   profileId: string
@@ -25,6 +28,7 @@ export interface RemoteTarget {
 
 interface RemoteWorkspaceTreeProps {
   profiles: ProfileView[]
+  groupConfigs: GroupProxy[]
   access: InjectionView | null
   accessLoading: boolean
   accessSaving: boolean
@@ -41,6 +45,9 @@ interface RemoteWorkspaceTreeProps {
   onApproval(value: boolean): void
   onCreateSession(project: RemoteProjectView, workspaceId: string): Promise<void>
   onNewProfile(): void
+  onNewGroup(): void
+  onEditProfile(profile: ProfileView): void
+  onMoveProfile(profile: ProfileView, group?: string): Promise<void>
   onProjectsChanged(): Promise<void>
   onGroupProxy?(name: string): void
 }
@@ -49,15 +56,36 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   useSshLocale()
   const panelGlow = useBorderGlowSurface<HTMLElement>()
   const [query, setQuery] = useState('')
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [projects, setProjects] = useState<Record<string, RemoteProjectView[]>>({})
   const [loadingProfile, setLoadingProfile] = useState<string>()
   const [editing, setEditing] = useState<{ profile: ProfileView; project?: RemoteProjectView }>()
   const [creatingSession, setCreatingSession] = useState<{ profile: ProfileView; project: RemoteProjectView; returnFocus: HTMLButtonElement }>()
+  const [createMenuOpen, setCreateMenuOpen] = useState(false)
+  const [hostMenu, setHostMenu] = useState<string>()
+  const [draggedProfileId, setDraggedProfileId] = useState<string>()
+  const [dropGroup, setDropGroup] = useState<string | null>(null)
+  const [movingProfileId, setMovingProfileId] = useState<string>()
   const [error, setError] = useState<string>()
   const normalized = query.trim().toLocaleLowerCase()
-  const groups = useMemo(() => groupProfiles(props.profiles.filter(profile => searchText(profile).includes(normalized))), [normalized, props.profiles])
+  const groups = useMemo(() => groupProfiles(props.profiles, props.groupConfigs, normalized), [normalized, props.groupConfigs, props.profiles])
+
+  useEffect(() => {
+    const closeMenus = (event: PointerEvent): void => {
+      if (event.target instanceof Element && event.target.closest('.dsh-ssh-tree-menu-wrap')) return
+      setCreateMenuOpen(false); setHostMenu(undefined)
+    }
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      const trigger = document.querySelector('.dsh-ssh-tree-menu')?.previousElementSibling
+      setCreateMenuOpen(false); setHostMenu(undefined)
+      if (trigger instanceof HTMLButtonElement) window.requestAnimationFrame(() => trigger.focus())
+    }
+    document.addEventListener('pointerdown', closeMenus)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => { document.removeEventListener('pointerdown', closeMenus); document.removeEventListener('keydown', closeOnEscape) }
+  }, [])
 
   const refreshProjects = async (profileId: string): Promise<void> => {
     setLoadingProfile(profileId)
@@ -78,30 +106,50 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     props.onProfiles(enabled ? current.filter(id => id !== profileId) : [...current, profileId])
     if (enabled) props.onDirectory(profileId, undefined)
   }
-  const toggleGroup = (name: string): void => setCollapsedGroups(current => {
+  const toggleGroup = (name: string): void => setExpandedGroups(current => {
     const next = new Set(current)
     if (next.has(name)) next.delete(name); else next.add(name)
     return next
   })
+  const moveProfile = async (profile: ProfileView, group: string): Promise<void> => {
+    if ((profile.group?.trim() || '') === group || movingProfileId !== undefined) return
+    setMovingProfileId(profile.id); setError(undefined)
+    try { await props.onMoveProfile(profile, group || undefined) }
+    catch (reason) { setError(message(reason)) }
+    finally { setMovingProfileId(undefined); setDraggedProfileId(undefined); setDropGroup(null) }
+  }
 
   return <aside ref={panelGlow.ref} onPointerMove={panelGlow.onPointerMove} onPointerLeave={panelGlow.onPointerLeave} className="dsh-ssh-remote-tree dsh-ssh-border-surface">
     <header className="dsh-ssh-tree-header">
       <span><strong>{t("remote-workspace-tree.hostsProjects")}</strong><small>{props.profiles.length}  {t("remote-workspace-tree.hosts")}</small></span>
-      <button type="button" className="dsh-ssh-icon-button" onClick={props.onNewProfile} aria-label={t("remote-workspace-tree.newConnection")} title={t("remote-workspace-tree.newConnection")}><IconPlusOutline16 size={16} /></button>
+      <div className="dsh-ssh-tree-menu-wrap">
+        <button type="button" className="dsh-ssh-icon-button" aria-haspopup="menu" aria-expanded={createMenuOpen} onClick={() => { setCreateMenuOpen(value => !value); setHostMenu(undefined) }} aria-label={t("remote-workspace-tree.addHostOrGroup")} title={t("remote-workspace-tree.addHostOrGroup")}><IconPlusOutline16 size={16} /></button>
+        {createMenuOpen && <div className="dsh-ssh-tree-menu is-header" role="menu" aria-label={t("remote-workspace-tree.addHostOrGroup")} onKeyDown={navigateMenu}>
+          <button type="button" role="menuitem" autoFocus onClick={() => { setCreateMenuOpen(false); props.onNewProfile() }}><IconPlusOutline16 size={14} />{t("remote-workspace-tree.addHost")}</button>
+          <button type="button" role="menuitem" onClick={() => { setCreateMenuOpen(false); props.onNewGroup() }}><IconFolderClose16 size={14} />{t("remote-workspace-tree.addGroup")}</button>
+        </div>}
+      </div>
     </header>
     <label className="dsh-ssh-search"><span className="sr-only">{t("remote-workspace-tree.searchHosts")}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t("remote-workspace-tree.searchHostsGroupsTags")} /></label>
     <div className="dsh-ssh-tree-scroll dsh-ssh-scroll-surface">
       {groups.map(group => {
-        const collapsed = collapsedGroups.has(group.name)
-        return <section className="dsh-ssh-tree-group" key={group.name} data-collapsed={collapsed}>
-        <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button>{group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.title', [group.name])} title={t('group-proxy.title', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}</h3>
+        const collapsed = !expandedGroups.has(group.name)
+        const draggedProfile = props.profiles.find(profile => profile.id === draggedProfileId)
+        const acceptsDrop = draggedProfile !== undefined && (draggedProfile.group?.trim() || '') !== group.name
+        return <section className={`dsh-ssh-tree-group${dropGroup === group.name && acceptsDrop ? ' is-drop-target' : ''}`} key={group.name} data-collapsed={collapsed}
+          onDragOver={event => { if (!acceptsDrop || !event.dataTransfer.types.includes(HOST_DRAG_TYPE)) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropGroup(group.name) }}
+          onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropGroup(current => current === group.name ? null : current) }}
+          onDrop={event => { if (!acceptsDrop || draggedProfile === undefined) return; event.preventDefault(); void moveProfile(draggedProfile, group.name) }}>
+        <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button>{group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.editTitle', [group.name])} title={t('group-proxy.editTitle', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}</h3>
         {!collapsed && group.profiles.map(profile => {
           const open = expanded.has(profile.id)
           const enabled = props.access?.profileIds.includes(profile.id) === true
           const children = projects[profile.id] ?? []
           const active = props.selected?.profileId === profile.id && props.selected.projectId === undefined
           return <div className="dsh-ssh-tree-host" key={profile.id} data-open={open}>
-            <div data-ssh-interactive="row" data-ssh-context-row className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}`}>
+            <div data-ssh-interactive="row" data-ssh-context-row draggable={movingProfileId !== profile.id} className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}${hostMenu === profile.id ? ' is-menu-open' : ''}${movingProfileId === profile.id ? ' is-moving' : ''}`}
+              onDragStart={event => { setDraggedProfileId(profile.id); setHostMenu(undefined); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(HOST_DRAG_TYPE, profile.id) }}
+              onDragEnd={() => { setDraggedProfileId(undefined); setDropGroup(null) }}>
               <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={active} aria-expanded={open} title={t("remote-workspace-tree.selectAndExpand", [profile.name])} onClick={() => selectProfile(profile.id)}>
                 <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
                 <span><strong>{profile.name}</strong><small>{profile.username}@{profile.host}</small></span>
@@ -116,7 +164,13 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                 disabled={props.access === null || props.accessLoading || props.accessSaving}
                 onClick={() => toggleProfile(profile.id)}
               >{enabled ? t("remote-workspace-tree.unmount") : t("remote-workspace-tree.mount")}</button>
-              <button type="button" className="dsh-ssh-tree-add" aria-label={t("remote-workspace-tree.addPinnedDirectoryFor", [profile.name])} title={t("remote-workspace-tree.addPinnedDirectory")} onClick={() => setEditing({ profile })}><IconPlusOutline16 size={14} /></button>
+              <div className="dsh-ssh-tree-menu-wrap is-host">
+                <button type="button" draggable={false} className="dsh-ssh-tree-more" aria-haspopup="menu" aria-expanded={hostMenu === profile.id} aria-label={t("remote-workspace-tree.hostMenuFor", [profile.name])} title={t("remote-workspace-tree.moreHostActions")} onClick={() => { setHostMenu(current => current === profile.id ? undefined : profile.id); setCreateMenuOpen(false) }}><IconEllipsisOutline16 size={15} /></button>
+                {hostMenu === profile.id && <div className="dsh-ssh-tree-menu is-host" role="menu" aria-label={t("remote-workspace-tree.hostMenuFor", [profile.name])} onKeyDown={navigateMenu}>
+                  <button type="button" role="menuitem" autoFocus onClick={() => { setHostMenu(undefined); props.onEditProfile(profile) }}><IconEditOutline16 size={14} />{t("client.editHost")}</button>
+                  <button type="button" role="menuitem" onClick={() => { setHostMenu(undefined); setEditing({ profile }) }}><IconPlusOutline16 size={14} />{t("remote-workspace-tree.addPinnedDirectory")}</button>
+                </div>}
+              </div>
             </div>
             {open && <div className="dsh-ssh-tree-branches">
               {loadingProfile === profile.id && projects[profile.id] === undefined ? <p className="dsh-ssh-tree-state">{t("remote-workspace-tree.readingPinnedDirectories")}</p>
@@ -195,15 +249,30 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
   </Dialog>
 }
 
-function groupProfiles(profiles: ProfileView[]): Array<{ name: string; profiles: ProfileView[] }> {
+function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], query: string): Array<{ name: string; profiles: ProfileView[] }> {
   const result = new Map<string, ProfileView[]>()
+  if (profiles.length > 0) result.set('', [])
   for (const profile of profiles) {
     const name = profile.group?.trim() || ''
     const current = result.get(name)
     if (current === undefined) result.set(name, [profile]); else current.push(profile)
   }
-  return [...result].map(([name, grouped]) => ({ name, profiles: grouped }))
+  for (const group of groupConfigs) if (!result.has(group.name)) result.set(group.name, [])
+  return [...result]
+    .map(([name, grouped]) => ({ name, profiles: grouped }))
+    .filter(group => !query || group.name.toLocaleLowerCase().includes(query) || group.profiles.some(profile => searchText(profile).includes(query)))
 }
 
 function searchText(profile: ProfileView): string { return `${profile.name} ${profile.group ?? ''} ${profile.host} ${profile.username} ${profile.tags.join(' ')}`.toLocaleLowerCase() }
+function navigateMenu(event: React.KeyboardEvent<HTMLDivElement>): void {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+  if (items.length === 0) return
+  const current = items.indexOf(document.activeElement as HTMLButtonElement)
+  const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+    : event.key === 'ArrowDown' ? (current + 1 + items.length) % items.length
+      : (current - 1 + items.length) % items.length
+  items[index]?.focus()
+}
 function message(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason) }

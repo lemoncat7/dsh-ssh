@@ -123,6 +123,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const profilesRead = createSharedRead(() => api<ProfileView[]>('/profiles'))
 export function loadProfiles(): Promise<ProfileView[]> { return profilesRead.read() }
+export function moveProfileToGroup(profileId: string, group?: string): Promise<ProfileView> {
+  return api(`/profiles/${encodeURIComponent(profileId)}/group`, { method: 'PUT', body: JSON.stringify({ group: group ?? null }) })
+}
 export function loadFtpProfiles(): Promise<FtpProfileView[]> { return api('/ftp-profiles') }
 export function loadFileEndpoints(): Promise<FileEndpointView[]> { return api('/file-transfer/endpoints') }
 export function inspectFileEndpointEntry(paneId: string, endpointId: string, path: string): Promise<SftpEntryView> {

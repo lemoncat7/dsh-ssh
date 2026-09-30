@@ -50,7 +50,7 @@ export function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }:
   </Dialog>
 }
 
-export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, onClose, onSaved }: { profile?: ProfileView | undefined; profiles: ProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onClose(): void; onSaved(): void }): JSX.Element {
+export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, proxyEntries, onClose, onSaved }: { profile?: ProfileView | undefined; profiles: ProfileView[]; groups?: string[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; onClose(): void; onSaved(): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const [form, setForm] = useState(() => ({
     name: profile?.name ?? '',
@@ -93,7 +93,7 @@ export function ProfileEditor({ profile, profiles, vaultEntries, proxyEntries, o
     },
   })
   const selectedCredential = vaultEntries.find(entry => entry.id === form.credentialId)
-  const groupOptions = useMemo(() => profiles.flatMap(item => item.group === undefined ? [] : [item.group]), [profiles, sshLocale])
+  const groupOptions = useMemo(() => [...new Set([...groups, ...profiles.flatMap(item => item.group === undefined ? [] : [item.group])])], [groups, profiles, sshLocale])
   const tagOptions = useMemo(() => profiles.flatMap(item => item.tags), [profiles, sshLocale])
   const duplicateProfile = useMemo(() => findDuplicateProfileEndpoint(profiles, { host: form.host, port: Number(form.port) }, profile?.id), [form.host, form.port, profile?.id, profiles, sshLocale])
   const endpointValidationMessage = endpointTouched

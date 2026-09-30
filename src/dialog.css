@@ -65,6 +65,24 @@
   line-height: 1.4;
 }
 .dsh-ssh-dialog > .dsh-ssh-dialog-actions { padding: 16px var(--ssh-dialog-inset) var(--ssh-dialog-inset); }
+.dsh-ssh-dialog .dsh-ssh-dialog-actions > :is(.dsh-ssh-group-reset-link, .dsh-ssh-group-delete-link) {
+  flex: 0 0 auto;
+  width: auto;
+  margin-inline-end: auto;
+  padding-inline: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ssh-text-muted);
+  font-weight: 400;
+  cursor: pointer;
+}
+.dsh-ssh-group-reset-link:hover:not(:disabled) { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.dsh-ssh-group-reset-link:disabled { opacity: .45; cursor: not-allowed; }
+.dsh-ssh-group-reset-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.dsh-ssh-dialog .dsh-ssh-dialog-actions > .dsh-ssh-group-delete-link { margin-inline-end: 0; color: var(--ssh-danger, #b42318); }
+.dsh-ssh-group-delete-link:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+.dsh-ssh-group-delete-link:disabled { opacity: .45; cursor: not-allowed; }
+.dsh-ssh-group-delete-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .dsh-ssh-file-download-dialog .dsh-ssh-dialog-actions > a { min-height: 44px; }
 .dsh-ssh-dialog.dsh-ssh-file-access-dialog { grid-template-rows: auto minmax(0, 1fr) auto; }
 

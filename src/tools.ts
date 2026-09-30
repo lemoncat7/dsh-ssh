@@ -12,6 +12,7 @@ import { AiTerminalManager } from './terminal.js'
 import { registerFileTransferTools } from './file-transfer-tools.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager } from './file-transfer-manager.js'
+import { registerTemporaryAccess } from './temporary-access.js'
 
 const textOutput = {
   schema: { type: 'string' as const },
@@ -36,6 +37,7 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
     forwardStopTool(store, forwards),
   ]
   const disposers = tools.map(tool => ctx.tools.register(tool))
+  disposers.push(registerTemporaryAccess(ctx, store, connector))
 
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
     if (!APPROVAL_TOOLS.has(exec.name)) return next()

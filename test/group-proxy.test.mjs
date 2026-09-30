@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { effectiveHostProxy, groupProxyId, parseGroupProxy, saveGroupProxy } from '../lib/group-proxy.js'
+import { deleteGroup, effectiveHostProxy, groupProxyId, moveProfileToGroup, parseGroupProxy, saveGroupProxy } from '../lib/group-proxy.js'
 import { SshStore } from '../lib/store.js'
 import { SshConnector } from '../lib/connector.js'
 import { createPortableSnapshot, parsePortableSnapshot, mergePortableSnapshots } from '../lib/gist-sync.js'
@@ -42,4 +42,54 @@ test('group proxies persist, sync, prevent referenced proxy deletion, and can be
   assert.equal(store.groupProxies()[0].proxyId, undefined)
   await assert.rejects(saveGroupProxy(store, { name: '办公', proxyId: 'missing' }), /missing proxy/)
   assert.throws(() => parseGroupProxy({ ...store.groupProxies()[0], id: 'wrong' }), /Invalid/)
+})
+
+test('empty groups can be created, renamed with their hosts, and receive dragged profiles', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'ssh-group-move-test-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const path = join(directory, 'state.json'), defaults = { allowPublicBind: false, defaultCommandTimeoutMs: 30000, maxOutputChars: 32000 }
+  const store = await SshStore.open(path, defaults)
+  await store.update(state => {
+    state.profiles = [{ id: 'host', name: 'host', group: '办公', host: 'example.test', port: 22, username: 'user', authType: 'agent', proxy: { type: 'none' }, tags: [], keepAliveIntervalMs: 0, connectTimeoutMs: 5000, terminalType: 'xterm', createdAt: 1, updatedAt: 1 }]
+  })
+  await saveGroupProxy(store, { name: '备用', proxyId: '' })
+  assert.deepEqual(store.groupProxies().map(group => group.name), ['备用'])
+  await moveProfileToGroup(store, 'host', { group: '备用' })
+  assert.equal(store.profiles()[0].group, '备用')
+  await saveGroupProxy(store, { previousName: '备用', name: '生产', proxyId: '' })
+  assert.equal(store.profiles()[0].group, '生产')
+  assert.equal(store.groupProxies()[0].name, '生产')
+  await moveProfileToGroup(store, 'host', { group: null })
+  assert.equal(store.profiles()[0].group, undefined)
+  await assert.rejects(moveProfileToGroup(store, 'host', { group: '不存在' }), /no longer exists/)
+  await moveProfileToGroup(store, 'host', { group: '生产' })
+  await store.update(state => {
+    state.profiles[0].proxy = { type: 'http', host: 'proxy.test', port: 8080 }
+    state.profiles.push({ ...state.profiles[0], id: 'outside', group: '其他' })
+  })
+  const outside = store.profile('outside')
+  await saveGroupProxy(store, { previousName: '生产', name: '生产', proxyId: '' })
+  assert.equal(store.profile('host').proxy.type, 'http', 'ordinary save preserves host overrides')
+  await assert.rejects(saveGroupProxy(store, { previousName: '生产', name: '生产', proxyId: 'missing', resetHostProxies: true }), /missing proxy/)
+  assert.equal(store.profile('host').proxy.type, 'http', 'failed save is atomic')
+  await saveGroupProxy(store, { previousName: '生产', name: '新生产', proxyId: '', resetHostProxies: true })
+  assert.deepEqual(store.profile('host').proxy, { type: 'none' })
+  assert.equal(store.profile('host').group, '新生产')
+  assert.deepEqual(store.profile('outside'), outside, 'other groups are untouched')
+  assert.deepEqual((await SshStore.open(path, defaults)).profile('host').proxy, { type: 'none' })
+  const beforeDelete = store.profile('host')
+  await deleteGroup(store, { name: '新生产' })
+  assert.equal(store.profile('host').group, undefined)
+  assert.equal(store.profiles().length, 2)
+  assert.deepEqual(store.profile('host').proxy, beforeDelete.proxy)
+  assert.deepEqual(store.profile('outside'), outside)
+  assert.equal(store.groupProxies().some(group => group.name === '新生产'), false)
+  assert.equal((await SshStore.open(path, defaults)).profile('host').group, undefined)
+  await assert.rejects(deleteGroup(store, { name: '新生产' }), /no longer exists/)
+  await saveGroupProxy(store, { name: '空组', proxyId: '' })
+  await deleteGroup(store, { name: '空组' })
+  assert.equal(store.groupProxies().some(group => group.name === '空组'), false)
+  await deleteGroup(store, { name: '其他' })
+  assert.equal(store.profile('outside').group, undefined)
+  assert.deepEqual(store.profile('outside').proxy, outside.proxy)
 })

@@ -34,7 +34,7 @@ import dialogCss from './dialog.css'
 import remoteWorkspaceCss from './remote-workspace-tree.css'
 import hostWorkbenchCss from './host-workbench.css'
 import {
-  activityEventStreamUrl, api, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries,
+  activityEventStreamUrl, api, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries, moveProfileToGroup,
   profileAddress,
   type ForwardStatus, type ForwardView, type FtpProfileView, type GistSyncView, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
@@ -344,7 +344,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [vaultEntries, setVaultEntries] = useState<VaultEntryView[]>([])
   const [proxyEntries, setProxyEntries] = useState<ProxyEntryView[]>([])
   const [groupProxies, setGroupProxies] = useState<GroupProxy[]>([])
-  const [editingGroup, setEditingGroup] = useState<string>()
+  const [editingGroup, setEditingGroup] = useState<string | null>(null)
   const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
   const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'commands'>('workspace')
@@ -422,6 +422,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       navigationIcon={<IconDataOutline16 size={15} />}
       navigation={controls => <RemoteWorkspaceTree
         profiles={profiles}
+        groupConfigs={groupProxies}
         onGroupProxy={setEditingGroup}
         access={access.value}
         accessLoading={access.loading}
@@ -446,10 +447,13 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
           props.controller.close()
         }}
         onNewProfile={() => { setEditing('new'); controls.closePanel() }}
+        onNewGroup={() => setEditingGroup('')}
+        onEditProfile={profile => { setEditing(profile); controls.closePanel() }}
+        onMoveProfile={async (profile, group) => { await moveProfileToGroup(profile.id, group); await refresh() }}
       />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
-        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onEdit={() => setEditing(profile)} onDelete={() => setDeleting(profile)} closeAllRequest={closeAllRequest} totalTerminals={totalTerminals} onCloseAll={() => setClosingAllTerminals(true)} reportTerminalCount={reportTerminalCount} /></div>)}
+        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onDelete={() => setDeleting(profile)} closeAllRequest={closeAllRequest} totalTerminals={totalTerminals} onCloseAll={() => setClosingAllTerminals(true)} reportTerminalCount={reportTerminalCount} /></div>)}
         {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? null : view === 'commands' ? <CommandsPanel />
           : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
@@ -460,13 +464,13 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       </section>
     </AdaptiveWorkspace>
 {closingAllTerminals && <Dialog variant="confirmation" title={t("client.closeTerminalsOnAllHosts")} subtitle={t("client.thisClosesAllTerminalTabsInThisWorkspaceIncluding", [totalTerminals])} onClose={() => setClosingAllTerminals(false)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosingAllTerminals(false)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => { setCloseAllRequest(value => value + 1); setClosingAllTerminals(false) }}>{t("client.closeAll")}</button></div></Dialog>}
-    {editingGroup !== undefined && <GroupProxyEditor key={editingGroup} name={editingGroup} value={groupProxies.find(group => group.name === editingGroup)} proxies={proxyEntries} onClose={() => setEditingGroup(undefined)} onSaved={() => { setEditingGroup(undefined); setRefreshKey(value => value + 1) }} />}
-    {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
+    {editingGroup !== null && <GroupProxyEditor key={editingGroup || 'new-group'} name={editingGroup || undefined} value={groupProxies.find(group => group.name === editingGroup)} proxies={proxyEntries} onClose={() => setEditingGroup(null)} onSaved={() => { setEditingGroup(null); setRefreshKey(value => value + 1) }} />}
+    {editing !== undefined && <ProfileEditor profile={editing === 'new' ? undefined : editing} profiles={profiles} groups={groupProxies.map(group => group.name)} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); setRefreshKey(value => value + 1) }} />}
     {deleting !== undefined && <ProfileDeleteDialog profile={deleting} dependents={profiles.filter(profile => profile.id !== deleting.id && profile.proxy.type === 'jump' && profile.proxy.profileIds.includes(deleting.id))} onClose={() => setDeleting(undefined)} onDeleted={() => { setDeleting(undefined); setEditing(undefined); setRefreshKey(value => value + 1) }} />}
   </>
 }
 
-function HostWorkbench({ profile, initialPath, active, onEdit, onDelete, closeAllRequest, totalTerminals, onCloseAll, reportTerminalCount }: { profile: ProfileView; initialPath: string; active: boolean; onEdit(): void; onDelete(): void; closeAllRequest: number; totalTerminals: number; onCloseAll(): void; reportTerminalCount(id: string, count: number): void }): JSX.Element {
+function HostWorkbench({ profile, initialPath, active, onDelete, closeAllRequest, totalTerminals, onCloseAll, reportTerminalCount }: { profile: ProfileView; initialPath: string; active: boolean; onDelete(): void; closeAllRequest: number; totalTerminals: number; onCloseAll(): void; reportTerminalCount(id: string, count: number): void }): JSX.Element {
   useSshLocale()
   const [sftpReady, setSftpReady] = useState(false)
   const [sftpHidden, setSftpHidden] = useState(false)
@@ -478,7 +482,6 @@ function HostWorkbench({ profile, initialPath, active, onEdit, onDelete, closeAl
       <div><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
       <div className="dsh-ssh-heading-actions dsh-ssh-host-actions" role="group" aria-label={t("client.hostActions")}>
         <button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? t("client.showSftp") : t("client.hideSftp")} title={sftpHidden ? t("client.showSftp") : t("client.hideSftp")} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? t("client.showSftp") : t("client.hideSftp")}</button>
-        <button type="button" className="dsh-ssh-secondary-button" aria-label={t("client.editHost")} title={t("client.editHost")} onClick={onEdit}><IconEditOutline16 size={16} />{t("client.editHost")}</button>
         <span className="dsh-ssh-host-action-divider" aria-hidden="true" />
         <button type="button" className="dsh-ssh-secondary-button" disabled={totalTerminals === 0} aria-label={t("client.closeAllTerminals")} title={t("client.closeTerminalsOnAllHosts2")} onClick={onCloseAll}><IconStopFill16 size={16} />{t("client.closeAllTerminals")}</button>
         <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={t("client.deleteHost", [profile.name])} title={t("client.deleteHost2")} onClick={onDelete}><IconTrashOutline16 size={16} /></button>

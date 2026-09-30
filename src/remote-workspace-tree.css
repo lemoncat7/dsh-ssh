@@ -26,6 +26,70 @@
   padding: 12px 14px 8px 16px;
 }
 
+.dsh-ssh-tree-menu-wrap {
+  position: relative;
+  z-index: 30;
+  flex: none;
+}
+
+.dsh-ssh-tree-menu-wrap.is-host {
+  display: grid;
+  width: 26px;
+  height: 100%;
+  grid-column: 3;
+  place-items: center;
+}
+
+.dsh-ssh-tree-menu {
+  position: absolute;
+  z-index: 60;
+  display: grid;
+  min-width: 148px;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid var(--ssh-glass-border);
+  border-radius: 10px;
+  background: var(--ssh-popover-surface, var(--ssh-modal-surface));
+  -webkit-backdrop-filter: blur(16px) saturate(1.12);
+  backdrop-filter: blur(16px) saturate(1.12);
+  box-shadow: var(--ssh-glass-shadow);
+}
+
+.dsh-ssh-tree-menu.is-header {
+  top: calc(100% + 5px);
+  right: 0;
+}
+
+.dsh-ssh-tree-menu.is-host {
+  top: calc(100% - 5px);
+  right: 0;
+}
+
+.dsh-ssh-tree-menu > button {
+  appearance: none;
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ssh-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dsh-ssh-tree-menu > button:is(:hover, :focus-visible) {
+  outline: none;
+  color: var(--ssh-text);
+  background: var(--ssh-hover);
+}
+
 .dsh-ssh-tree-header > span,
 .dsh-ssh-access-heading > span {
   display: grid;
@@ -61,6 +125,16 @@
 
 .dsh-ssh-tree-group + .dsh-ssh-tree-group {
   margin-top: 12px;
+}
+
+.dsh-ssh-tree-group {
+  border-radius: 10px;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.dsh-ssh-tree-group.is-drop-target {
+  background: color-mix(in srgb, var(--ssh-accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ssh-accent) 42%, transparent);
 }
 
 .dsh-ssh-tree-group > h3 {
@@ -131,6 +205,16 @@
   border-radius: 11px;
   overflow: hidden;
   transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.dsh-ssh-tree-host-row.is-menu-open {
+  z-index: 40;
+  overflow: visible;
+}
+
+.dsh-ssh-tree-host-row.is-moving {
+  opacity: .5;
+  pointer-events: none;
 }
 
 .dsh-ssh-tree-host-row:hover {
@@ -270,7 +354,7 @@
   font: var(--ssh-type-caption)/1.25 var(--ssh-font-mono);
 }
 
-.dsh-ssh-tree-add,
+.dsh-ssh-tree-more,
 .dsh-ssh-tree-project-new,
 .dsh-ssh-tree-project-edit {
   display: grid;
@@ -287,20 +371,16 @@
   transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
 }
 
-.dsh-ssh-tree-add {
-  grid-column: 3;
-}
-
-.dsh-ssh-tree-host-row:hover .dsh-ssh-tree-add,
+.dsh-ssh-tree-host-row:hover .dsh-ssh-tree-more,
 .dsh-ssh-tree-project-row:hover .dsh-ssh-tree-project-new,
 .dsh-ssh-tree-project-row:hover .dsh-ssh-tree-project-edit,
-.dsh-ssh-tree-add:focus-visible,
+.dsh-ssh-tree-more:focus-visible,
 .dsh-ssh-tree-project-new:focus-visible,
 .dsh-ssh-tree-project-edit:focus-visible {
   opacity: 1;
 }
 
-.dsh-ssh-tree-add:hover,
+.dsh-ssh-tree-more:hover,
 .dsh-ssh-tree-project-new:hover,
 .dsh-ssh-tree-project-edit:hover {
   color: var(--ssh-accent-strong);

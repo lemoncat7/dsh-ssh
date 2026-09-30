@@ -54,6 +54,7 @@
   --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
   --ssh-modal-surface: rgba(246, 247, 250, 0.88);
   --ssh-modal-surface-raised: rgba(255, 255, 255, 0.54);
+  --ssh-popover-surface: #f6f7fa;
   --ssh-activity-surface: rgba(246, 247, 250, 0.82);
   --ssh-activity-surface-raised: rgba(255, 255, 255, 0.72);
   --ssh-border: rgba(60, 60, 67, 0.14);
@@ -142,6 +143,7 @@ body[data-ds-dark-theme] :is(
   --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);
   --ssh-modal-surface: #182022;
   --ssh-modal-surface-raised: #20292b;
+  --ssh-popover-surface: #182022;
   --ssh-activity-surface: rgb(16 23 25 / 96%);
   --ssh-activity-surface-raised: rgb(25 33 35 / 94%);
   --ssh-border: rgb(184 204 205 / 11%);

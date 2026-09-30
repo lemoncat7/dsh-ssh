@@ -11,7 +11,7 @@ import {
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
-import { saveGroupProxy } from './group-proxy.js'
+import { deleteGroup, moveProfileToGroup, saveGroupProxy } from './group-proxy.js'
 import { normalizeRemoteDirectory, setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
@@ -102,6 +102,11 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     return sendJson(res, 200, { revision: runtime.store.workspaceRevision() })
   }
   if (relative === 'group-proxies') {
+    if (method === 'DELETE') {
+      requireMutationHeader(req)
+      await deleteGroup(runtime.store, await readObject(req))
+      return sendJson(res, 200, runtime.store.groupProxies())
+    }
     if (method === 'GET') return sendJson(res, 200, runtime.store.groupProxies())
     if (method === 'PUT') {
       requireMutationHeader(req)
@@ -396,6 +401,11 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 201, await profileView(runtime, profile))
     }
     const id = segments[1]
+    if (id !== undefined && method === 'PUT' && segments[2] === 'group' && segments.length === 3) {
+      requireMutationHeader(req)
+      await moveProfileToGroup(runtime.store, id, await readObject(req))
+      return sendJson(res, 200, await profileView(runtime, requiredProfile(runtime.store, id)))
+    }
     if (id !== undefined && segments[2] === 'projects') {
       requiredProfile(runtime.store, id)
       if (method === 'GET' && segments.length === 3) return sendJson(res, 200, runtime.store.remoteProjects(id))
