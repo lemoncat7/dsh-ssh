@@ -144,14 +144,14 @@ function terminalReadTool(store: SshStore, terminals: AiTerminalManager): ToolDe
 }
 
 function terminalSignalTool(store: SshStore, terminals: AiTerminalManager): ToolDefinition {
-  return tool('ssh_terminal_signal', 'Send an allowed POSIX signal to an owned SSH terminal.', {
+  return tool('ssh_terminal_signal', 'Write a conventional PTY control key: SIGINT=Ctrl-C, SIGQUIT=Ctrl-\\, SIGTSTP=Ctrl-Z. Returns inputWritten, NOT verified signal delivery or a PGID. Raw mode/custom stty can change handling. SIGTERM/SIGKILL/SIGHUP are unsupported; use ssh_terminal_close to close a session.', {
     terminalId: { type: 'string', required: true },
-    signal: { type: 'string', required: true, enum: ['SIGINT', 'SIGTERM', 'SIGKILL', 'SIGTSTP', 'SIGHUP'] },
+    signal: { type: 'string', required: true, enum: ['SIGINT', 'SIGQUIT', 'SIGTSTP'] },
   }, async (raw, exec) => {
     const args = object(raw)
     const owner = requireTerminalInjection(store, exec)
     const signal = string(args.signal, 'signal', 16) as TerminalSignal
-    return json(await terminals.get(owner.session.id, string(args.terminalId, 'terminalId', 200)).signal(signal))
+    return json(await terminals.get(owner.session.id, string(args.terminalId, 'terminalId', 200)).sendControlSignal(signal))
   })
 }
 

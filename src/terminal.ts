@@ -12,6 +12,7 @@ import { detectPromptShell, directoryPromptHook } from './terminal-shell-integra
 import { TerminalBootstrapEcho } from './terminal-bootstrap-echo.js'
 import { OrderedTerminalInput, TerminalOutputBuffer, type TerminalOutputListener } from './terminal-io.js'
 import type { TerminalOpenedEvent } from './activity-events.js'
+import { terminalControlByte } from './terminal-control.js'
 
 const MAX_SCROLLBACK_CHARS = 256_000
 
@@ -110,9 +111,19 @@ export class SshTerminalSession implements TerminalBackendSession {
     this.channel.setWindow(rows, cols, 0, 0)
   }
 
-  async signal(signal: TerminalSignal): Promise<TerminalSignalResult> {
-    this.channel.signal(signal.replace(/^SIG/, ''))
-    return { delivered: true, targetPgid: 0 }
+  async signal(_signal: TerminalSignal): Promise<TerminalSignalResult> {
+    // The host contract requires a verified remote foreground PGID. SSH's
+    // channel.signal targets the session shell and has no delivery receipt.
+    throw new Error('SSH cannot resolve a verified foreground process group; use ssh_terminal_signal for PTY control keys or ssh_terminal_send for terminal input')
+  }
+
+  async sendControlSignal(signal: string): Promise<{ inputWritten: true; mechanism: 'pty-control-byte'; signal: string }> {
+    const byte = terminalControlByte(signal)
+    if (this.terminalStatus.kind === 'exited') throw new Error('SSH terminal has exited')
+    await new Promise<void>((resolve, reject) => {
+      this.channel.write(byte, error => error ? reject(error) : resolve())
+    })
+    return { inputWritten: true, mechanism: 'pty-control-byte', signal }
   }
 
   status(): TerminalSessionStatus { return this.terminalStatus }
@@ -149,7 +160,7 @@ class SendOperation implements TerminalSendOperation {
   constructor(private readonly session: SshTerminalSession, request: TerminalSendRequest) {
     this.done = new Promise(resolve => { this.resolveDone = resolve })
     this.timeoutTimer = setTimeout(() => this.settle('timeout'), 30_000)
-    request.signal?.addEventListener('abort', () => { void session.signal('SIGINT').catch(() => {}); this.settle('timeout') }, { once: true })
+    request.signal?.addEventListener('abort', () => { void session.sendControlSignal('SIGINT').catch(() => {}); this.settle('timeout') }, { once: true })
     this.armIdle()
   }
 
@@ -161,7 +172,7 @@ class SendOperation implements TerminalSendOperation {
 
   cancel(): boolean {
     if (this.settled) return false
-    void this.session.signal('SIGINT').catch(() => {})
+    void this.session.sendControlSignal('SIGINT').catch(() => {})
     this.settle('inferred_idle')
     return true
   }

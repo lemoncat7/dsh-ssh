@@ -163,7 +163,7 @@ SSH 插件不会向聊天标题栏添加按钮。右侧栏统一从左侧「远�
 | `ssh_terminal_open` | 打开当前 Agent 独占的 SSH 终端 |
 | `ssh_terminal_send` | 向终端发送文本并等待输出稳定 |
 | `ssh_terminal_read` | 分页读取终端回滚缓冲区 |
-| `ssh_terminal_signal` | 发送允许的 POSIX 信号 |
+| `ssh_terminal_signal` | 写入 Ctrl-C / Ctrl-\\ / Ctrl-Z 终端控制字符 |
 | `ssh_terminal_close` | 关闭终端 |
 | `ssh_forward_list` | 列出已授权连接的转发规则 |
 | `ssh_forward_start` | 启动已有转发规则 |
@@ -180,6 +180,18 @@ SSH 插件不会向聊天标题栏添加按钮。右侧栏统一从左侧「远�
 `file_download_to_local` 默认以原文件名保存到 `exec.agent.session.header.cwd`，即 DSH 当前会话目录，不是浏览器所在电脑的下载目录。可选 `localPath` 只能填写该目录内的相对文件路径，父目录须已存在；同名文件一律拒绝覆盖。此工具需要文件端点的传输权限，并沿用文件传输审批设置。支持 FTP、FTPS、SFTP 的普通文件，单文件最大 512 MiB、超时 5 分钟、最多同时下载两个文件；流式写入私有临时文件，完成后以排他方式提交正式文件，返回真实 `localPath` 和字节数。正常取消、断线或权限撤销会清理临时文件，不把部分内容作为成功结果。进程被强制终止时可能留下 `.dsh-download-*` 临时目录，但不会把它当成完整交付；重新调用可重试。目录下载仍使用浏览器入口或端点间传输工具。
 
 「执行前确认」依赖 DSH 当前会话的审批策略：Workspace Write 的 Ask 策略会显示确认；Full Access 使用 Never 策略，不显示确认，并会直接拒绝被 SSH 插件标记为需要审批的操作。若希望在 Full Access 下直接执行 SSH，请关闭该开关。
+
+### 终端中断与挂起
+
+`ssh_terminal_signal` 支持 `SIGINT`（Ctrl-C）、`SIGQUIT`（Ctrl-\\）和
+`SIGTSTP`（Ctrl-Z）。它将控制字符写入当前终端，由远端 PTY 行规程或前台
+应用处理，返回 `inputWritten: true`，不代表已经确认 POSIX 信号投递。
+原始模式或自定义 `stty` 控制字符可能改变其行为。
+
+不支持 `SIGTERM` / `SIGKILL` / `SIGHUP`：SSH channel signal 不保证作用于
+前台作业，甚至可能杀掉会话 shell。关闭终端请用 `ssh_terminal_close`。
+宿主要求返回真实 `targetPgid` 的后端接口在无法验证远端前台进程组时明确报错，
+不再返回伪造的 `{ delivered: true, targetPgid: 0 }`。取消发送使用 Ctrl-C 输入路径。
 
 ## 凭据与安全
 
