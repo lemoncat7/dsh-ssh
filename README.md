@@ -1,6 +1,6 @@
 # dsh-ssh
 
-> 当前版本 **1.11.0**，已验证宿主 **DSH 0.2.0-rc.2**（宿主仍为 RC）。Node.js **^22.19.0 或 >=24.0.0**。详见 [兼容说明](docs/dsh-020-compatibility.md) 和 [发布说明](docs/releases/1.11.0.md)。
+> 当前版本 **1.11.2**，已验证宿主 **DSH 0.2.0-rc.2**（宿主仍为 RC）。Node.js **^22.19.0 或 >=24.0.0**。详见 [兼容说明](docs/dsh-020-compatibility.md) 和 [发布说明](docs/releases/1.11.2.md)。
 
 面向 DeepSeek Harness 的远端工作插件。它把 SSH 会话管理、浏览器终端、FTP/FTPS/SFTP 文件传输、代理、端口转发和 AI 会话授权放在同一个 DSH 工作区里。
 

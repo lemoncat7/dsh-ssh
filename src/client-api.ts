@@ -87,7 +87,7 @@ export interface ActivityView { injection: InjectionView | null; profiles: Activ
 export interface TerminalOpenedEvent { type: 'terminal-opened'; sessionId: string; terminalId: string; profileId: string; createdAt: number }
 export interface SftpEntryView { name: string; path: string; kind: 'directory' | 'file' | 'symlink' | 'other'; navigable?: boolean; size: number; modifiedAt: number; modifiedAtText?: string }
 export interface SftpDirectoryView { path: string; parent: string | null; entries: SftpEntryView[] }
-export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean; contentHash?: string }
+export interface SftpFilePreviewView { path: string; name: string; size: number; mimeType: string; kind: 'text' | 'image' | 'pdf' | 'binary'; text?: string; truncated?: boolean; contentHash?: string; previewUnavailable?: 'too-large' | 'unreadable' }
 
 export interface MarkdownSaveInput { path: string; text: string; expectedHash: string }
 export function saveLocalWorkspaceMarkdown(sessionId: string, input: MarkdownSaveInput): Promise<{ contentHash: string }> {

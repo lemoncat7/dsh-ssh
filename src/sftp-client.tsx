@@ -2,7 +2,7 @@ import { useSshLocale } from './use-ssh-locale.js'
 import { trackDownloadClick } from './browser-transfers.js'
 import { LocalTransferTasks } from './transfer-task-list.js'
 import { t } from './i18n.js'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useId, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -21,6 +21,7 @@ import { REMOTE_FILES_DRAG_TYPE, isNavigableRemoteEntry, parseRemoteFilesDragPay
 import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
 import { explorerInputPath } from './explorer-path.js'
+import { explorerStateKey, readExplorerState, saveExplorerState, type ExplorerState } from './explorer-state.js'
 import { FileNameTooltip } from './file-name-tooltip.js'
 import { NativeDirectoryButton } from './native-directory-button.js'
 import { useFilePreview } from './use-file-preview.js'
@@ -33,6 +34,7 @@ import { Dialog } from './ui-components.js'
 const MAX_UPLOAD_BYTES = 512 * 1024 * 1024
 
 interface SftpExplorerProps {
+  persistenceKey?: string
   nativeSessionId?: string
   initialPath: string
   followPath?: string | undefined
@@ -76,7 +78,7 @@ export function LocalWorkspaceBrowser({ sessionId }: { sessionId: string }): JSX
   const loadPreview = useCallback((path: string, signal?: AbortSignal) => loadLocalWorkspaceFilePreview(sessionId, path, signal), [sessionId])
   const fileUrl = useCallback((path: string, inline = false) => localWorkspaceFileUrl(sessionId, path, inline), [sessionId])
   const remove = useCallback((directory: string, paths: string[]) => deleteLocalWorkspaceEntries(sessionId, directory, paths), [sessionId])
-  return <SftpExplorer key={sessionId} nativeSessionId={sessionId} initialPath="" loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} deletion={{ locationName: t("sftp-client.localSession"), locationKind: 'local', remove }} />
+  return <SftpExplorer key={sessionId} persistenceKey={explorerStateKey(sessionId)} nativeSessionId={sessionId} initialPath="" loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} deletion={{ locationName: t("sftp-client.localSession"), locationKind: 'local', remove }} />
 }
 
 export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, onSaved }: { sessionId: string; profile: ActivityProfileView; profiles: ActivityProfileView[]; onProfile(id: string): void; onSaved(): Promise<void> }): JSX.Element {
@@ -99,7 +101,7 @@ export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, o
     <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
     <label><span className="sr-only">{t("sftp-client.selectRemoteHost")}</span><select value={profile.id} onChange={event => onProfile(event.target.value)}>{profiles.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><small>{profile.username}@{profile.host}:{profile.port}</small></label>
   </div>
-  return <SftpExplorer key={`${sessionId}:${profile.id}`} initialPath={profile.cwd} mountedDirectories={profile.mountedDirectories} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
+  return <SftpExplorer key={`${sessionId}:${profile.id}`} persistenceKey={explorerStateKey(sessionId, profile.id)} initialPath={profile.cwd} mountedDirectories={profile.mountedDirectories} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
 }
 
 export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false, terminalPath }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean; terminalPath?: string | undefined }): JSX.Element {
@@ -120,10 +122,12 @@ export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, 
   </div>
 }
 
-function SftpExplorer({ initialPath, followPath, followControl, nativeSessionId, header, mountedDirectories, workspace = false, loadDirectory, loadPreview, saveMarkdown, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
+function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, nativeSessionId, header, mountedDirectories, workspace = false, loadDirectory, loadPreview, saveMarkdown, loadPathEntry, fileUrl, uploadFile, operations, deletion }: SftpExplorerProps): JSX.Element {
   useSshLocale()
   const [expanded, setExpanded] = useState(false)
   const navigationId = useRef(0)
+  const tableRef = useRef<HTMLDivElement>(null)
+  const scrollTop = useRef(0)
   const errorId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dragDepthRef = useRef(0)
@@ -140,16 +144,29 @@ function SftpExplorer({ initialPath, followPath, followControl, nativeSessionId,
   const [operationMessage, setOperationMessage] = useState<string>()
   const [error, setError] = useState<string>()
   const lastFollowed = useRef<string>()
-  const browse = useCallback(async (target: string, persist: boolean) => {
+  const browse = useCallback(async (target: string, persist: boolean, restore?: ExplorerState) => {
     const request = ++navigationId.current
     setLoading(true); setError(undefined); setOpenedFile(undefined); setPendingOverwrite(undefined)
     try {
       const next = await loadDirectory(target, persist)
       if (request !== navigationId.current) return
-      setDirectory(next); setPath(next.path)
+      scrollTop.current = restore?.scrollTop ?? 0
+      setDirectory(next); setPath(next.path); setOpenedFile(restore?.openedFile)
     } catch (reason) { if (request === navigationId.current) setError(errorMessage(reason)) } finally { if (request === navigationId.current) setLoading(false) }
   }, [loadDirectory])
-  useEffect(() => { void browse(initialPath, false); return () => { navigationId.current++ } }, [browse, initialPath])
+  // A session's working directory may change while a browse request is in
+  // flight. It is a default, not a command to reset this remembered browser.
+  const resetPath = persistenceKey === undefined ? initialPath : undefined
+  useEffect(() => {
+    const saved = readExplorerState(persistenceKey)
+    void browse(saved?.directory ?? initialPath, false, saved)
+    return () => { navigationId.current++ }
+  }, [browse, resetPath, persistenceKey])
+  useLayoutEffect(() => {
+    if (!directory || loading) return
+    if (tableRef.current) tableRef.current.scrollTop = scrollTop.current
+    saveExplorerState(persistenceKey, { directory: directory.path, ...(openedFile ? { openedFile } : {}), scrollTop: scrollTop.current })
+  }, [directory, openedFile, loading, persistenceKey])
   useEffect(() => {
     if (followPath === undefined) { lastFollowed.current = undefined; return }
     // Never dismiss a preview/draft, a confirmation, a path being typed, or an upload.
@@ -270,7 +287,10 @@ function SftpExplorer({ initialPath, followPath, followControl, nativeSessionId,
       {pendingOverwrite !== undefined && <div className="dsh-ssh-upload-conflict" role="alert"><span><strong>{t("sftp-client.aFileWithTheSameNameExists")}</strong><small>{pendingOverwrite.file.name}</small></span><span><button type="button" onClick={() => { const pending = pendingOverwrite; setPendingOverwrite(undefined); void uploadFiles(pending.remaining, pending.directory) }}>{t("sftp-client.skip")}</button><button type="button" className="is-primary" disabled={uploading !== undefined} onClick={() => { const pending = pendingOverwrite; void uploadFiles([pending.file, ...pending.remaining], pending.directory, true) }}>{t("sftp-client.overwriteAndUpload")}</button></span></div>}
       {operationMessage && <div className="dsh-ssh-sftp-operation-status" role="status"><span>{operationMessage}</span><button type="button" aria-label={t("sftp-client.dismissNotice")} onClick={() => setOperationMessage(undefined)}><IconCloseOutline16 size={14} /></button></div>}
       {error && <p id={errorId} className="dsh-ssh-directory-error" role="alert">{error}</p>}
-      <div className="dsh-ssh-sftp-table dsh-ssh-scroll-surface" aria-busy={loading}>
+      <div ref={tableRef} className="dsh-ssh-sftp-table dsh-ssh-scroll-surface" aria-busy={loading} onScroll={event => {
+        scrollTop.current = event.currentTarget.scrollTop
+        if (directory && !loading) saveExplorerState(persistenceKey, { directory: directory.path, scrollTop: scrollTop.current })
+      }}>
         <div className="dsh-ssh-sftp-columns"><span>{t("client.name")}</span><span>{t("file-transfer-workspace.size")}</span><span>{t("file-transfer-workspace.modified")}</span><span aria-hidden="true" /></div>
         {loading && directory === undefined ? <p className="dsh-ssh-sftp-state">{t("sftp-client.readingRemoteDirectory")}</p>
           : directory?.entries.length === 0 ? <p className="dsh-ssh-sftp-state">{t("sftp-client.thisDirectoryIsEmpty")}</p>
@@ -333,16 +353,21 @@ export function SftpFilePreview({ entry, loadPreview, saveMarkdown, loadPathEntr
 }
 
 const SftpPreviewContent = memo(function SftpPreviewContent({ entry, preview, error, fileUrl, downloadUrl, markdownEditor }: { entry: SftpEntryView; preview: SftpFilePreviewView | undefined; error: string | undefined; fileUrl(path: string, inline?: boolean): string; downloadUrl: string; markdownEditor?: ReactNode }): JSX.Element {
-  if (error) return <p className="dsh-ssh-directory-error" role="alert">{error}</p>
+  if (error) return <div className="dsh-ssh-file-binary"><p className="dsh-ssh-directory-error" role="alert">{error}</p><a onClick={trackDownloadClick} href={downloadUrl} download={entry.name}><IconDownloadOutline16 size={16} />{t("sftp-client.downloadFile")}</a></div>
   if (preview === undefined) return <p className="dsh-ssh-sftp-state">{t("sftp-client.openingFile")}</p>
   if (markdownEditor) return <>{markdownEditor}</>
   if (preview.kind === 'text' && preview.mimeType === 'text/html') return <HtmlFilePreview text={preview.text || ''} name={entry.name} truncated={Boolean(preview.truncated)} />
   if (preview.kind === 'text' && preview.mimeType === 'text/markdown') return <><article className="dsh-ssh-markdown-preview"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: props => <a {...props} target="_blank" rel="noreferrer" /> }}>{preview.text || ''}</ReactMarkdown></article>{preview.truncated && <small>{t("sftp-client.largeFileShowingTheFirst1MbOnlyDownload")}</small>}</>
   if (preview.kind === 'text') return <><pre>{preview.text || ''}</pre>{preview.truncated && <small>{t("sftp-client.largeFileShowingTheFirst1MbOnlyDownload")}</small>}</>
-  if (preview.kind === 'image') return <img src={fileUrl(entry.path, true)} alt={entry.name} />
+  if (preview.kind === 'image') return <ImagePreview key={fileUrl(entry.path, true)} url={fileUrl(entry.path, true)} name={entry.name} downloadUrl={downloadUrl} />
   if (preview.kind === 'pdf') return <iframe src={fileUrl(entry.path, true)} title={entry.name} />
-  return <div className="dsh-ssh-file-binary"><IconDataOutline16 size={24} /><strong>{t("sftp-client.thisFileCannotBePreviewedDirectly")}</strong><p>{preview.mimeType}</p><a onClick={trackDownloadClick} href={downloadUrl}><IconDownloadOutline16 size={16} />{t("sftp-client.downloadFile")}</a></div>
+  return <div className="dsh-ssh-file-binary"><IconDataOutline16 size={24} /><strong>{preview.previewUnavailable === 'too-large' ? t("sftp-client.previewTooLarge") : t("sftp-client.thisFileCannotBePreviewedDirectly")}</strong><p>{preview.mimeType}</p><a onClick={trackDownloadClick} href={downloadUrl} download={entry.name}><IconDownloadOutline16 size={16} />{t("sftp-client.downloadFile")}</a></div>
 })
+
+function ImagePreview({ url, name, downloadUrl }: { url: string; name: string; downloadUrl: string }): JSX.Element {
+  const [failed, setFailed] = useState(false)
+  return failed ? <div className="dsh-ssh-file-binary"><strong>{t("sftp-client.thisFileCannotBePreviewedDirectly")}</strong><a href={downloadUrl} download={name} onClick={trackDownloadClick}>{t("sftp-client.downloadFile")}</a></div> : <img src={url} alt={name} onError={() => setFailed(true)} />
+}
 
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`

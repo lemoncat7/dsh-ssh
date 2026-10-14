@@ -2,10 +2,8 @@ import { createReadStream } from 'node:fs'
 import { lstat, open, readdir, realpath, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { Readable } from 'node:stream'
-import { markdownHash } from './markdown-file.js'
+import { MAX_TEXT_PREVIEW_BYTES, previewWithoutReading, textPreview } from './text-preview.js'
 import { mimeTypeFor, previewKind, type SftpDirectoryEntry, type SftpDirectoryView, type SftpFilePreview } from './sftp.js'
-
-const MAX_PREVIEW_BYTES = 1_048_576
 
 export async function statLocalWorkspacePath(root: string, requestedPath: string): Promise<SftpDirectoryEntry> {
   const target = await resolveInside(await realpath(root), requestedPath)
@@ -46,13 +44,19 @@ export async function readLocalWorkspacePreview(root: string, requestedPath: str
   const mimeType = mimeTypeFor(target)
   const kind = previewKind(mimeType)
   const base = { path: target, name: path.basename(target), size: attributes.size, mimeType, kind }
-  if (kind !== 'text') return base
-  const length = Math.min(attributes.size, MAX_PREVIEW_BYTES)
+  const immediate = previewWithoutReading(base)
+  if (immediate) return immediate
+  const length = Math.min(attributes.size + 1, MAX_TEXT_PREVIEW_BYTES + 1)
   const buffer = Buffer.alloc(length)
   const handle = await open(target, 'r')
   try {
-    const { bytesRead } = await handle.read(buffer, 0, length, 0)
-    return { ...base, text: buffer.subarray(0, bytesRead).toString('utf8'), contentHash: markdownHash(buffer.subarray(0, bytesRead)), truncated: attributes.size > bytesRead }
+    let total = 0
+    while (total < length) {
+      const { bytesRead } = await handle.read(buffer, total, length - total, total)
+      if (bytesRead === 0) break
+      total += bytesRead
+    }
+    return textPreview(base, buffer.subarray(0, total))
   } finally { await handle.close() }
 }
 

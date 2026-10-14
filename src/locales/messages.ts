@@ -2740,6 +2740,10 @@ export const messages = {
   "use-markdown-draft.saveFailedDraftKept": {
     "zh": "保存失败，草稿仍保留：{0}",
     "en": "Save failed; draft kept: {0}"
+  },
+  "sftp-client.previewTooLarge": {
+    "zh": "文件超过预览上限，请下载查看（文本 1 MB，图片/PDF 16 MB）",
+    "en": "File exceeds the preview limit; download to view (text 1 MB, images/PDF 16 MB)"
   }
 } as const
 

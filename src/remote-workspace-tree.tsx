@@ -70,6 +70,11 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   const [error, setError] = useState<string>()
   const normalized = query.trim().toLocaleLowerCase()
   const groups = useMemo(() => groupProfiles(props.profiles, props.groupConfigs, normalized), [normalized, props.groupConfigs, props.profiles])
+  const mountedGroups = JSON.stringify([...new Set(props.profiles.filter(profile => props.access?.profileIds.includes(profile.id)).map(profile => profile.group?.trim() || ''))].sort())
+  useEffect(() => {
+    const names: string[] = JSON.parse(mountedGroups)
+    if (names.length) setExpandedGroups(current => new Set([...current, ...names]))
+  }, [mountedGroups])
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent): void => {

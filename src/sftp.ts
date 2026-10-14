@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { markdownHash } from './markdown-file.js'
+import { previewWithoutReading, textPreview } from './text-preview.js'
 import { Transform, type Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { FileEntry, SFTPWrapper } from 'ssh2'
@@ -37,6 +37,7 @@ export interface SftpFilePreview {
   text?: string
   truncated?: boolean
   contentHash?: string
+  previewUnavailable?: 'too-large' | 'unreadable'
 }
 
 export interface SftpUploadResult {
@@ -273,7 +274,7 @@ export async function openSftpFile(
     sftp = await openSftp(connection.client, signal)
     const resolved = await realpath(sftp, requestedPath)
     const attributes = await stat(sftp, resolved)
-    if ((attributes.mode & 0o170000) === 0o040000) throw new Error('SFTP path points to a directory, not a file')
+    if ((attributes.mode & 0o170000) !== 0o100000) throw new Error('SFTP path is not a regular file')
     const stream = createSftpReadStream(sftp, resolved)
     let closed = false
     const close = (): void => {
@@ -311,26 +312,26 @@ export async function readSftpFilePreview(
     sftp = await openSftp(connection.client, signal)
     const resolved = await realpath(sftp, requestedPath)
     const attributes = await stat(sftp, resolved)
-    if ((attributes.mode & 0o170000) === 0o040000) throw new Error('SFTP path points to a directory, not a file')
+    if ((attributes.mode & 0o170000) !== 0o100000) throw new Error('SFTP path is not a regular file')
     const mimeType = mimeTypeFor(resolved)
     const kind = previewKind(mimeType)
     const base = { path: resolved, name: remoteName(resolved), size: attributes.size, mimeType, kind }
-    if (kind !== 'text') return base
+    const immediate = previewWithoutReading(base, maxTextBytes)
+    if (immediate) return immediate
 
     const stream = createSftpReadStream(sftp, resolved)
     const chunks: Buffer[] = []
     let total = 0
-    let truncated = false
     for await (const chunk of stream) {
       const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      const remaining = maxTextBytes - total
-      if (remaining <= 0) { truncated = true; break }
+      const remaining = maxTextBytes + 1 - total
+      if (remaining <= 0) break
       chunks.push(value.subarray(0, remaining))
       total += Math.min(value.length, remaining)
-      if (value.length > remaining || total >= maxTextBytes && attributes.size > total) { truncated = true; break }
+      if (total > maxTextBytes) break
     }
     const bytes = Buffer.concat(chunks)
-    return { ...base, text: bytes.toString('utf8'), contentHash: markdownHash(bytes), truncated }
+    return textPreview(base, bytes, maxTextBytes)
   } finally {
     sftp?.end()
     connection.close()
@@ -526,6 +527,12 @@ export function mimeTypeFor(value: string): string {
     '.css': 'text/css', '.scss': 'text/x-scss', '.html': 'text/html', '.htm': 'text/html', '.sh': 'text/x-shellscript', '.bash': 'text/x-shellscript',
     '.py': 'text/x-python', '.rs': 'text/x-rust', '.go': 'text/x-go', '.java': 'text/x-java-source', '.c': 'text/x-c', '.h': 'text/x-c', '.cpp': 'text/x-c++',
     '.toml': 'text/plain', '.ini': 'text/plain', '.conf': 'text/plain', '.env': 'text/plain',
+    '.sql': 'text/plain', '.ddl': 'text/plain', '.graphql': 'text/plain', '.gql': 'text/plain', '.properties': 'text/plain',
+    '.cfg': 'text/plain', '.config': 'text/plain', '.service': 'text/plain', '.socket': 'text/plain', '.timer': 'text/plain',
+    '.vue': 'text/plain', '.svelte': 'text/plain', '.less': 'text/plain', '.sass': 'text/plain', '.php': 'text/plain', '.rb': 'text/plain',
+    '.ps1': 'text/plain', '.bat': 'text/plain', '.cmd': 'text/plain', '.zsh': 'text/plain', '.fish': 'text/plain',
+    '.cs': 'text/plain', '.kt': 'text/plain', '.swift': 'text/plain', '.lua': 'text/plain', '.r': 'text/plain', '.ipynb': 'application/json',
+    '.lock': 'text/plain', '.sum': 'text/plain', '.diff': 'text/plain', '.patch': 'text/plain', '.rst': 'text/plain', '.adoc': 'text/plain',
     '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.avif': 'image/avif',
     '.pdf': 'application/pdf', '.zip': 'application/zip', '.gz': 'application/gzip', '.tar': 'application/x-tar', '.wasm': 'application/wasm',
   }[extension] ?? 'application/octet-stream'

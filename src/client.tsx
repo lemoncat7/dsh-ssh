@@ -105,7 +105,7 @@ function createController(ctx: ClientContext, beforeOpen: () => void): RemoteCon
   const controller: RemoteController = {
     open(profileId) {
       beforeOpen()
-      if (profileId !== undefined) selected = profileId
+      if (dispose === undefined || profileId !== undefined) selected = profileId
       if (dispose === undefined) {
         activatePluginWorkspace(PLUGIN_ID)
         dispose = registerMainPanel(ctx, PLUGIN_ID, -2, props => (
@@ -157,7 +157,7 @@ function createActivityController(ctx: ClientContext): ActivityController {
     unmount()
     mountedSessionId = targetSessionId
     dispose = ctx.slots.register({ name: 'details', priority: -2 }, props => (
-      <SshActivityPanel {...props} controller={controller} />
+      <SshActivityPanel key={String(props.sessionId)} {...props} controller={controller} />
     ))
     if (openDetails) ctx.layout.openDetails()
   }
@@ -182,8 +182,8 @@ function createActivityController(ctx: ClientContext): ActivityController {
   }
   const controller: ActivityController = {
     open(sessionId, profileId, view) {
-      const nextView = view ?? (profileId === undefined ? 'local-directory' : 'remote-directory')
       const previous = states.get(sessionId)
+      const nextView = view ?? (profileId === undefined ? previous?.requestedView ?? 'local-directory' : 'remote-directory')
       const selectedProfileId = profileId ?? previous?.selectedProfileId
       states.set(sessionId, { open: true, ...(selectedProfileId === undefined ? {} : { selectedProfileId }), requestedView: nextView })
       activatePluginWorkspace(PLUGIN_ID)
@@ -230,11 +230,11 @@ function createDockedActivityController(ctx: ClientContext): ActivityController 
   const listeners = new Set<() => void>()
   const notify = (): void => { for (const listener of listeners) listener() }
   const panel = createDockedPanel(ctx, '@lemoncat7/dsh-ssh/activity', () => t("activity-panel.sshActivity"),
-    props => <SshActivityPanel {...props} controller={controller} />, notify)
+    props => <SshActivityPanel key={String(props.sessionId)} {...props} controller={controller} />, notify)
   const controller: ActivityController = {
     open(sessionId, profileId, view) {
       states.set(sessionId, { profileId: profileId ?? states.get(sessionId)?.profileId,
-        view: view ?? (profileId === undefined ? 'local-directory' : 'remote-directory') })
+        view: view ?? (profileId === undefined ? states.get(sessionId)?.view ?? 'local-directory' : 'remote-directory') })
       panel.open(sessionId)
     },
     toggle(sessionId) { if (panel.isOpen(sessionId)) controller.close(sessionId); else controller.open(sessionId) },
@@ -302,7 +302,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   const toggleActivity = (): void => {
     if (currentSessionId === undefined) return
     if (activityOpen) props.activityController.close(currentSessionId)
-    else openActivity()
+    else { props.controller.close(); props.activityController.open(currentSessionId) }
   }
   const openWorkspace = (): void => {
     props.controller.open()
@@ -363,6 +363,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [error, setError] = useState<string>()
   const access = useSessionAccess(sessionId === undefined ? undefined : String(sessionId))
   const openedSessionRef = useRef(sessionId)
+  const initialHostChosen = useRef(props.controller.selected() !== undefined)
   const refreshGeneration = useRef(0)
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current
@@ -377,7 +378,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       setVaultEntries(credentials)
       setProxyEntries(proxies)
       setGroupProxies(groups)
-      setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : next[0] === undefined ? null : { profileId: next[0].id, path: '~' })
+      setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : null)
       setError(undefined)
     } catch (reason) { if (generation === refreshGeneration.current) setError(message(reason)); return false }
     finally { clearTimeout(timeout) }
@@ -396,6 +397,12 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
   const selected = profiles.find(item => item.id === target?.profileId)
+  useEffect(() => {
+    if (initialHostChosen.current || access.loading || profiles.length === 0) return
+    const mounted = profiles.find(profile => access.value?.profileIds.includes(profile.id)) ?? profiles[0]
+    if (mounted) setTarget({ profileId: mounted.id, path: access.value?.workingDirectories[mounted.id] ?? '~' })
+    initialHostChosen.current = true
+  }, [access.loading, access.value, profiles])
   useEffect(() => {
     if (view === 'workspace' && selected) setVisitedHosts(current => current.includes(selected.id) ? current : [...current, selected.id])
   }, [view, selected?.id])
@@ -432,7 +439,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         currentWorkspaceId={currentWorkspaceId === undefined ? undefined : String(currentWorkspaceId)}
         recentWorkspaceId={workspaceList.recentWorkspaceId === undefined ? undefined : String(workspaceList.recentWorkspaceId)}
         selected={target}
-        onSelect={next => { setTarget(next); setView('workspace'); props.controller.open(next.profileId); controls.closePanel() }}
+        onSelect={next => { initialHostChosen.current = true; setTarget(next); setView('workspace'); props.controller.open(next.profileId); controls.closePanel() }}
         onProfiles={access.setProfiles}
         onToggleProject={access.toggleProject}
         onProjectsChanged={access.refresh}
