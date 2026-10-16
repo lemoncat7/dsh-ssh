@@ -35,6 +35,7 @@ test('a regular fork inherits SSH and file-transfer access before prompt assembl
     ctx: { on(name, listener) { if (name === 'system-prompt/assemble') assemble = listener; return () => {} } },
   }
   const ctx = {
+    provide() { return () => {} },
     logger: { info() {}, warn() {} },
     tools: { register() { return () => {} } },
     agents: { list() { return [agent] } },
@@ -70,6 +71,7 @@ test('subagent lineage does not inherit user-granted session access', async t =>
     ctx: { on(name, listener) { if (name === 'system-prompt/assemble') assemble = listener; return () => {} } },
   }
   const ctx = {
+    provide() { return () => {} },
     logger: { info() {}, warn() {} },
     tools: { register() { return () => {} } },
     agents: { list() { return [agent] } },

@@ -10,7 +10,7 @@
 - 多标签与分屏终端，SFTP 目录浏览，FTP / FTPS / SFTP 跨端点文件传输。
 - 文本、SQL、配置、图片、PDF 与静态 HTML 预览；无法安全预览或超限时提供下载。
 - 按会话保留右栏标签、主机、目录、预览和滚动位置；打开面板定位当前挂载主机。
-- 按会话授权的远端命令、AI 终端与文件工具，支持确认后的任务临时授权。
+- 按会话授权的远端命令、AI 终端与文件工具，支持核验聊天授意后的临时 SSH 授权及指定看板任务授权。
 - HTTP CONNECT、SOCKS5、SSH 跳板与端口转发，凭据库及加密 Gist 配置同步。
 
 ## 安装
@@ -33,6 +33,7 @@ dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 
 - [使用、工具与配置](docs/usage.md)
 - [会话与文件浏览状态](docs/session-browser-state.md)
+- [聊天临时授权与任务委派](docs/temporary-access.md)
 - [架构与终端生命周期](ARCHITECTURE.md)
 - [版本与发布说明](https://github.com/lemoncat7/dsh-ssh/releases)
 - [发布维护约定](docs/releases/README.md)

@@ -1,0 +1,62 @@
+/* Knowledge 2.13.12 interaction contract. Scoped to SSH; terminal rendering,
+   file grids and host material tokens remain owned by their feature modules. */
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog-modal, .dsh-ssh-preview-modal, .dsh-ssh-session-create-modal) {
+  --ssh-radius-control: 12px;
+  --ssh-radius-menu: 15px;
+  --ssh-dialog-radius: 24px;
+  --ssh-interaction-well: color-mix(in srgb, var(--ssh-text) 3%, transparent);
+  --ssh-interaction-rim: inset 0 1px 0 var(--ssh-card-highlight);
+  --ssh-interaction-ease: cubic-bezier(.22, 1, .36, 1);
+}
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell)
+  :is(.dsh-ssh-primary-button, .dsh-ssh-secondary-button, .dsh-ssh-danger-button, .dsh-ssh-small-primary) {
+  border-radius: var(--ssh-radius-control);
+  box-shadow: var(--ssh-interaction-rim), 0 2px 4px color-mix(in srgb, var(--ssh-text) 4%, transparent);
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms var(--ssh-interaction-ease);
+}
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog)
+  :is(.dsh-ssh-primary-button, .dsh-ssh-secondary-button, .dsh-ssh-danger-button, .dsh-ssh-small-primary)::before { display: none; }
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog)
+  :is(.dsh-ssh-primary-button, .dsh-ssh-secondary-button, .dsh-ssh-danger-button):active:not(:disabled) { transform: scale(.97); }
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog) button:disabled { cursor: not-allowed; }
+:is(.dsh-ssh-field, .dsh-ssh-form-section, .dsh-ssh-session-create-shell) :is(input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select) {
+  border-radius: var(--ssh-radius-control);
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+:is(.dsh-ssh-workspace, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell)
+  :is(button, input, textarea, select, summary, a):focus-visible { outline: 2px solid var(--ssh-text-muted); outline-offset: 2px; }
+.dsh-ssh-suggestion-menu { padding: 5px; border-radius: var(--ssh-radius-menu); animation: ssh-menu-enter 150ms var(--ssh-interaction-ease); }
+.dsh-ssh-suggestion-menu > button { border-radius: 10px; }
+.dsh-ssh-activity-panel .dsh-ssh-activity-tabs { padding: 4px; gap: 4px; border-radius: 14px; background: var(--ssh-interaction-well); }
+.dsh-ssh-activity-panel .dsh-ssh-activity-tabs button { border-radius: 10px; transition: background-color 160ms ease, box-shadow 160ms ease; }
+.dsh-ssh-activity-panel .dsh-ssh-activity-tabs button.is-active { color: var(--ssh-text); border-color: transparent; background: var(--ssh-surface-raised); box-shadow: var(--ssh-interaction-rim), 0 2px 5px color-mix(in srgb, var(--ssh-text) 8%, transparent); }
+.dsh-ssh-dialog-modal { width: min(680px, calc(100vw - 40px)); max-height: min(800px, calc(100dvh - 40px)); border-radius: var(--ssh-dialog-radius); }
+.dsh-ssh-dialog { max-height: min(800px, calc(100dvh - 40px)); border-radius: var(--ssh-dialog-radius); padding: 7px; scroll-padding-block: 100px 76px; }
+.dsh-ssh-dialog > header { top: -7px; padding: 18px 18px 16px; border: 0; border-radius: 18px 18px 0 0; background: var(--ssh-modal-surface); }
+.dsh-ssh-dialog > header h2 { font-size: 18px; line-height: 1.4; }
+.dsh-ssh-dialog > header p { max-width: 52ch; line-height: 1.65; margin-top: 6px; }
+.dsh-ssh-dialog > header > button { width: 34px; min-width: 34px; height: 34px; border-radius: 50%; background: var(--ssh-interaction-well); }
+.dsh-ssh-dialog > :is(.dsh-ssh-form, form) { padding: 20px; border: 1px solid var(--ssh-glass-border); border-radius: 17px; background: var(--ssh-interaction-well); }
+.dsh-ssh-dialog .dsh-ssh-dialog-actions { gap: 10px; }
+.dsh-ssh-dialog .dsh-ssh-dialog-actions > :is(button, a) { border-radius: var(--ssh-radius-control); }
+.dsh-ssh-dialog > .dsh-ssh-dialog-actions { padding: 14px 12px 7px; }
+.dsh-ssh-dialog.dsh-ssh-confirmation { max-height: calc(100dvh - 40px); }
+.dsh-ssh-dialog.dsh-ssh-confirmation > header { padding: 18px 18px 12px; }
+.dsh-ssh-dialog.dsh-ssh-confirmation > .dsh-ssh-dialog-actions { padding: 14px 12px 7px; }
+.dsh-ssh-dialog .dsh-ssh-inline-error { border-radius: 12px; }
+.dsh-ssh-session-create-shell > header { border-bottom: 0; }
+.dsh-ssh-preview-modal-shell > header { border-radius: 24px 24px 0 0; }
+@keyframes ssh-menu-enter { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@media (max-width: 680px) {
+  .dsh-ssh-dialog-modal, .dsh-ssh-dialog-modal.dsh-ssh-confirmation-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 22px; }
+  .dsh-ssh-dialog, .dsh-ssh-dialog.dsh-ssh-confirmation { max-height: calc(100dvh - 16px); border-radius: 22px; padding: 6px; }
+  .dsh-ssh-dialog > header, .dsh-ssh-dialog.dsh-ssh-confirmation > header { padding: 12px; }
+  .dsh-ssh-dialog > :is(.dsh-ssh-form, form) { padding: 16px; }
+  .dsh-ssh-dialog .dsh-ssh-dialog-actions { flex-wrap: wrap; gap: 8px; }
+  .dsh-ssh-dialog .dsh-ssh-dialog-actions > :is(button, a) { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell) :is(button, input, textarea, select) { transition: none; }
+  .dsh-ssh-suggestion-menu { animation: none; }
+  :is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog) :is(.dsh-ssh-primary-button, .dsh-ssh-secondary-button, .dsh-ssh-danger-button):active:not(:disabled) { transform: none; }
+}

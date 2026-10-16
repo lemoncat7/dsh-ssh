@@ -31,6 +31,8 @@ import {
 import xtermCss from '@xterm/xterm/css/xterm.css'
 import cssText from './client.css'
 import dialogCss from './dialog.css'
+import interactionThemeCss from './interaction-theme.css'
+import controlSurfacesCss from './control-surfaces.css'
 import remoteWorkspaceCss from './remote-workspace-tree.css'
 import hostWorkbenchCss from './host-workbench.css'
 import {
@@ -926,7 +928,7 @@ function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
 function forwardState(status?: ForwardStatus): string { return status?.state === 'running' ? t("client.running", [status.connections]) : status?.state === 'starting' ? t("client.starting") : status?.state === 'error' ? t("client.failed") : t("client.stopped") }
 
 function installStyles(): () => void {
-  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}\n${dialogCss}`
+  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}\n${dialogCss}\n${interactionThemeCss}\n${controlSurfacesCss}`
   document.getElementById(STYLE_ID)?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID

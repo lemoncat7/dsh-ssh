@@ -34,6 +34,7 @@ test('terminal-control mode removes ssh_exec from the model-facing tool assembly
   let assemble
   const agent = { session: { id: 'session-test' }, ctx: { on(name, listener) { if (name === 'system-prompt/assemble') assemble = listener; return () => {} } } }
   const ctx = {
+    provide() { return () => {} },
     tools: { register() { return () => {} } },
     agents: { list() { return [agent] } },
     on() { return () => {} },
@@ -57,6 +58,7 @@ async function toolFixture(t, permission) {
   })
   const tools = new Map()
   const ctx = {
+    provide() { return () => {} },
     tools: { register(definition) { tools.set(definition.name, definition); return () => tools.delete(definition.name) } },
     agents: { list() { return [] } },
     on() { return () => {} },

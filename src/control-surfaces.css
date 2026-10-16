@@ -1,0 +1,24 @@
+/* Shared form/search surfaces only. Never target xterm's hidden input,
+   markdown editors, file controls, switches or range sliders. */
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog-modal, .dsh-ssh-session-create-modal) {
+  --ssh-control-height: 38px;
+  --ssh-control-font-size: 13px;
+  --ssh-select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%238a8f98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell)
+  :is(.dsh-ssh-field, .dsh-ssh-search, .dsh-ssh-number-row, .dsh-ssh-jump-row, .dsh-ssh-sftp-hostbar, .dsh-ssh-sftp-pathbar, .dsh-ssh-file-pathbar)
+  :is(input:not([type]), input[type=text], input[type=search], input[type=url], input[type=password], input[type=number], select, textarea) {
+  box-sizing: border-box; min-width: 0; max-width: 100%; border: 1px solid var(--ssh-border); border-radius: var(--ssh-radius-control);
+  color: var(--ssh-text); background-color: var(--ssh-control-surface); box-shadow: inset 0 1px 0 var(--ssh-glass-highlight); font-size: var(--ssh-control-font-size);
+}
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell)
+  :is(.dsh-ssh-field, .dsh-ssh-search, .dsh-ssh-number-row, .dsh-ssh-jump-row, .dsh-ssh-sftp-hostbar, .dsh-ssh-sftp-pathbar, .dsh-ssh-file-pathbar)
+  :is(input:not([type]), input[type=text], input[type=search], input[type=url], input[type=password], input[type=number], select) { min-height: var(--ssh-control-height); height: var(--ssh-control-height); padding: 6px 11px; line-height: 1.4; }
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell) select:not([multiple]) { appearance: none; max-width: 100%; padding-right: 34px; background-image: var(--ssh-select-arrow); background-repeat: no-repeat; background-size: 16px; background-position: right 10px center; text-overflow: ellipsis; cursor: pointer; }
+:is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog, .dsh-ssh-session-create-shell) :is(.dsh-ssh-field, .dsh-ssh-jump-row, .dsh-ssh-sftp-hostbar, .dsh-ssh-file-pathbar) select:not([multiple]) { padding-right: 34px; }
+.dsh-ssh-dialog .dsh-ssh-form { gap: 14px; }
+.dsh-ssh-dialog .dsh-ssh-form-section { min-width: 0; }
+.dsh-ssh-dialog .dsh-ssh-dialog-actions { flex-wrap: wrap; }
+@media (max-width: 680px) {
+  :is(.dsh-ssh-workspace, .dsh-ssh-sidebar, .dsh-ssh-activity-panel, .dsh-ssh-dialog-modal, .dsh-ssh-session-create-modal) { --ssh-control-height: 44px; --ssh-control-font-size: 16px; }
+}

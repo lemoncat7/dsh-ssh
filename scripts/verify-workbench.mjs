@@ -9,6 +9,8 @@ import { build } from 'esbuild'
 const { chromium } = await import(process.env.SSH_PLAYWRIGHT_MODULE ?? 'playwright')
 const root = fileURLToPath(new URL('../', import.meta.url))
 const bundle = await build({
+  nodePaths: (process.env.DSH_UI_TEST_NODE_PATH ?? '').split(':').filter(Boolean),
+  alias: { react: `${root}node_modules/react` },
   stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {RemoteWorkspace,installStyles} from './src/client.tsx';
     installStyles(); let selected='a'; const listeners=new Set(); const controller={selected:()=>selected,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},close:()=>{},open:id=>{selected=id;listeners.forEach(fn=>fn())}};
     const sessions={current:'test'}; const workspaces={items:[],recentWorkspaceId:undefined};
@@ -42,7 +44,7 @@ try {
     let access = { sessionId: 'test', profileIds: ['a'], workingDirectories: {}, workingProjectIds: {}, mountedProjectIds: {}, fileEndpointIds: [], permission: 'exec', filePermission: 'browse', requireCommandApproval: true, requireFileApproval: true, updatedAt: 1 }
     let commands = [{ id: 'one', name: '系统版本', command: 'uname -a', createdAt: 1, updatedAt: 1 }]
     const profiles = ['a', 'b'].map(id => ({ id, name: id === 'a' ? '开发主机' : '测试主机', username: 'developer', host: '192.0.2.' + (id === 'a' ? '10' : '20'), port: 22, tags: [], proxy: { type: 'none' }, terminalType: 'xterm-256color', credential: { configured: true, fields: [], writable: true } }))
-    page.on('pageerror', error => errors.push(error.message))
+    page.on('pageerror', error => { errors.push(error.message); console.error('Browser error:', error.message) })
     await page.addInitScript(() => { window.EventSource = undefined })
     await page.route('**/ssh-local/v1/**', async route => {
       const req = route.request(), path = new URL(req.url()).pathname.replace('/ssh-local/v1', ''), method = req.method()
@@ -51,7 +53,7 @@ try {
       if (path === '/profiles/a/projects') return json([{ id: 'p1', profileId: 'a', name: '应用目录', path: '/srv/app' }, { id: 'p2', profileId: 'a', name: '日志目录', path: '/var/log/app' }])
       if (path === '/profiles/b/projects') return json([])
       if (path === '/ftp-profiles') return json([])
-      if (path === '/vault' || path === '/proxies') return json([])
+      if (path === '/vault' || path === '/proxies' || path === '/group-proxies') return json([])
       if (path === '/injections' || path === '/injections/test') { if (method === 'PUT') { if (failSave) { failSave = false; return json({ error: '保存失败，请重试' }, 500) }; access = JSON.parse(req.postData()) }; return json(access) }
       if (path === '/commands') {
         if (method === 'POST') commands.push({ id: 'two', ...JSON.parse(req.postData()), createdAt: 2, updatedAt: 2 })
@@ -111,6 +113,12 @@ try {
     await page.getByRole('button', { name: '新建命令', exact: true }).click()
     await page.getByRole('textbox', { name: '名称', exact: true }).fill('查看磁盘')
     await page.getByRole('textbox', { name: /^命令/ }).fill('df -h')
+    const commandDialog = page.locator('.dsh-ssh-dialog:visible')
+    const dialogRect = await commandDialog.boundingBox()
+    assert.ok(Math.abs(dialogRect.x + dialogRect.width / 2 - width / 2) < 3, 'dialog stays horizontally centered')
+    assert.ok(dialogRect.y >= 0 && dialogRect.y + dialogRect.height <= 951, 'dialog stays inside viewport')
+    assert.equal(await commandDialog.evaluate(el => getComputedStyle(el).borderRadius), width <= 680 ? '22px' : '24px')
+    await page.screenshot({path: `/tmp/ssh-style-command-${width}-${colorScheme}.png`})
     await page.getByRole('button', { name: '保存', exact: true }).click()
     await page.getByText('查看磁盘', { exact: true }).waitFor()
     await page.getByRole('tab', { name: '终端与文件', exact: true }).click()
