@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
@@ -16,6 +16,8 @@ test('Markdown writes are versioned, idempotent, bounded and workspace scoped', 
   t.after(() => rm(root, { recursive: true, force: true }))
   const workspace = join(root, 'workspace'); await mkdir(workspace)
   const file = join(workspace, 'file.md'); await writeFile(file, '# Original\n', { mode: 0o640 })
+  // Test preservation of an existing mode independently of the runner's umask.
+  await chmod(file, 0o640)
   const preview = await readLocalWorkspacePreview(workspace, file)
   assert.equal(preview.contentHash, markdownHash('# Original\n'))
   const request = { path: file, expectedHash: preview.contentHash, text: '# Updated\n' }
