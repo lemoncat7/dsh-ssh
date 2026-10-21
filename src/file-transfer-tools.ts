@@ -14,6 +14,8 @@ const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'f
 const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
 const output = { schema: { type: 'string' as const }, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String(value) }] }
 
+const DOWNLOAD_USAGE = 'Before calling file_download_to_local, determine that the task actually requires a saved local copy of this file. This tool saves remote bytes to disk; it is not a remote content-reading tool. Merely viewing, searching, or checking remote file contents is not a reason to download. If authorized remote access can satisfy that need without a local copy, do not download. Available transfer permission alone does not establish a need to download. Assess necessity before invoking the tool; this does not add a user-confirmation step or change existing approval policy.'
+
 export function registerFileTransferTools(ctx: Context, store: SshStore, files: RemoteFileSystems, transfers: FileTransferManager): () => void {
   const downloads = new SessionFileDownloads(files)
   const uploads = new SessionFileUploads(files)
@@ -52,7 +54,7 @@ function uploadTool(store: SshStore, uploads: SessionFileUploads): ToolDefinitio
 }
 
 function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDefinition {
-  return tool('file_download_to_local', 'Download one file from an authorized FTP, FTPS or SFTP endpoint into the current DSH session directory. Default: preserve the remote filename directly in that directory. Optional localPath is relative to the session directory; its parent must already exist. Never overwrite existing files. Returns the actual saved localPath only after completion. This is DSH-host local storage, NOT the browser Downloads folder. Prefer this tool over SSH commands, temporary servers or terminal encoding. Requires file transfer permission/approval. Maximum 512 MiB per file, 5 minutes; cancellation/failure removes staging data. Directory download is not supported.', {
+  return tool('file_download_to_local', `${DOWNLOAD_USAGE} Download one file from an authorized FTP, FTPS or SFTP endpoint into the current DSH session directory. Default: preserve the remote filename directly in that directory. Optional localPath is relative to the session directory; its parent must already exist. Never overwrite existing files. Returns the actual saved localPath only after completion. This is DSH-host local storage, NOT the browser Downloads folder. Requires file transfer permission/approval. Maximum 512 MiB per file, 5 minutes; cancellation/failure removes staging data. Directory download is not supported.`, {
     endpointId: { type: 'string', required: true, description: 'Exact authorized endpoint id from file_endpoint_list.' },
     remotePath: { type: 'string', required: true, description: 'Remote file path, not a directory.' },
     localPath: { type: 'string', description: 'Optional relative filename/path under the current session directory. Defaults to the remote filename. Parent directory must exist.' },
@@ -178,8 +180,9 @@ function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStor
   assembly.contexts.push({
     name: 'dsh-ssh:file-access',
     text: `Remote file access is limited to authorized endpoints. Mounted SSH hosts automatically authorize their SFTP endpoints for browsing and transfer, with the host command-approval policy. FTP/FTPS permission: ${injection.filePermission}. Use file_endpoint_list for each endpoint's effective permission; do not apply SFTP permissions to FTP endpoints.
-For any file listing or transfer request, use file_endpoint_list, file_directory_list, and the available file_transfer_* tools before considering SSH commands. Never guess endpoint ids or paths.
-For downloading a remote file for this conversation, use file_download_to_local. It defaults to the current DSH session directory; report its returned localPath. Do not invent a sandbox URL or claim it was saved to the browser's Downloads folder.
+Use file_endpoint_list to discover authorized file endpoints, file_directory_list to list directories, and file_transfer_* to copy files between endpoints. Listing or reading remote contents is not file delivery and does not require downloading. Never guess endpoint ids or paths.
+${DOWNLOAD_USAGE}
+When a saved local copy is actually needed, file_download_to_local saves it in the current DSH session directory by default; report its returned localPath. Do not invent a sandbox URL or claim it was saved to the browser's Downloads folder.
 Transfer permission includes file_upload_from_local and file_download_to_local within the current session directory. Endpoint restrictions and transfer approval still apply. Browser computer uploads must be selected by the user in 文件传输.
 Never start an HTTP or other file server, open a temporary port, encode a file through a terminal, or invent another transport for file delivery.
 For a download to the user's browser-local computer, do not run terminal commands: directly tell the user to select the file in SSH → 文件传输 and click “下载到本地”. The conversation tool cannot attach those remote bytes itself.

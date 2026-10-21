@@ -47,6 +47,15 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
   const fileContext = assembly.contexts.find(context => context.name === 'dsh-ssh:file-access')
   assert.match(fileContext.text, /Never start an HTTP or other file server/)
   assert.match(fileContext.text, /下载到本地/)
+  // Necessity is assessed before a download, not via an extra approval dialog.
+  for (const text of [tools.get('file_download_to_local').description, fileContext.text]) {
+    assert.match(text, /Before calling file_download_to_local, determine that the task actually requires a saved local copy/)
+    assert.match(text, /Merely viewing, searching, or checking remote file contents is not a reason to download/)
+    assert.match(text, /Available transfer permission alone does not establish a need to download/)
+    assert.match(text, /does not add a user-confirmation step or change existing approval policy/)
+    assert.doesNotMatch(text, /Prefer this tool over SSH commands|before considering SSH commands/)
+  }
+  assert.match(fileContext.text, /Listing or reading remote contents is not file delivery/)
   // Mounted hosts need no separate file grant or FTP transfer permission.
   await store.update(state => { state.injections[0].filePermission = 'browse' })
   const automatic = JSON.parse(await tools.get('file_endpoint_list').execute({}, execution))
