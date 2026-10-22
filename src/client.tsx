@@ -15,7 +15,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import { SshActivityPanel, type ActivityController, type ActivityViewMode } from './activity-panel.js'
-import { AdaptiveWorkspace } from './adaptive-workspace.js'
+import { AdaptiveWorkspace, WorkspaceNavigationTrigger } from './adaptive-workspace.js'
+import { useResponsiveSftp } from './use-responsive-sftp.js'
 import adaptiveUiCss from './adaptive-workspace.css'
 import borderGlowCss from './border-glow.css'
 import { useBorderGlowSurface } from './border-glow.js'
@@ -428,6 +429,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       toolbar={toolbar}
       notice={notice}
       navigationLabel={t("client.host")}
+      inlineNavigation={view === 'workspace' && selected !== undefined}
       navigationIcon={<IconDataOutline16 size={15} />}
       navigation={controls => <RemoteWorkspaceTree
         profiles={profiles}
@@ -452,7 +454,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         onPermission={access.setPermission}
         onApproval={access.setRequireCommandApproval}
         onCreateSession={async (project, workspaceId) => {
-          await props.controller.createProjectSession(workspaceId, project, access.value?.permission ?? 'exec', access.value?.requireCommandApproval ?? true)
+          const defaults = await api<{ permission: 'exec' | 'terminal'; requireCommandApproval: boolean }>('/session-defaults')
+          await props.controller.createProjectSession(workspaceId, project, defaults.permission, defaults.requireCommandApproval)
           props.controller.close()
         }}
         onNewProfile={() => { setEditing('new'); controls.closePanel() }}
@@ -482,17 +485,17 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
 function HostWorkbench({ profile, initialPath, active, onDelete, closeAllRequest, totalTerminals, onCloseAll, reportTerminalCount }: { profile: ProfileView; initialPath: string; active: boolean; onDelete(): void; closeAllRequest: number; totalTerminals: number; onCloseAll(): void; reportTerminalCount(id: string, count: number): void }): JSX.Element {
   useSshLocale()
   const [sftpReady, setSftpReady] = useState(false)
-  const [sftpHidden, setSftpHidden] = useState(false)
+  const { ref: workbenchRef, hidden: sftpHidden, setHidden: setSftpHidden } = useResponsiveSftp(active)
   const [terminalPath, setTerminalPath] = useState<string>()
   const onTerminalCount = useCallback((count: number) => reportTerminalCount(profile.id, count), [profile.id, reportTerminalCount])
   const headingGlow = useBorderGlowSurface<HTMLElement>()
-  return <div className="dsh-ssh-host-workbench">
+  return <div ref={workbenchRef} className="dsh-ssh-host-workbench">
     <header ref={headingGlow.ref} onPointerMove={headingGlow.onPointerMove} onPointerLeave={headingGlow.onPointerLeave} className="dsh-ssh-workbench-heading dsh-ssh-border-surface">
-      <div><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
+      <div><WorkspaceNavigationTrigger /><span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span><span><h1>{profile.name}</h1><p>{profileAddress(profile)} · {proxyLabel(profile)}</p></span></div>
       <div className="dsh-ssh-heading-actions dsh-ssh-host-actions" role="group" aria-label={t("client.hostActions")}>
-        <button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? t("client.showSftp") : t("client.hideSftp")} title={sftpHidden ? t("client.showSftp") : t("client.hideSftp")} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? t("client.showSftp") : t("client.hideSftp")}</button>
-        <span className="dsh-ssh-host-action-divider" aria-hidden="true" />
         <button type="button" className="dsh-ssh-secondary-button" disabled={totalTerminals === 0} aria-label={t("client.closeAllTerminals")} title={t("client.closeTerminalsOnAllHosts2")} onClick={onCloseAll}><IconStopFill16 size={16} />{t("client.closeAllTerminals")}</button>
+        <span className="dsh-ssh-host-action-divider" aria-hidden="true" />
+        <button type="button" className="dsh-ssh-secondary-button" aria-label={sftpHidden ? t("client.showSftp") : t("client.hideSftp")} title={sftpHidden ? t("client.showSftp") : t("client.hideSftp")} aria-expanded={!sftpHidden} onClick={() => setSftpHidden(value => !value)}><IconDataOutline16 size={16} />{sftpHidden ? t("client.showSftp") : t("client.hideSftp")}</button>
         <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={t("client.deleteHost", [profile.name])} title={t("client.deleteHost2")} onClick={onDelete}><IconTrashOutline16 size={16} /></button>
       </div>
     </header>

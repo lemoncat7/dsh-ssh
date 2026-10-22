@@ -164,3 +164,8 @@
     backdrop-filter: none;
   }
 }
+.dsh-ssh-inline-navigation { display: none; }
+@container dsh-ssh-workspace (max-width: 820px) {
+  .dsh-ssh-adaptive-workspace[data-inline-navigation="true"] > .dsh-ssh-mobile-actions { display: none; }
+  .dsh-ssh-inline-navigation { display: inline-flex; flex-shrink: 0; }
+}

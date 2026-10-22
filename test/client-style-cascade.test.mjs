@@ -17,6 +17,13 @@ const workbenchStylesheetUrl = new URL('../src/host-workbench.css', import.meta.
 const remoteTreeStylesheetUrl = new URL('../src/remote-workspace-tree.css', import.meta.url)
 const terminalSourceUrl = new URL('../src/terminal-view.ts', import.meta.url)
 
+test('compact host navigation leads the title, terminal close precedes SFTP', async () => {
+  const source = await readFile(clientSourceUrl, 'utf8')
+  const heading = source.slice(source.indexOf('function HostWorkbench'), source.indexOf('function ForwardPane'))
+  assert.ok(heading.indexOf('<WorkspaceNavigationTrigger />') < heading.indexOf('dsh-ssh-host-monogram'))
+  assert.ok(heading.indexOf('onClick={onCloseAll}') < heading.indexOf('onClick={() => setSftpHidden'))
+})
+
 test('button reset stays below component styles in the cascade', async () => {
   const css = await readFile(stylesheetUrl, 'utf8')
 
@@ -78,8 +85,8 @@ test('all SSH workspaces share one cool-charcoal material and typography contrac
   assert.match(css, /--ssh-border-strong:\s*rgba\(60, 60, 67, 0\.24\);/)
   assert.match(css, /--ssh-activity-surface:/)
   assert.match(css, /--ssh-modal-surface:/)
-  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-panel:\s*rgb\(25 33 35 \/ 90%\);/)
-  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-surface:\s*rgb\(16 23 25 \/ 92%\);/)
+  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-panel:\s*rgb\(25 33 35 \/ 20%\);/)
+  assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-surface:\s*rgb\(16 23 25 \/ 18%\);/)
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-accent:\s*#69b6ba;/)
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-hover:\s*rgb\(105 182 186 \/ 13%\);/)
   assert.match(css, /body\[data-ds-dark-theme\][\s\S]*--ssh-border-strong:\s*rgb\(184 204 205 \/ 18%\);/)

@@ -141,6 +141,8 @@ export interface RemoteProject {
 }
 
 export interface SshSettings {
+  defaultSessionPermission?: 'exec' | 'terminal'
+  defaultRequireCommandApproval?: boolean
   allowPublicBind: boolean
   defaultCommandTimeoutMs: number
   maxOutputChars: number

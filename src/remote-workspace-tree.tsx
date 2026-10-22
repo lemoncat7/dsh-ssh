@@ -17,6 +17,7 @@ import { Dialog } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
 import { mountedProjects } from './project-mounts.js'
 import type { GroupProxy } from './domain.js'
+import { SessionDefaults } from './session-defaults-ui.js'
 
 const HOST_DRAG_TYPE = 'application/x-dsh-ssh-profile'
 
@@ -220,6 +221,7 @@ function SessionAccessFooter({ access, loading, saving, error, onPermission, onA
     </div>
     <label className="dsh-ssh-access-approval"><span><strong>{t("remote-workspace-tree.confirmBeforeRunning")}</strong><small>{access?.requireCommandApproval === false ? t("remote-workspace-tree.whenOffRunsDirectlyUnderCurrentSessionPermissions") : t("remote-workspace-tree.requiresDshAskModeFullAccessIsRejectedOutright")}</small></span><input type="checkbox" checked={access?.requireCommandApproval ?? true} disabled={access === null} onChange={event => onApproval(event.target.checked)} /><i aria-hidden="true" /></label>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    <SessionDefaults />
   </footer>
 }
 

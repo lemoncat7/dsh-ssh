@@ -151,7 +151,7 @@ export function dismissFileTransferJob(jobId: string): Promise<void> { return ap
 export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vault') }
 export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }
-export function loadInjection(sessionId: string): Promise<InjectionView | null> { return api(`/injections?sessionId=${encodeURIComponent(sessionId)}`) }
+export function loadInjection(sessionId: string): Promise<InjectionView | null> { return api(`/injections?sessionId=${encodeURIComponent(sessionId)}&defaults=1`) }
 export function loadRemoteProjects(profileId: string): Promise<RemoteProjectView[]> { return api(`/profiles/${encodeURIComponent(profileId)}/projects`) }
 export function createRemoteProject(profileId: string, project: { name: string; path: string }): Promise<RemoteProjectView> {
   return api(`/profiles/${encodeURIComponent(profileId)}/projects`, { method: 'POST', body: JSON.stringify({ project }) })

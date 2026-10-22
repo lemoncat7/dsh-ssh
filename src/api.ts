@@ -36,6 +36,7 @@ import { saveCommand } from './commands.js'
 import { parseMarkdownSave } from './markdown-file.js'
 import { saveLocalMarkdown } from './local-markdown-file.js'
 import { saveSftpMarkdown } from './sftp-markdown-file.js'
+import { newSessionAccess } from './session-defaults.js'
 
 const MAX_BODY_BYTES = 1_048_576
 const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
@@ -581,7 +582,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'GET' && segments.length === 1) {
       const sessionId = url.searchParams.get('sessionId')
       if (!sessionId) throw httpError(400, 'sessionId is required')
-      return sendJson(res, 200, runtime.store.injection(sessionId) ?? null)
+      return sendJson(res, 200, runtime.store.injection(sessionId) ?? (url.searchParams.get('defaults') === '1' ? newSessionAccess(sessionId, runtime.store.settings()) : null))
     }
     const sessionId = segments[1]
     if (sessionId !== undefined && method === 'PUT' && segments.length === 2) {
@@ -791,12 +792,33 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     }
   }
 
+  if (segments[0] === 'session-defaults' && segments.length === 1) {
+    if (method === 'PUT') {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      if (body.permission !== 'exec' && body.permission !== 'terminal') throw httpError(400, 'permission must be exec or terminal')
+      if (typeof body.requireCommandApproval !== 'boolean') throw httpError(400, 'requireCommandApproval must be boolean')
+      const permission = body.permission
+      const approval = body.requireCommandApproval
+      await runtime.store.update(state => {
+        state.settings.defaultSessionPermission = permission
+        state.settings.defaultRequireCommandApproval = approval
+      })
+    }
+    if (method === 'GET' || method === 'PUT') {
+      const defaults = newSessionAccess('', runtime.store.settings())
+      return sendJson(res, 200, { permission: defaults.permission, requireCommandApproval: defaults.requireCommandApproval })
+    }
+  }
+
   if (segments[0] === 'settings' && segments.length === 1) {
     if (method === 'GET') return sendJson(res, 200, runtime.store.settings())
     if (method === 'PUT') {
       requireMutationHeader(req)
       const body = await readObject(req)
       const settings = {
+        defaultSessionPermission: runtime.store.settings().defaultSessionPermission ?? 'exec',
+        defaultRequireCommandApproval: runtime.store.settings().defaultRequireCommandApproval ?? true,
         allowPublicBind: body.allowPublicBind === true,
         defaultCommandTimeoutMs: requireInteger(body.defaultCommandTimeoutMs, 'defaultCommandTimeoutMs', 1000, 300_000),
         maxOutputChars: requireInteger(body.maxOutputChars, 'maxOutputChars', 1000, 1_000_000),

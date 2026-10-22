@@ -1,6 +1,11 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+
+const NavigationTrigger = createContext<ReactNode>(null)
+export function WorkspaceNavigationTrigger(): JSX.Element {
+  return <span className="dsh-ssh-inline-navigation">{useContext(NavigationTrigger)}</span>
+}
 
 export interface AdaptiveWorkspaceControls {
   closePanel(): void
@@ -12,6 +17,7 @@ type AdaptiveWorkspaceSlot = ReactNode | ((controls: AdaptiveWorkspaceControls) 
 
 interface AdaptiveWorkspaceProps {
   className?: string
+  inlineNavigation?: boolean
   toolbar?: ReactNode
   notice?: ReactNode
   navigation: AdaptiveWorkspaceSlot
@@ -23,7 +29,7 @@ interface AdaptiveWorkspaceProps {
   children: ReactNode
 }
 
-export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navigationLabel, navigationIcon, inspector, inspectorLabel = t("adaptive-workspace.details"), inspectorIcon, children }: AdaptiveWorkspaceProps): JSX.Element {
+export function AdaptiveWorkspace({ className, inlineNavigation = false, toolbar, notice, navigation, navigationLabel, navigationIcon, inspector, inspectorLabel = t("adaptive-workspace.details"), inspectorIcon, children }: AdaptiveWorkspaceProps): JSX.Element {
   useSshLocale()
   const [panel, setPanel] = useState<AdaptivePanel>()
   const navigationRef = useRef<HTMLElement>(null)
@@ -50,7 +56,8 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [panel])
-  return <main className={`dsh-ssh-adaptive-workspace${className === undefined ? '' : ` ${className}`}`} data-panel={panel ?? 'none'} data-has-inspector={inspector === undefined ? 'false' : 'true'}>
+  const navigationTrigger = <button type="button" className="dsh-ssh-secondary-button" aria-controls="dsh-ssh-adaptive-navigation" aria-expanded={panel === 'navigation'} onClick={() => panel === 'navigation' ? closePanel() : setPanel('navigation')}>{navigationIcon}<span>{navigationLabel}</span></button>
+  return <NavigationTrigger.Provider value={navigationTrigger}><main className={`dsh-ssh-adaptive-workspace${className === undefined ? '' : ` ${className}`}`} data-inline-navigation={inlineNavigation} data-panel={panel ?? 'none'} data-has-inspector={inspector === undefined ? 'false' : 'true'}>
     {toolbar}
     {notice}
     <nav className="dsh-ssh-mobile-actions" aria-label={t("adaptive-workspace.workspacePanel")}>
@@ -63,7 +70,7 @@ export function AdaptiveWorkspace({ className, toolbar, notice, navigation, navi
       {inspector !== undefined && <aside ref={inspectorRef} id="dsh-ssh-adaptive-inspector" className="dsh-ssh-adaptive-inspector" aria-label={inspectorLabel}>{renderSlot(inspector, controls)}</aside>}
       <button type="button" className="dsh-ssh-adaptive-backdrop" aria-label={t("adaptive-workspace.closePanel")} tabIndex={panel === undefined ? -1 : 0} onClick={closePanel} />
     </div>
-  </main>
+  </main></NavigationTrigger.Provider>
 }
 
 function renderSlot(slot: AdaptiveWorkspaceSlot, controls: AdaptiveWorkspaceControls): ReactNode {

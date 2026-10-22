@@ -121,23 +121,23 @@ body[data-ds-dark-theme] :is(
   .dsh-ssh-session-create-modal
 ) {
   --ssh-canvas: transparent;
-  --ssh-panel: rgb(25 33 35 / 90%);
+  --ssh-panel: rgb(25 33 35 / 20%);
   --ssh-text: #e3eaeb;
   --ssh-text-muted: #bbc9cc;
   --ssh-text-subtle: #95a7ab;
   --ssh-hover: rgb(105 182 186 / 13%);
   --ssh-selected: rgb(105 182 186 / 18%);
-  --ssh-control: rgb(39 50 53 / 92%);
+  --ssh-control: rgb(39 50 53 / 56%);
   --ssh-accent: #69b6ba;
   --ssh-accent-strong: #8aced0;
   --ssh-on-accent: #101819;
   --ssh-success: #30d158;
   --ssh-danger: #ff453a;
   --ssh-warning: #ff9f0a;
-  --ssh-surface: rgb(16 23 25 / 92%);
-  --ssh-surface-raised: rgb(32 41 43 / 94%);
+  --ssh-surface: rgb(16 23 25 / 18%);
+  --ssh-surface-raised: rgb(32 41 43 / 48%);
   --ssh-chrome-surface: var(--ssh-panel);
-  --ssh-card-surface: rgb(32 41 43 / 90%);
+  --ssh-card-surface: rgb(32 41 43 / 38%);
   --ssh-card-highlight: rgba(255, 255, 255, 0.11);
   --ssh-control-surface: var(--ssh-control);
   --ssh-tab-selected: color-mix(in srgb, var(--ssh-surface-raised) 84%, var(--ssh-text) 16%);

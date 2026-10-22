@@ -97,3 +97,6 @@
 @media (prefers-reduced-transparency: reduce) {
   .dsh-ssh-workspace :is(.dsh-ssh-command-list, .dsh-ssh-forward-list, .dsh-ssh-vault-list, .dsh-ssh-proxy-list, .dsh-ssh-workbench-split) { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--ssh-surface-raised); }
 }
+.dsh-ssh-session-defaults { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ssh-separator); }
+.dsh-ssh-session-defaults summary { cursor: pointer; color: var(--ssh-text-muted); font-size: 12px; }
+.dsh-ssh-session-defaults > small { display: block; margin: 8px 0; color: var(--ssh-text-muted); line-height: 1.5; }

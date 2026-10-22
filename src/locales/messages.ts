@@ -1,6 +1,9 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "session-defaults.title": { "zh": "新会话默认配置", "en": "New session defaults" },
+  "session-defaults.hint": { "zh": "修改后自动保存，仅用于尚未配置的会话；不授权主机，不影响已有权限。", "en": "Saved automatically. Applies to unconfigured sessions only; grants no hosts and keeps existing permissions." },
+  "session-defaults.retry": { "zh": "重试", "en": "Retry" },
   "host-key.changed": { "zh": "主机指纹已变化", "en": "Host fingerprint changed" },
   "host-key.warning": { "zh": "重装系统可能导致密钥变化，也可能是连接被冒用。请通过服务器控制台核实新指纹后再确认。", "en": "Reinstallation can change the key, but this may also indicate impersonation. Verify the new fingerprint through the server console before confirming." },
   "host-key.previous": { "zh": "原指纹", "en": "Previous fingerprint" },
