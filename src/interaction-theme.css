@@ -48,7 +48,7 @@
 .dsh-ssh-preview-modal-shell > header { border-radius: 24px 24px 0 0; }
 @keyframes ssh-menu-enter { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 @media (max-width: 680px) {
-  .dsh-ssh-dialog-modal, .dsh-ssh-dialog-modal.dsh-ssh-confirmation-modal { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 22px; }
+  .dsh-ssh-dialog-modal, .dsh-ssh-dialog-modal.dsh-ssh-confirmation-modal { --ssh-dialog-radius: 22px; width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: var(--ssh-dialog-radius); }
   .dsh-ssh-dialog, .dsh-ssh-dialog.dsh-ssh-confirmation { max-height: calc(100dvh - 16px); border-radius: 22px; padding: 6px; }
   .dsh-ssh-dialog > header, .dsh-ssh-dialog.dsh-ssh-confirmation > header { padding: 12px; }
   .dsh-ssh-dialog > :is(.dsh-ssh-form, form) { padding: 16px; }

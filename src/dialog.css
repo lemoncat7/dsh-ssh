@@ -5,6 +5,26 @@
   border-radius: var(--ssh-dialog-radius);
   font-family: var(--ssh-font-sans);
 }
+/* Headless modals provide positioning; SSH owns their painted surface. Theme
+   dialog rules must not add a second, differently rounded plate behind it. */
+:is(#root, body) [role='dialog']:is(.dsh-ssh-dialog-modal, .dsh-ssh-preview-modal, .dsh-ssh-session-create-modal) {
+  border-radius: var(--ssh-dialog-radius) !important;
+}
+:is(#root, body) [role='dialog'].dsh-ssh-dialog-modal {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:is(#root, body) [role='dialog']:is(.dsh-ssh-preview-modal, .dsh-ssh-session-create-modal) {
+  background: var(--ssh-modal-surface) !important;
+  border: 1px solid var(--ssh-glass-border) !important;
+  box-shadow: var(--ssh-glass-shadow), var(--ssh-shadow-lg) !important;
+  -webkit-backdrop-filter: var(--ssh-glass-filter) !important;
+  backdrop-filter: var(--ssh-glass-filter) !important;
+  overflow: hidden;
+}
 :is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell, .dsh-ssh-preview-modal-shell) {
   border-radius: var(--ssh-dialog-radius);
   color: var(--ssh-text);
