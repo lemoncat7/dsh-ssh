@@ -39,7 +39,7 @@ import hostWorkbenchCss from './host-workbench.css'
 import {
   activityEventStreamUrl, api, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries, moveProfileToGroup,
   profileAddress,
-  type ForwardStatus, type ForwardView, type FtpProfileView, type GistSyncView, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus,
+  type ForwardStatus, type ForwardView, type FtpProfileView,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
@@ -48,6 +48,8 @@ import { TerminalWorkspace } from './terminal-workspace.js'
 import { refreshWorkspace, useWorkspaceRefresh } from './use-workspace-refresh.js'
 import { GroupProxyEditor } from './group-proxy-editor.js'
 import type { GroupProxy } from './domain.js'
+import { SyncPane } from './sync-panel.js'
+import syncCss from './sync-panel.css'
 import { CommandsPanel } from './commands-panel.js'
 import workbenchPagesCss from './workbench-pages.css'
 import { RemoteWorkspaceTree, type RemoteTarget } from './remote-workspace-tree.js'
@@ -350,7 +352,8 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [editingGroup, setEditingGroup] = useState<string | null>(null)
   const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
   const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
-  const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'commands'>('workspace')
+  const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'sync' | 'commands'>('workspace')
+  const [syncMounted, setSyncMounted] = useState(false)
   const [transferMounted, setTransferMounted] = useState(false)
   const [visitedHosts, setVisitedHosts] = useState<string[]>([])
   const [closeAllRequest, setCloseAllRequest] = useState(0)
@@ -419,6 +422,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         <Segment active={view === 'forwards'} onClick={() => setView('forwards')}>{t("client.portForwarding")}</Segment>
         <Segment active={view === 'vault'} onClick={() => setView('vault')}>{t("client.credentialVault")}</Segment>
         <Segment active={view === 'proxies'} onClick={() => setView('proxies')}>{t("client.proxyVault")}</Segment>
+        <Segment active={view === 'sync'} onClick={() => { setSyncMounted(true); setView('sync') }}>{t("sync.title")}</Segment>
         <Segment active={view === 'settings'} onClick={() => setView('settings')}>{t("client.settings")}</Segment>
       </nav>
     </header>
@@ -469,9 +473,11 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? null : view === 'commands' ? <CommandsPanel />
           : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
+          : view === 'sync' ? null
           : view === 'settings' ? <SettingsPane />
           : selected === undefined ? <EmptyState />
           : <ForwardPane profiles={profiles} selected={selected} />}
+        {syncMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'sync'}><SyncPane active={view === 'sync'} /></div>}
         {transferMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'transfer'}><FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} /></div>}
       </section>
     </AdaptiveWorkspace>
@@ -656,235 +662,21 @@ function ProxyEditor({ value, onClose, onSaved }: { value?: ProxyEntryView | und
 function SettingsPane(): JSX.Element {
   useSshLocale()
   const [settings, setSettings] = useState<SettingsView>()
-  const [gist, setGist] = useState<GistSyncView>()
-  const [token, setToken] = useState('')
-  const [encryptionPassphrase, setEncryptionPassphrase] = useState('')
-  const [advanced, setAdvanced] = useState(false)
-  const [oauthFlow, setOauthFlow] = useState<GitHubDeviceFlowStart>()
-  const [busy, setBusy] = useState<'save' | 'test' | 'sync' | 'oauth' | 'disconnect' | 'network'>()
-  const [notice, setNotice] = useState<string>()
   const [error, setError] = useState<string>()
-  const githubAuthError = gist?.authPaused === true || (gist?.tokenConfigured === false && gist.lastError?.startsWith(t("client.githubAuthorizationExpired")) === true) ? gist?.lastError : undefined
-  useEffect(() => {
-    void Promise.all([api<SettingsView>('/settings'), api<GistSyncView>('/gist-sync')])
-      .then(([nextSettings, nextGist]) => { setSettings(nextSettings); setGist(nextGist) })
-      .catch(reason => setError(message(reason)))
-  }, [])
-  useEffect(() => {
-    if (oauthFlow === undefined) return
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const poll = async (): Promise<void> => {
-      try {
-        const status = await api<GitHubDeviceFlowStatus>('/gist-sync/oauth/poll', { method: 'POST', body: JSON.stringify({ id: oauthFlow.id }) })
-        if (cancelled) return
-        if (status.state === 'complete') {
-          setOauthFlow(undefined)
-          setGist(await api('/gist-sync'))
-          setNotice(t("client.githubConnected", [status.login]))
-          return
-        }
-        timer = setTimeout(() => { void poll() }, Math.max(1_000, status.retryAfterMs))
-      } catch (reason) {
-        if (cancelled) return
-        setOauthFlow(undefined)
-        setError(message(reason))
-      }
-    }
-    timer = setTimeout(() => { void poll() }, Math.max(1_000, oauthFlow.retryAfterMs))
-    return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer) }
-  }, [oauthFlow?.id])
-  const save = async (next: SettingsView): Promise<void> => { try { setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(next) })) } catch (reason) { setError(message(reason)) } }
-  const testGitHubNetwork = async (): Promise<void> => {
-    if (settings === undefined) return
-    setBusy('network'); setError(undefined); setNotice(undefined)
-    try {
-      const saved = await api<SettingsView>('/settings', { method: 'PUT', body: JSON.stringify(settings) })
-      setSettings(saved)
-      const result = await api<{ route: 'direct' | 'proxy' }>('/gist-sync/network/test', { method: 'POST' })
-      setNotice(t("client.githubReachable", [result.route === 'proxy' ? t("client.viaProxy") : t("client.direct")]))
-    } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
+  useEffect(() => { void api<SettingsView>('/settings').then(setSettings).catch(reason => setError(message(reason))) }, [])
+  const save = async (next: SettingsView): Promise<void> => {
+    try { setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(next) })); setError(undefined) }
+    catch (reason) { setError(message(reason)) }
   }
-  const saveGistConfiguration = async (): Promise<GistSyncView> => {
-    if (gist === undefined) throw new Error(t("client.gistSyncSettingsAreNotLoadedYet"))
-    const next = await api<GistSyncView>('/gist-sync', {
-      method: 'PUT',
-      body: JSON.stringify({
-        settings: {
-          autoSync: gist.autoSync, strategy: gist.strategy, backupRetention: gist.backupRetention,
-          gistId: gist.gistId ?? '', oauthClientId: gist.oauthClientId ?? '',
-        },
-        ...(token.trim() ? { token: token.trim() } : {}),
-        ...(encryptionPassphrase ? { encryptionPassphrase } : {}),
-      }),
-    })
-    setGist(next); setToken(''); setEncryptionPassphrase('')
-    return next
-  }
-  const persistGist = async (kind: 'save' | 'test' | 'sync'): Promise<GistSyncView | undefined> => {
-    if (gist === undefined) return undefined
-    setBusy(kind); setError(undefined); setNotice(undefined)
-    try {
-      const next = await saveGistConfiguration()
-      if (kind === 'save') { setNotice(t("client.gistSyncSettingsSaved")); return next }
-      if (kind === 'test') {
-        const result = await api<{ login: string }>('/gist-sync/test', { method: 'POST' })
-        setNotice(t("client.connected", [result.login]))
-        setGist(await api('/gist-sync'))
-        return next
-      }
-      const synced = await api<GistSyncView>('/gist-sync/run', { method: 'POST' })
-      refreshWorkspace()
-      setGist(synced); setNotice(syncResultLabel(synced.lastResult)); return synced
-    } catch (reason) {
-      setError(message(reason))
-      try { setGist(await api('/gist-sync')) } catch {}
-      return undefined
-    } finally { setBusy(undefined) }
-  }
-  const connectGitHub = async (): Promise<void> => {
-    setBusy('oauth'); setError(undefined); setNotice(undefined)
-    try {
-      await saveGistConfiguration()
-      const flow = await api<GitHubDeviceFlowStart>('/gist-sync/oauth/start', { method: 'POST' })
-      setOauthFlow(flow)
-      setNotice(t("client.deviceCodeGeneratedCopyItInTheAuthorizationWindow"))
-    } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
-  }
-  const disconnectGitHub = async (): Promise<void> => {
-    setBusy('disconnect'); setError(undefined); setNotice(undefined); setOauthFlow(undefined)
-    try {
-      setGist(await api('/gist-sync/oauth/disconnect', { method: 'POST' }))
-      setNotice(t("client.githubAccountDisconnectedTheSyncEncryptionPasswordIsStill"))
-    } catch (reason) { setError(message(reason)) } finally { setBusy(undefined) }
-  }
-  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>{t("client.sshSettings")}</h1><p>{t("client.securityBoundariesCommandLimitsAndCrossDeviceConfigSync")}</p></div></div>
+  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>{t("client.sshSettings")}</h1><p>{t("sync.localSettingsHint")}</p></div></div>
     <div className="dsh-ssh-settings-stack">
-      {gist && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-gist-title">
-        <div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-gist-title">{t("client.githubGistSync")}</strong><small>{t("client.endToEndEncryptedSyncOfHostsFtpFtps")}</small></span><SyncStatus view={gist} /></div>
-        <div className={`dsh-ssh-github-auth${githubAuthError === undefined ? '' : ' is-invalid'}`}>
-          <span className="dsh-ssh-github-mark" aria-hidden="true">GH</span>
-          <span><strong>{githubAuthError !== undefined ? t("client.checkGithubAuthorization") : gist.tokenConfigured ? t("client.connected2", [gist.githubLogin ?? 'GitHub']) : t("client.connectGithub")}</strong><small>{githubAuthError ?? (gist.tokenConfigured ? t("client.authorizationCredentialsAreStoredSecurelyInThisDsh") : t("client.getGistAccessThroughGithubDeviceAuthorization"))}{githubAuthError !== undefined && gist.lastErrorAt ? `（${new Date(gist.lastErrorAt).toLocaleString()}）` : ''}</small></span>
-          <span className="dsh-ssh-github-auth-actions">
-            <button type="button" className={gist.tokenConfigured ? 'dsh-ssh-secondary-button' : 'dsh-ssh-primary-button'} disabled={busy !== undefined || oauthFlow !== undefined || !gist.oauthClientId} onClick={() => { void connectGitHub() }}>{busy === 'oauth' ? t("client.connecting") : oauthFlow !== undefined ? t("client.waitingForAuthorization") : gist.tokenConfigured ? t("client.reconnect") : t("client.connectGithub")}</button>
-            {gist.tokenConfigured && <button type="button" className="dsh-ssh-text-button" disabled={busy !== undefined} onClick={() => { void disconnectGitHub() }}>{busy === 'disconnect' ? t("client.disconnecting") : t("client.disconnect")}</button>}
-          </span>
-        </div>
-        {!gist.oauthClientId && <p className="dsh-ssh-auth-hint">{t("client.onFirstUseEnterYourGithubOauthClientId")}</p>}
-        <div className="dsh-ssh-gist-fields is-two">
-          <Field label="Gist ID" hint={t("client.leaveEmptyToCreateAPrivateGistAutomaticallyOn")}><input maxLength={64} spellCheck={false} value={gist.gistId ?? ''} onChange={event => setGist(withGistId(gist, event.target.value))} placeholder={t("client.autoCreate")} /></Field>
-          <Field label={t("client.syncEncryptionPassword")} hint={gist.encryptionConfigured ? t("client.savedSecurelyEnterTheSamePasswordOnANew") : t("client.atLeast6CharactersALongerPasswordIsRecommended")}><input type="password" minLength={6} maxLength={512} autoComplete="new-password" value={encryptionPassphrase} onChange={event => setEncryptionPassphrase(event.target.value)} placeholder={gist.encryptionConfigured ? t("client.configured") : t("client.setASeparateEncryptionPassword")} /></Field>
-        </div>
-        <div className="dsh-ssh-sync-meta" aria-label={t("client.syncVersionInfo")}><span><small>{t("client.cloudVersion")}</small><strong title={gist.cloudVersion}>{gist.cloudVersion ? gist.cloudVersion.slice(0, 10) : t("client.notReadYet")}</strong></span><span><small>{t("client.lastSync")}</small><strong>{gist.lastSyncAt ? formatRelativeTime(gist.lastSyncAt) : t("client.neverSynced")}</strong></span></div>
-        <fieldset className="dsh-ssh-sync-strategy"><legend>{t("client.syncPolicy")}</legend><div role="group" aria-label={t("client.gistSyncPolicy")}>
-          <SyncStrategyButton active={gist.strategy === 'smart'} title={t("client.smart")} description={t("client.detectChangesOnBothSidesAutomaticallyAndMergePer")} onClick={() => setGist({ ...gist, strategy: 'smart' })} />
-          <SyncStrategyButton active={gist.strategy === 'local-first'} title={t("client.localFirst")} description={t("client.keepThisDeviceSConfigWhenBothSidesChanged")} onClick={() => setGist({ ...gist, strategy: 'local-first' })} />
-          <SyncStrategyButton active={gist.strategy === 'cloud-first'} title={t("client.cloudFirst")} description={t("client.useTheGistConfigWhenBothSidesChanged")} onClick={() => setGist({ ...gist, strategy: 'cloud-first' })} />
-        </div></fieldset>
-        <div className="dsh-ssh-sync-options">
-          <label className="dsh-ssh-switch-row"><span><strong>{t("client.autoSync")}</strong><small>{t("client.checksAfterStartupAfterConfigChangesAndEveryFive")}</small></span><input type="checkbox" checked={gist.autoSync} onChange={event => setGist({ ...gist, autoSync: event.target.checked })} /></label>
-          <label className="dsh-ssh-number-row"><span><strong>{t("client.backupsToKeep")}</strong><small>{t("client.explicitHistorySnapshotsKeptInTheMainGistGithub")}</small></span><input type="number" min="0" max="50" step="1" value={gist.backupRetention} onChange={event => setGist({ ...gist, backupRetention: Number(event.target.value) })} /><em>{t("client.copies")}</em></label>
-        </div>
-        <button type="button" className="dsh-ssh-advanced-toggle" aria-expanded={advanced} onClick={() => setAdvanced(value => !value)}><span>{t("client.advancedAuthorizationSettings")}</span><IconChevronDownOutline14 /></button>
-        {advanced && <div className="dsh-ssh-advanced-auth">
-          <Field label="GitHub OAuth Client ID" hint={t("client.enableDeviceFlowInTheGithubOauthAppNo")}><input maxLength={128} spellCheck={false} value={gist.oauthClientId ?? ''} onChange={event => setGist(withOauthClientId(gist, event.target.value))} placeholder="Ov23li…" /></Field>
-          <Field label={t("client.personalAccessTokenFallback")} hint={gist.tokenConfigured ? t("client.alreadyAuthorizedEnteringATokenReplacesTheCurrentAuthorization") : t("client.fillInOnlyWhenOauthIsUnavailableRequiresThe")}><input type="password" autoComplete="new-password" spellCheck={false} value={token} onChange={event => setToken(event.target.value)} placeholder="ghp_… / github_pat_…" /></Field>
-          <p>{t("client.noOauthApp")}<a href="https://github.com/settings/applications/new" target="_blank" rel="noreferrer">{t("client.goToGithubToCreateOne")}</a>{t("client.thenEnableDeviceFlowInTheAppSettings")}</p>
-        </div>}
-        <p className="dsh-ssh-sync-scope"><strong>{t("client.syncedContent")}</strong>{t("client.hostsFtpFtpsPinnedProjectDirectoriesTheProxyVault")}<br /><strong>{t("client.keptLocalOnly")}</strong>{t("client.sessionGrantsPortForwardingPublicBindsAndCommandLimits")}</p>
-        {gist.lastError && githubAuthError === undefined && <p className="dsh-ssh-inline-error" role="alert">{t("client.lastSyncFailed")}{gist.lastError}</p>}
-        <div className="dsh-ssh-settings-actions">
-          {gist.gistUrl && <a className="dsh-ssh-secondary-button" href={gist.gistUrl} target="_blank" rel="noreferrer">{t("client.openGist")}</a>}
-          <button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void persistGist('test') }}>{busy === 'test' ? t("client.testing") : t("client.testConnection")}</button>
-          <button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void persistGist('sync') }}>{busy === 'sync' ? t("client.syncing") : t("client.syncNow")}</button>
-          <button type="button" className="dsh-ssh-primary-button" disabled={busy !== undefined} onClick={() => { void persistGist('save') }}>{busy === 'save' ? t("client.saving2") : t("client.saveSyncSettings")}</button>
-        </div>
-      </section>}
       {settings && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-local-title"><div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-local-title">{t("client.localRuntimeSettings")}</strong><small>{t("client.affectsThisDshInstanceOnlyNotSyncedViaGist")}</small></span></div><div className="dsh-ssh-settings-group">
-        <Field label={t("client.githubOutboundProxy")} hint={t("client.usedOnlyForOauthAndTheGistApiE")}><div className="dsh-ssh-github-proxy-control"><input maxLength={2048} spellCheck={false} value={settings.githubProxy ?? ''} onChange={event => setSettings(withGitHubProxy(settings, event.target.value))} placeholder={t("client.connectToGithubDirectly")} /><button type="button" className="dsh-ssh-secondary-button" disabled={busy !== undefined} onClick={() => { void testGitHubNetwork() }}>{busy === 'network' ? t("client.testing") : t("client.testGithubNetwork")}</button></div></Field>
         <label className="dsh-ssh-switch-row"><span><strong>{t("client.allowPublicPortBinding")}</strong><small>{t("client.allowsForwardsToListenOn0000")}</small></span><input type="checkbox" checked={settings.allowPublicBind} onChange={event => { void save({ ...settings, allowPublicBind: event.target.checked }) }} /></label>
         <label className="dsh-ssh-number-row"><span><strong>{t("client.defaultCommandTimeout")}</strong><small>{t("client.maximumWaitTimeForTheAiSSshExec")}</small></span><input type="number" min="1000" max="300000" step="1000" value={settings.defaultCommandTimeoutMs} onChange={event => setSettings({ ...settings, defaultCommandTimeoutMs: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>{t("client.ms")}</em></label>
         <label className="dsh-ssh-number-row"><span><strong>{t("client.maxCommandOutput")}</strong><small>{t("client.keepsTheNewestOutputBeyondThisLimitSoContext")}</small></span><input type="number" min="1000" max="1000000" step="1000" value={settings.maxOutputChars} onChange={event => setSettings({ ...settings, maxOutputChars: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>{t("client.chars")}</em></label>
       </div></section>}
-    </div>
-    {oauthFlow && <GitHubDeviceAuthorizationDialog flow={oauthFlow} onClose={() => setOauthFlow(undefined)} />}
-    {notice && <p className="dsh-ssh-inline-success" role="status">{notice}</p>}{error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
+    </div>{error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
   </div>
-}
-
-function GitHubDeviceAuthorizationDialog({ flow, onClose }: { flow: GitHubDeviceFlowStart; onClose(): void }): JSX.Element {
-  const sshLocale = useSshLocale()
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const copyCode = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(flow.userCode)
-      setCopyState('copied')
-    } catch {
-      setCopyState('failed')
-    }
-  }
-  return <Dialog title={t("client.connectGithub")} subtitle={t("client.copyTheDeviceCodeThenGoToGithubTo")} className="dsh-ssh-device-auth-dialog" onClose={onClose}>
-    <div className="dsh-ssh-device-auth-content">
-      <div className="dsh-ssh-device-code-block">
-        <span><small>{t("client.oneTimeDeviceCode")}</small><code>{flow.userCode}</code></span>
-        <button type="button" className="dsh-ssh-secondary-button" onClick={() => { void copyCode() }}>{copyState === 'copied' ? t("client.copied") : t("client.copyCode")}</button>
-      </div>
-      <ol className="dsh-ssh-device-auth-steps">
-        <li><span>1</span><p><strong>{t("client.copyTheCodeAbove")}</strong><small>{t("client.theDeviceCodeIsUsedForThisAuthorizationOnly")}</small></p></li>
-        <li><span>2</span><p><strong>{t("client.openTheGithubAuthorizationPage")}</strong><small>{t("client.pasteTheCodeAndConfirmAuthorizationForTheCurrent")}</small></p></li>
-        <li><span>3</span><p><strong>{t("client.backToDsh")}</strong><small>{t("client.theConnectionCompletesAutomaticallyOnceAuthorized")}</small></p></li>
-      </ol>
-      {copyState === 'failed' && <p className="dsh-ssh-inline-error" role="alert">{t("client.theBrowserBlockedAutomaticCopyingSelectTheDeviceCode")}</p>}
-      <p className="dsh-ssh-device-auth-expiry">{t("client.deviceCodeExpiry", [new Date(flow.expiresAt).toLocaleTimeString(sshLocale)])}</p>
-      <div className="dsh-ssh-dialog-actions">
-        <button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>{t("client.later")}</button>
-        <a className="dsh-ssh-primary-button" href={flow.verificationUri} target="_blank" rel="noreferrer">{t("client.goToGithubToAuthorize")}</a>
-      </div>
-    </div>
-  </Dialog>
-}
-
-function SyncStrategyButton({ active, title, description, onClick }: { active: boolean; title: string; description: string; onClick(): void }): JSX.Element {
-  return <button type="button" className={active ? 'is-active' : ''} aria-pressed={active} onClick={onClick}><strong>{title}</strong><small>{description}</small></button>
-}
-
-function withGistId(view: GistSyncView, value: string): GistSyncView {
-  const trimmed = value.trim()
-  if (trimmed) return { ...view, gistId: trimmed }
-  const { gistId: _gistId, gistUrl: _gistUrl, ...rest } = view
-  return rest
-}
-
-function withOauthClientId(view: GistSyncView, value: string): GistSyncView {
-  const trimmed = value.trim()
-  if (trimmed) return { ...view, oauthClientId: trimmed, oauthAvailable: true }
-  const { oauthClientId: _oauthClientId, ...rest } = view
-  return { ...rest, oauthAvailable: false }
-}
-
-function withGitHubProxy(view: SettingsView, value: string): SettingsView {
-  if (value !== '') return { ...view, githubProxy: value }
-  const { githubProxy: _githubProxy, ...rest } = view
-  return rest
-}
-
-function SyncStatus({ view }: { view: GistSyncView }): JSX.Element {
-  useSshLocale()
-  const ready = view.tokenConfigured && view.encryptionConfigured
-  const label = view.running ? t("client.syncing2") : view.lastError ? t("client.actionNeeded") : view.lastSyncAt === undefined ? ready ? t("client.waitingForFirstSync") : t("client.notConfigured") : t("client.lastSynced", [formatRelativeTime(view.lastSyncAt)])
-  return <span className={`dsh-ssh-sync-status${view.running ? ' is-running' : view.lastError ? ' is-error' : ready ? ' is-ready' : ''}`} role="status"><i aria-hidden="true" />{label}</span>
-}
-
-function syncResultLabel(result: GistSyncView['lastResult']): string {
-  return result === 'uploaded' ? t("client.localConfigUploaded") : result === 'downloaded' ? t("client.cloudConfigApplied") : result === 'merged' ? t("client.configsFromBothSidesMergedIntelligently") : t("client.configIsAlreadyUpToDate")
-}
-
-function formatRelativeTime(value: number): string {
-  const elapsed = Math.max(0, Date.now() - value)
-  if (elapsed < 60_000) return t("client.justNow")
-  if (elapsed < 3_600_000) return t("client.minutesAgo", [Math.floor(elapsed / 60_000)])
-  if (elapsed < 86_400_000) return t("client.hoursAgo", [Math.floor(elapsed / 3_600_000)])
-  return new Date(value).toLocaleString()
 }
 
 function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileView; profiles: ProfileView[]; value?: ForwardView | undefined; onClose(): void; onSaved(): void }): JSX.Element {
@@ -931,7 +723,7 @@ function forwardSummary(rule: ForwardView, status?: ForwardStatus): string {
 function forwardState(status?: ForwardStatus): string { return status?.state === 'running' ? t("client.running", [status.connections]) : status?.state === 'starting' ? t("client.starting") : status?.state === 'error' ? t("client.failed") : t("client.stopped") }
 
 function installStyles(): () => void {
-  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}\n${dialogCss}\n${interactionThemeCss}\n${controlSurfacesCss}`
+  const text = `${xtermCss}\n${adaptiveUiCss}\n${borderGlowCss}\n${cssText}\n${remoteWorkspaceCss}\n${hostWorkbenchCss}\n${workbenchPagesCss}\n${fileTransferCss}\n${interactiveSurfacesCss}\n${activitySurfaceCss}\n${dialogCss}\n${interactionThemeCss}\n${controlSurfacesCss}\n${syncCss}`
   document.getElementById(STYLE_ID)?.remove()
   const style = document.createElement('style')
   style.id = STYLE_ID

@@ -153,10 +153,11 @@ try {
     await page.getByTitle('选择并展开 开发主机', { exact: true }).click()
     assert.equal(await page.locator('.dsh-ssh-host-page:visible .xterm').count(), 2)
     await page.screenshot({ path: `/tmp/ssh-workbench-${width}-${colorScheme}.png` })
-    for (const tab of ['常用命令', '密钥库', '代理库', '设置', '文件传输']) {
+    for (const tab of ['常用命令', '密钥库', '代理库', '设置', '同步', '文件传输']) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await page.waitForTimeout(80)
-      if (tab === '设置') assert.equal(await page.getByText('GitHub 授权需检查', { exact: true }).count(), 1)
+      if (tab === '同步') assert.equal(await page.getByText('GitHub 授权需检查', { exact: true }).count(), 1)
+      if (tab === '设置') assert.equal(await page.getByText('GitHub Gist', { exact: true }).count(), 0)
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${tab} must fit ${width}px`)
     }
     await page.getByRole('tab', { name: '终端与文件', exact: true }).click()

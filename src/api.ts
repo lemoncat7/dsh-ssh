@@ -141,6 +141,10 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       requireMutationHeader(req)
       return sendJson(res, 200, await runtime.gistSync.testConnection())
     }
+    if (segments[1] === 'account' && segments[2] === 'test' && segments.length === 3 && method === 'POST') {
+      requireMutationHeader(req)
+      return sendJson(res, 200, await runtime.gistSync.testConnection(true))
+    }
     if (segments[1] === 'network' && segments[2] === 'test' && segments.length === 3 && method === 'POST') {
       requireMutationHeader(req)
       return sendJson(res, 200, await runtime.gistSync.testNetwork())

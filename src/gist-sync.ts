@@ -355,12 +355,12 @@ export class GistSyncService {
     return this.view()
   }
 
-  async testConnection(): Promise<{ login: string; gistId?: string }> {
+  async testConnection(accountOnly = false): Promise<{ login: string; gistId?: string }> {
     const generation = this.authGeneration
     try {
       const client = await this.client()
       const identity = await client.identify()
-      const gistId = this.metadata.settings.gistId
+      const gistId = accountOnly ? undefined : this.metadata.settings.gistId
       if (gistId !== undefined) {
         const gist = await client.get(gistId)
         if (gist.version !== undefined) this.metadata.lastCloudVersion = gist.version

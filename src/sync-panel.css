@@ -1,0 +1,86 @@
+/* Scoped to SSH surfaces; inherits the host light/dark palette. */
+.dsh-ssh-sync-layout { display: grid; grid-template-columns: 210px minmax(0, 760px); gap: 32px; width: 100%; padding-bottom: 24px; }
+.dsh-ssh-sync-methods { min-width: 0; padding-top: 8px; }
+.dsh-ssh-sync-methods h2 { margin: 0 0 12px; font-size: 12px; color: var(--ssh-text-subtle); font-weight: 600; }
+.dsh-ssh-sync-method { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 66px; padding: 12px; margin-bottom: 6px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ssh-text); text-align: start; font: inherit; }
+.dsh-ssh-sync-method.is-selected { border-color: var(--ssh-border); background: var(--ssh-card-surface); box-shadow: var(--ssh-shadow-sm); }
+.dsh-ssh-sync-method:disabled { opacity: .55; cursor: not-allowed; }
+.dsh-ssh-sync-method > span:last-child { display: grid; gap: 4px; min-width: 0; }
+.dsh-ssh-sync-method strong { font-size: 13px; }
+.dsh-ssh-sync-method small, .dsh-ssh-sync-methods > p { font-size: 12px; line-height: 1.6; color: var(--ssh-text-muted); }
+.dsh-ssh-sync-method-icon { display: grid; place-items: center; flex: none; width: 28px; height: 28px; }
+.dsh-ssh-sync-method-icon svg { width: 23px; height: 23px; }
+.dsh-ssh-sync-detail { min-width: 0; }
+.dsh-ssh-sync-overview { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0 20px; }
+.dsh-ssh-sync-overview h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.3px; }
+.dsh-ssh-sync-page p, .dsh-ssh-sync-wizard p { color: var(--ssh-text-muted); font-size: 13px; line-height: 1.65; margin: 6px 0; overflow-wrap: anywhere; }
+.dsh-ssh-sync-page a, .dsh-ssh-sync-wizard a { color: var(--ssh-accent-strong); text-underline-offset: 3px; }
+.dsh-ssh-sync-account { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; background: var(--ssh-card-surface); border: 1px solid var(--ssh-border); border-radius: 14px; }
+.dsh-ssh-sync-account > div { min-width: 0; }
+.dsh-ssh-sync-account strong { font-size: 14px; }
+.dsh-ssh-sync-account > button { flex-shrink: 0; }
+.dsh-ssh-sync-controls { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+.dsh-ssh-sync-controls:disabled { opacity: .65; }
+.dsh-ssh-sync-section { display: grid; gap: 18px; padding: 24px 0; }
+.dsh-ssh-sync-section h3 { margin: 0; font-size: 14px; }
+.dsh-ssh-sync-section .dsh-ssh-switch-row { margin: 0; padding: 0 0 16px; border-bottom: 1px solid var(--ssh-border); }
+.dsh-ssh-sync-section .dsh-ssh-field input[type=number] { max-width: 120px; }
+.dsh-ssh-sync-section .dsh-ssh-field select { max-width: 360px; }
+.dsh-ssh-sync-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--ssh-border); padding: 18px 0; }
+.dsh-ssh-sync-footer > span, .dsh-ssh-sync-record { font-size: 12px; color: var(--ssh-text-muted); }
+.dsh-ssh-sync-footer > div, .dsh-ssh-sync-record { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.dsh-ssh-sync-record { justify-content: space-between; padding: 0 0 20px; }
+.dsh-ssh-sync-disclosure { border-top: 1px solid var(--ssh-border); }
+.dsh-ssh-sync-disclosure > summary { padding: 16px 0; cursor: pointer; font-size: 13px; color: var(--ssh-text-muted); }
+.dsh-ssh-sync-disclosure > div, .dsh-ssh-sync-disclosure > form { display: grid; gap: 12px; padding: 0 0 20px; }
+.dsh-ssh-sync-disclosure button { justify-self: start; }
+.dsh-ssh-sync-wizard { padding: 8px 22px 22px; min-width: 0; }
+.dsh-ssh-dialog.dsh-ssh-sync-dialog { width: min(620px, calc(100vw - 32px)); }
+.dsh-ssh-sync-choice { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--ssh-border); border-radius: 12px; background: var(--ssh-control-surface); }
+.dsh-ssh-sync-choice button { flex: 1; min-width: 0; min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: var(--ssh-text-muted); font: inherit; font-size: 13px; padding: 8px 10px; cursor: pointer; }
+.dsh-ssh-sync-choice button[aria-pressed=true] { color: var(--ssh-text); background: var(--ssh-card-surface); box-shadow: var(--ssh-shadow-sm); }
+.dsh-ssh-sync-wizard h3 { margin: 0; font-size: 18px; font-weight: 650; }
+.dsh-ssh-sync-instructions { padding-inline-start: 20px; margin: 0; font-size: 13px; line-height: 1.8; color: var(--ssh-text-muted); }
+.dsh-ssh-sync-connected, .dsh-ssh-sync-device { padding: 16px; background: var(--ssh-control-surface); border: 1px solid var(--ssh-border); border-radius: 12px; }
+.dsh-ssh-sync-device { display: grid; gap: 12px; }
+.dsh-ssh-sync-device code { font-size: 24px; letter-spacing: .12em; user-select: all; }
+.dsh-ssh-sync-review { margin: 0; }
+.dsh-ssh-sync-review > div { display: grid; grid-template-columns: 100px minmax(0,1fr); gap: 16px; border-bottom: 1px solid var(--ssh-border); padding: 14px 0; font-size: 13px; }
+.dsh-ssh-sync-review dt { color: var(--ssh-text-muted); }
+.dsh-ssh-sync-review dd { margin: 0; overflow-wrap: anywhere; }
+.dsh-ssh-sync-wizard p.dsh-ssh-sync-footnote { font-size: 12px; }
+.dsh-ssh-sync-page .dsh-ssh-inline-error, .dsh-ssh-sync-wizard .dsh-ssh-inline-error { color: var(--ssh-danger); }
+.dsh-ssh-sync-page .dsh-ssh-inline-success { color: var(--ssh-success); }
+.dsh-ssh-sync-page .dsh-ssh-primary-button, .dsh-ssh-sync-wizard .dsh-ssh-primary-button { color: var(--ssh-primary-text, var(--ssh-on-accent, #fff)); }
+.dsh-ssh-stepper { min-width: 0; }
+.dsh-ssh-stepper-track { display: flex; position: relative; gap: 4px; padding: 4px; border-radius: 12px; background: var(--ssh-control-surface); }
+.dsh-ssh-stepper-glider { position: absolute; left: 0; top: 4px; height: calc(100% - 8px); border-radius: 9px; background: var(--ssh-card-surface); box-shadow: var(--ssh-shadow-sm); transition: transform 240ms cubic-bezier(.22,1,.36,1), width 240ms; pointer-events: none; }
+.dsh-ssh-stepper-segment { position: relative; display: flex; flex: 1; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; background: transparent; color: var(--ssh-text-muted); font: inherit; font-size: 13px; cursor: pointer; }
+.dsh-ssh-stepper-segment:disabled { cursor: default; opacity: 1; }
+.dsh-ssh-stepper-segment[aria-current=step] { color: var(--ssh-text); font-weight: 650; }
+.dsh-ssh-stepper-badge { width: 24px; height: 24px; display: grid; place-items: center; flex: none; border: 1px solid var(--ssh-border); border-radius: 50%; font-size: 12px; }
+.dsh-ssh-stepper-badge[data-complete] { color: var(--ssh-success); }
+.dsh-ssh-stepper-pane { padding: 24px 2px; outline: none; }
+.dsh-ssh-stepper-step { display: grid; gap: 16px; min-width: 0; }
+.dsh-ssh-stepper-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--ssh-border); padding-top: 18px; }
+.dsh-ssh-stepper-footer button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+.dsh-ssh-sync-choice button:focus-visible, .dsh-ssh-stepper-segment:focus-visible, .dsh-ssh-sync-disclosure summary:focus-visible { outline: 2px solid var(--ssh-focus-ring); outline-offset: 3px; }
+@container dsh-ssh-workspace (max-width: 850px) {
+  .dsh-ssh-sync-layout { grid-template-columns: minmax(0,1fr); gap: 20px; }
+  .dsh-ssh-sync-methods { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+  .dsh-ssh-sync-methods h2, .dsh-ssh-sync-methods > p { grid-column: 1 / -1; margin: 0; }
+  .dsh-ssh-sync-method { padding: 10px; gap: 8px; margin: 0; }
+}
+@media (max-width: 600px) {
+  .dsh-ssh-sync-layout { grid-template-columns: minmax(0,1fr); gap: 18px; }
+  .dsh-ssh-sync-methods { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+  .dsh-ssh-sync-methods h2, .dsh-ssh-sync-methods > p { grid-column: 1 / -1; }
+  .dsh-ssh-sync-method { flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; }
+  .dsh-ssh-sync-overview, .dsh-ssh-sync-account, .dsh-ssh-sync-footer { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .dsh-ssh-sync-footer > div { width: 100%; }
+  .dsh-ssh-sync-footer button { flex: 1; min-height: 44px; }
+  .dsh-ssh-sync-wizard { padding: 4px 16px 18px; }
+  .dsh-ssh-stepper-segment { flex-direction: column; gap: 6px; font-size: 12px; }
+  .dsh-ssh-sync-wizard input, .dsh-ssh-sync-wizard select { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .dsh-ssh-stepper-glider { transition: none; } }

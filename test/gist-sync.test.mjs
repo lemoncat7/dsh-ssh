@@ -409,3 +409,23 @@ class MemoryGistApi {
 }
 
 function json(value, status = 200) { return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } }) }
+
+test('account setup can verify a new token before repairing an inaccessible old Gist', async t => {
+  const fixture = await createFixture(t, 'account-only')
+  const requests = []
+  const service = await GistSyncService.open(
+    fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), join(fixture.directory, 'gist.json'),
+    token => new GitHubGistClient(token, async url => {
+      requests.push(String(url))
+      if (String(url).endsWith('/user')) return new Response(JSON.stringify({ login: 'new-account' }), { status: 200 })
+      return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 })
+    }),
+  )
+  t.after(() => service.close())
+  await service.configure({ settings: { autoSync: false, strategy: 'smart', backupRetention: 5, gistId: 'abcdef123' }, token: 'github-token-value-for-tests' })
+  assert.deepEqual(await service.testConnection(true), { login: 'new-account' })
+  assert.equal(requests.length, 1, 'account setup must not read or decrypt old storage')
+  assert.equal((await service.view()).githubLogin, 'new-account')
+  assert.equal((await service.view()).gistId, 'abcdef123', 'account setup preserves the stored destination')
+  await assert.rejects(service.testConnection(), /Not Found/, 'full connection test still checks storage')
+})
