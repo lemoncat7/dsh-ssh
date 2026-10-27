@@ -232,7 +232,7 @@ export class GitHubGistClient {
 export class GistSyncService {
   private metadata: SyncMetadata
   private persistQueue: Promise<void> = Promise.resolve()
-  private syncQueue: Promise<GistSyncView> = Promise.resolve(undefined as never)
+  private syncQueue: Promise<unknown> = Promise.resolve()
   private unsubscribe: (() => void) | undefined
   private autoTimer: NodeJS.Timeout | undefined
   private pullTimer: NodeJS.Timeout | undefined
@@ -392,6 +392,13 @@ export class GistSyncService {
     this.clearAuthFailure()
     await this.persist()
     return this.view()
+  }
+
+  /** Serialize file transfers with cloud sync so a download cannot replace a fresh import. */
+  withConfigurationTransfer<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.syncQueue.catch(() => undefined).then(operation)
+    this.syncQueue = pending
+    return pending
   }
 
   sync(automatic = false): Promise<GistSyncView> {

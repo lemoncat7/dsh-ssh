@@ -48,6 +48,7 @@ import { TerminalWorkspace } from './terminal-workspace.js'
 import { refreshWorkspace, useWorkspaceRefresh } from './use-workspace-refresh.js'
 import { GroupProxyEditor } from './group-proxy-editor.js'
 import type { GroupProxy } from './domain.js'
+import { ConfigBackupPanel } from './config-backup-panel.js'
 import { SyncPane } from './sync-panel.js'
 import syncCss from './sync-panel.css'
 import { CommandsPanel } from './commands-panel.js'
@@ -670,6 +671,7 @@ function SettingsPane(): JSX.Element {
   }
   return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>{t("client.sshSettings")}</h1><p>{t("sync.localSettingsHint")}</p></div></div>
     <div className="dsh-ssh-settings-stack">
+      <ConfigBackupPanel />
       {settings && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-local-title"><div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-local-title">{t("client.localRuntimeSettings")}</strong><small>{t("client.affectsThisDshInstanceOnlyNotSyncedViaGist")}</small></span></div><div className="dsh-ssh-settings-group">
         <label className="dsh-ssh-switch-row"><span><strong>{t("client.allowPublicPortBinding")}</strong><small>{t("client.allowsForwardsToListenOn0000")}</small></span><input type="checkbox" checked={settings.allowPublicBind} onChange={event => { void save({ ...settings, allowPublicBind: event.target.checked }) }} /></label>
         <label className="dsh-ssh-number-row"><span><strong>{t("client.defaultCommandTimeout")}</strong><small>{t("client.maximumWaitTimeForTheAiSSshExec")}</small></span><input type="number" min="1000" max="300000" step="1000" value={settings.defaultCommandTimeoutMs} onChange={event => setSettings({ ...settings, defaultCommandTimeoutMs: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>{t("client.ms")}</em></label>

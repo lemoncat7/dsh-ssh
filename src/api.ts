@@ -1,3 +1,4 @@
+import { exportConfiguration, previewConfiguration, importConfiguration } from './config-backup.js'
 import { randomBytes } from 'node:crypto'
 import { uploadEndpointFile } from './endpoint-upload.js'
 import { DownloadProgressStore } from './download-progress.js'
@@ -130,6 +131,18 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   }
 
   if (method === 'GET' && segments[0] === 'health') return sendJson(res, 200, { ok: true, service: 'dsh-ssh', schemaVersion: 5 })
+
+  if (segments[0] === 'config-backup' && segments.length === 2 && method === 'POST') {
+    requireMutationHeader(req)
+    res.setHeader('Cache-Control', 'no-store')
+    const input = await readObject(req, 2_097_152)
+    if (segments[1] === 'export') return sendJson(res, 200, { content: await runtime.gistSync.withConfigurationTransfer(() => exportConfiguration(runtime.store, runtime.credentials, input.passphrase)) })
+    if (segments[1] === 'preview') return sendJson(res, 200, await previewConfiguration(input.content, input.passphrase))
+    if (segments[1] === 'import') {
+      await runtime.gistSync.withConfigurationTransfer(() => importConfiguration(runtime.store, runtime.credentials, input.content, input.passphrase))
+      return sendJson(res, 200, { ok: true })
+    }
+  }
 
   if (segments[0] === 'gist-sync') {
     if (segments.length === 1 && method === 'GET') return sendJson(res, 200, await runtime.gistSync.view())

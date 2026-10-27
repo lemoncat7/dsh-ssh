@@ -96,7 +96,7 @@ export function SyncPane({ active }: { active: boolean }): JSX.Element {
           <form onSubmit={event => { event.preventDefault(); void persist('save') }}>
             <fieldset className="dsh-ssh-sync-controls" disabled={blocked}>
               <section className="dsh-ssh-sync-section"><h3>{t('sync.behavior')}</h3>
-                <label className="dsh-ssh-switch-row"><span><strong>{t('client.autoSync')}</strong><small>{t('sync.autoHint')}</small></span><input type="checkbox" checked={policy.autoSync} onChange={event => setPolicy({ ...policy, autoSync: event.target.checked })} /></label>
+                <label className="dsh-ssh-switch-row dsh-ssh-auto-sync"><span><strong>{t('client.autoSync')}</strong><small>{t('sync.autoHint')}</small></span><input type="checkbox" checked={policy.autoSync} onChange={event => setPolicy({ ...policy, autoSync: event.target.checked })} /></label>
                 <Field label={t('sync.conflicts')} hint={t('sync.conflictsHint')}><select value={policy.strategy} onChange={event => setPolicy({ ...policy, strategy: event.target.value as Policy['strategy'] })}><option value="smart">{t('sync.smart')}</option><option value="local-first">{t('client.localFirst')}</option><option value="cloud-first">{t('client.cloudFirst')}</option></select></Field>
                 <Field label={t('client.backupsToKeep')} hint={t('sync.backupHint')}><input type="number" min="0" max="50" required step="1" value={policy.backupRetention} onChange={event => setPolicy({ ...policy, backupRetention: Number(event.target.value) })} /></Field>
               </section>

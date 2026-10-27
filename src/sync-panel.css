@@ -23,7 +23,26 @@
 .dsh-ssh-sync-controls:disabled { opacity: .65; }
 .dsh-ssh-sync-section { display: grid; gap: 18px; padding: 24px 0; }
 .dsh-ssh-sync-section h3 { margin: 0; font-size: 14px; }
-.dsh-ssh-sync-section .dsh-ssh-switch-row { margin: 0; padding: 0 0 16px; border-bottom: 1px solid var(--ssh-border); }
+.dsh-ssh-sync-section .dsh-ssh-auto-sync { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0; padding: 20px 24px; border: 1px solid var(--ssh-border); border-radius: 14px; background: var(--ssh-card-surface); }
+.dsh-ssh-auto-sync > span { display: grid; gap: 6px; min-width: 0; }
+.dsh-ssh-auto-sync strong { font-size: 14px; line-height: 1.5; }
+.dsh-ssh-auto-sync small { line-height: 1.65; color: var(--ssh-text-muted); }
+.dsh-ssh-auto-sync > input { flex-shrink: 0; margin: 0; }
+.dsh-ssh-backup-content { display: grid; gap: 16px; padding: 4px 0 0; }
+.dsh-ssh-backup-content p { margin: 0; font-size: 13px; line-height: 1.7; color: var(--ssh-text-muted); }
+.dsh-ssh-backup-content small { font-size: 12px; line-height: 1.65; color: var(--ssh-text-subtle); }
+.dsh-ssh-backup-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.dsh-ssh-backup-actions button { min-height: 44px; }
+.dsh-ssh-backup-fields { display: grid; gap: 20px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.dsh-ssh-backup-fields input[type=file] { max-width: 100%; height: auto; padding: 12px; overflow: hidden; }
+.dsh-ssh-backup-counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 24px; }
+.dsh-ssh-backup-counts > div { display: flex; justify-content: space-between; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--ssh-border); font-size: 13px; }
+.dsh-ssh-backup-counts dd { margin: 0; font-variant-numeric: tabular-nums; }
+.dsh-ssh-backup-hint { font-size: 13px; line-height: 1.7; color: var(--ssh-text-muted); }
+@media (max-width: 600px) {
+  .dsh-ssh-sync-section .dsh-ssh-auto-sync { padding: 18px; gap: 16px; }
+  .dsh-ssh-backup-actions button { flex: 1; }
+}
 .dsh-ssh-sync-section .dsh-ssh-field input[type=number] { max-width: 120px; }
 .dsh-ssh-sync-section .dsh-ssh-field select { max-width: 360px; }
 .dsh-ssh-sync-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--ssh-border); padding: 18px 0; }

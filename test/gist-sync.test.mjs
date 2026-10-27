@@ -429,3 +429,106 @@ test('account setup can verify a new token before repairing an inaccessible old 
   assert.equal((await service.view()).gistId, 'abcdef123', 'account setup preserves the stored destination')
   await assert.rejects(service.testConnection(), /Not Found/, 'full connection test still checks storage')
 })
+
+test('encrypted file backup previews, imports independent copies and preserves local-only state', async t => {
+  const { exportConfiguration, previewConfiguration, importConfiguration } = await import('../lib/config-backup.js')
+  const { groupProxyId } = await import('../lib/group-proxy.js')
+  const fixture = await createFixture(t, 'file-backup')
+  await seedPortableConfiguration(fixture.store, fixture.credentials)
+  await fixture.store.update(state => {
+    state.profiles[0].group = 'Production'
+    state.profiles.push({ ...profile('jump-host', 'Jump', 100), proxy: { type: 'jump', profileIds: ['host-one'] }, group: 'Production' })
+    state.groupProxies = [{ id: groupProxyId('Production'), name: 'Production', proxyId: 'proxy-one', createdAt: 100, updatedAt: 100 }]
+    state.commands = [{ id: 'command-one', name: 'Status', command: 'pwd', createdAt: 100, updatedAt: 100 }]
+  })
+  await fixture.credentials.replace('jump-host', { password: 'direct-password' })
+  const before = fixture.store.snapshot()
+  const content = await exportConfiguration(fixture.store, fixture.credentials, 'backup-password')
+  assert.doesNotMatch(content, /vault-password|PRIVATE KEY|host-one|proxy.internal|direct-password/)
+  assert.deepEqual(await previewConfiguration(content, 'backup-password'), { profiles: 2, ftpProfiles: 1, remoteProjects: 1, credentialEntries: 2, proxyEntries: 1, commands: 1, groupProxies: 1 })
+  await assert.rejects(importConfiguration(fixture.store, fixture.credentials, content, 'wrong-password'), /密码/)
+  const damaged = JSON.parse(content); damaged.ciphertext = 'AAAA' + damaged.ciphertext.slice(4)
+  await assert.rejects(importConfiguration(fixture.store, fixture.credentials, JSON.stringify(damaged), 'backup-password'), /损坏/)
+  assert.deepEqual(fixture.store.snapshot(), before)
+  await importConfiguration(fixture.store, fixture.credentials, content, 'backup-password')
+  const after = fixture.store.snapshot(), host = after.profiles.find(p => p.id !== 'host-one' && p.name === 'Host one')
+  assert.equal(after.profiles.length, 4)
+  assert.deepEqual(after.profiles.slice(0, 2), before.profiles)
+  assert.deepEqual(after.settings, before.settings)
+  assert.deepEqual(after.injections, before.injections)
+  assert.deepEqual(after.forwardRules, before.forwardRules)
+  assert.equal((await fixture.credentials.readEntry(host.credentialId)).password, 'vault-password')
+  assert.equal((await fixture.credentials.readProxyEntry(host.proxy.proxyId)).proxyPassword, 'proxy-password')
+  const jump = after.profiles.find(p => p.id !== 'jump-host' && p.name === 'Jump')
+  assert.deepEqual(jump.proxy.profileIds, [host.id])
+  assert.equal((await fixture.credentials.read(jump.id)).password, 'direct-password')
+  assert.equal(jump.group, host.group)
+  assert.notEqual(host.group, 'Production')
+  assert.equal(after.groupProxies[1].id, groupProxyId(host.group))
+  assert.equal(after.groupProxies[1].proxyId, host.proxy.proxyId)
+  assert.equal(after.remoteProjects[1].profileId, host.id)
+  assert.equal(after.ftpProfiles[1].credentialId, host.credentialId)
+  // A future backup and cold load must accept remapped identifiers and groups.
+  await previewConfiguration(await exportConfiguration(fixture.store, fixture.credentials, 'backup-password'), 'backup-password')
+  const reopened = await SshStore.open(join(fixture.directory, 'state.json'), before.settings)
+  for (const key of ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies']) assert.deepEqual(reopened.snapshot()[key], after[key])
+})
+
+test('file import publishes no configuration and cleans new secrets when persistence fails', async t => {
+  const { exportConfiguration, importConfiguration } = await import('../lib/config-backup.js')
+  const source = await createFixture(t, 'backup-source'), target = await createFixture(t, 'backup-failed')
+  await seedPortableConfiguration(source.store, source.credentials)
+  const content = await exportConfiguration(source.store, source.credentials, 'backup-password')
+  const before = target.store.snapshot(), written = []
+  const replace = target.credentials.replaceEntry.bind(target.credentials)
+  target.credentials.replaceEntry = async (id, value) => { written.push(id); await replace(id, value) }
+  target.store.update = async () => { throw new Error('disk full') }
+  await assert.rejects(importConfiguration(target.store, target.credentials, content, 'backup-password'), /disk full/)
+  assert.deepEqual(target.store.snapshot(), before)
+  assert.ok(written.length)
+  for (const id of written) assert.deepEqual(await target.credentials.readEntry(id), {})
+})
+
+test('file transfer shares cloud sync queue and recovers after a failed transfer', async t => {
+  const fixture = await createFixture(t, 'transfer-queue')
+  const service = await GistSyncService.open(fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), join(fixture.directory, 'gist.json'))
+  t.after(() => service.close())
+  const events = []
+  let release
+  const first = service.withConfigurationTransfer(async () => { events.push('import'); await new Promise(resolve => { release = resolve }); events.push('done') })
+  await new Promise(resolve => setImmediate(resolve))
+  service.performSync = async () => { events.push('sync'); return {} }
+  const sync = service.sync()
+  const second = service.withConfigurationTransfer(async () => { events.push('export'); throw new Error('failed export') })
+  assert.deepEqual(events, ['import'])
+  release(); await first; await sync; await assert.rejects(second, /failed export/)
+  await service.withConfigurationTransfer(async () => { events.push('retry') })
+  assert.deepEqual(events, ['import', 'done', 'sync', 'export', 'retry'])
+})
+
+test('backup HTTP routes require management header and round-trip without a GitHub account', async t => {
+  const { createServer } = await import('node:http')
+  const { registerSshApi } = await import('../lib/api.js')
+  const fixture = await createFixture(t, 'backup-api')
+  await seedPortableConfiguration(fixture.store, fixture.credentials)
+  const service = await GistSyncService.open(fixture.store, fixture.credentials, new GistTokenVault(fixture.provider), join(fixture.directory, 'gist.json'))
+  t.after(() => service.close())
+  let route
+  registerSshApi({ register(value) { route = value; return () => {} } }, '/ssh-local/v1', { ...fixture, gistSync: service })
+  const server = createServer((req, res) => { void route.handler(req, res) })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const request = (action, body, headers = { 'X-DSH-SSH-Request': '1' }) => fetch(`http://127.0.0.1:${server.address().port}/ssh-local/v1/config-backup/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) })
+  const passphrase = 'api-backup-password'
+  for (const action of ['export', 'preview', 'import']) assert.equal((await request(action, { passphrase }, {})).status, 403)
+  assert.equal((await request('export', { passphrase: 'short' })).status, 400)
+  const exported = await request('export', { passphrase })
+  assert.equal(exported.status, 200)
+  assert.equal(exported.headers.get('cache-control'), 'no-store')
+  const { content } = await exported.json()
+  assert.equal((await request('preview', { content, passphrase: 'wrong-password' })).status, 400)
+  assert.equal((await request('preview', { content, passphrase })).status, 200)
+  assert.equal((await request('import', { content, passphrase })).status, 200)
+  assert.equal(fixture.store.profiles().length, 2)
+  assert.equal((await service.view()).tokenConfigured, false)
+})
