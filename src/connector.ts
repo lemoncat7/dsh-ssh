@@ -5,6 +5,9 @@ import { SshCredentialVault } from './credentials.js'
 import type { SshCredentialPayload, SshProfile } from './domain.js'
 import { SshStore } from './store.js'
 import { effectiveHostProxy } from './group-proxy.js'
+import { connectionProfile } from './connection-policy.js'
+import { TerminalConnectionPool } from './terminal-connection-pool.js'
+import { openSshChannel } from './ssh-channel.js'
 
 export class HostKeyRequiredError extends Error {
   readonly code = 'HOST_KEY_REQUIRED'
@@ -16,13 +19,32 @@ export class HostKeyRequiredError extends Error {
 }
 
 export class SshConnector {
-  constructor(private readonly store: SshStore, private readonly credentials: SshCredentialVault) {}
+  private readonly pool = new TerminalConnectionPool()
+  private poolIdentity = ''
+  private readonly unsubscribe: () => void
+  constructor(private readonly store: SshStore, private readonly credentials: SshCredentialVault) {
+    this.unsubscribe = store.subscribe?.(() => this.refreshPool()) ?? (() => {})
+  }
+
+  private refreshPool(): void {
+    const identity = JSON.stringify([this.store.profiles(), this.store.credentialEntries(), this.store.proxyEntries(), this.store.groupProxies(), this.store.settings().defaultConnectTimeoutMs, this.store.settings().reuseTerminalConnections, this.credentials.revision()])
+    if (identity !== this.poolIdentity) { this.pool.drain(); this.poolIdentity = identity }
+  }
+
+  async connectTerminal(profileId: string, owner: string, signal?: AbortSignal): Promise<ManagedSshConnection> {
+    this.refreshPool()
+    if (this.store.settings().reuseTerminalConnections !== true) return this.connect(profileId, signal)
+    return this.pool.acquire(JSON.stringify([owner, profileId]), sharedSignal => this.connect(profileId, sharedSignal), signal)
+  }
+
+  close(): void { this.unsubscribe(); this.pool.close() }
 
   async connect(profileId: string, signal?: AbortSignal): Promise<ManagedSshConnection> {
     return this.connectRecursive(profileId, new Set(), signal)
   }
 
   async connectDraft(profile: SshProfile, secrets: SshCredentialPayload, signal?: AbortSignal): Promise<ManagedSshConnection> {
+    profile = connectionProfile(profile, this.store.settings())
     const identity = profile.credentialId === undefined ? { profile, secrets } : await this.resolveIdentity(profile)
     return this.connectResolved(identity.profile, identity.secrets, new Set([profile.id]), signal)
   }
@@ -55,7 +77,7 @@ export class SshConnector {
         }, profile.connectTimeoutMs, signal)
       } else if (profile.proxy.type === 'jump') {
         parent = await this.connectJumpChain(profile.proxy.profileIds, chain, signal)
-        socket = await forwardOut(parent.client, profile.host, profile.port)
+        socket = await forwardOut(parent.client, profile.host, profile.port, profile.connectTimeoutMs, signal)
       }
       const client = await connectClient(profile, secrets, socket, signal)
       return new ManagedSshConnection(client, profile, parent)
@@ -94,7 +116,7 @@ export class SshConnector {
           const storedProfile = this.store.profile(profileId)
           if (storedProfile === undefined) throw Object.assign(new Error(`SSH profile ${profileId} was not found`), { status: 404 })
           const { profile, secrets } = await this.resolveIdentity(storedProfile)
-          const socket = await forwardOut(parent.client, profile.host, profile.port)
+          const socket = await forwardOut(parent.client, profile.host, profile.port, profile.connectTimeoutMs, signal)
           try {
             const client = await connectClient(profile, secrets, socket, signal)
             parent = new ManagedSshConnection(client, profile, parent)
@@ -114,6 +136,7 @@ export class SshConnector {
   }
 
   private async resolveIdentity(profile: SshProfile): Promise<{ profile: SshProfile; secrets: Awaited<ReturnType<SshCredentialVault['read']>> }> {
+    profile = connectionProfile(profile, this.store.settings())
     if (profile.credentialId === undefined) return { profile, secrets: await this.credentials.read(profile.id) }
     const entry = this.store.credentialEntry(profile.credentialId)
     if (entry === undefined) throw new Error(`SSH credential entry ${profile.credentialId} was not found`)
@@ -126,10 +149,12 @@ export class SshConnector {
 
 export class ManagedSshConnection {
   private closed = false
-  constructor(readonly client: SshClient, readonly profile: SshProfile, private readonly parent?: ManagedSshConnection) {}
+  constructor(readonly client: SshClient, readonly profile: SshProfile, private readonly parent?: ManagedSshConnection, private readonly release?: () => void) {}
+  lease(release: () => void): ManagedSshConnection { return new ManagedSshConnection(this.client, this.profile, undefined, release) }
   close(): void {
     if (this.closed) return
     this.closed = true
+    if (this.release) { this.release(); return }
     this.client.end()
     this.parent?.close()
   }
@@ -181,6 +206,9 @@ async function connectClient(
       settled = true
       cleanup()
       if (observedFingerprint !== undefined && observedFingerprint !== profile.hostFingerprint) reject(new HostKeyRequiredError(profile.id, observedFingerprint, profile.hostFingerprint, profile.name))
+      else if ((error as Error & { level?: string }).level === 'client-timeout') reject(Object.assign(new Error(observedFingerprint
+        ? `SSH host fingerprint verified, but authentication did not finish within ${profile.connectTimeoutMs / 1000}s. Increase the SSH connection timeout in settings or this host; check server DNS/PAM authentication delays.`
+        : `SSH handshake did not finish within ${profile.connectTimeoutMs / 1000}s. Check the host/proxy route or increase the SSH connection timeout.`), { code: 'SSH_CONNECT_TIMEOUT', phase: observedFingerprint ? 'authentication' : 'handshake' }))
       else reject(error)
       client.destroy()
     }
@@ -203,10 +231,8 @@ async function connectClient(
   })
 }
 
-function forwardOut(client: SshClient, host: string, port: number): Promise<ClientChannel> {
-  return new Promise((resolve, reject) => {
-    client.forwardOut('127.0.0.1', 0, host, port, (error, channel) => error ? reject(error) : resolve(channel))
-  })
+function forwardOut(client: SshClient, host: string, port: number, timeoutMs: number, signal?: AbortSignal): Promise<ClientChannel> {
+  return openSshChannel(client, timeoutMs, done => client.forwardOut('127.0.0.1', 0, host, port, done), signal)
 }
 
 function timingSafeEqualText(left: string, right: string): boolean {

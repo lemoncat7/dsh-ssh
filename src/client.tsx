@@ -40,7 +40,7 @@ import {
   activityEventStreamUrl, api, loadForwards, loadFtpProfiles, loadInjection, loadProfiles, loadProxyEntries, loadVaultEntries, moveProfileToGroup,
   profileAddress,
   type ForwardStatus, type ForwardView, type FtpProfileView,
-  saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type SettingsView, type TerminalOpenedEvent, type VaultEntryView,
+  saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
 import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
 import { ProfileSftpPane } from './sftp-client.js'
@@ -48,7 +48,7 @@ import { TerminalWorkspace } from './terminal-workspace.js'
 import { refreshWorkspace, useWorkspaceRefresh } from './use-workspace-refresh.js'
 import { GroupProxyEditor } from './group-proxy-editor.js'
 import type { GroupProxy } from './domain.js'
-import { ConfigBackupPanel } from './config-backup-panel.js'
+import { SettingsPane } from './settings-pane.js'
 import { SyncPane } from './sync-panel.js'
 import syncCss from './sync-panel.css'
 import { CommandsPanel } from './commands-panel.js'
@@ -658,27 +658,6 @@ function ProxyEditor({ value, onClose, onSaved }: { value?: ProxyEntryView | und
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     <div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>{t("client.cancel")}</button><button className="dsh-ssh-primary-button" disabled={saving}>{saving ? t("client.saving") : t("client.saveProxy")}</button></div>
   </form></Dialog>
-}
-
-function SettingsPane(): JSX.Element {
-  useSshLocale()
-  const [settings, setSettings] = useState<SettingsView>()
-  const [error, setError] = useState<string>()
-  useEffect(() => { void api<SettingsView>('/settings').then(setSettings).catch(reason => setError(message(reason))) }, [])
-  const save = async (next: SettingsView): Promise<void> => {
-    try { setSettings(await api('/settings', { method: 'PUT', body: JSON.stringify(next) })); setError(undefined) }
-    catch (reason) { setError(message(reason)) }
-  }
-  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>{t("client.sshSettings")}</h1><p>{t("sync.localSettingsHint")}</p></div></div>
-    <div className="dsh-ssh-settings-stack">
-      <ConfigBackupPanel />
-      {settings && <section className="dsh-ssh-settings-section" aria-labelledby="dsh-ssh-local-title"><div className="dsh-ssh-settings-section-heading"><span><strong id="dsh-ssh-local-title">{t("client.localRuntimeSettings")}</strong><small>{t("client.affectsThisDshInstanceOnlyNotSyncedViaGist")}</small></span></div><div className="dsh-ssh-settings-group">
-        <label className="dsh-ssh-switch-row"><span><strong>{t("client.allowPublicPortBinding")}</strong><small>{t("client.allowsForwardsToListenOn0000")}</small></span><input type="checkbox" checked={settings.allowPublicBind} onChange={event => { void save({ ...settings, allowPublicBind: event.target.checked }) }} /></label>
-        <label className="dsh-ssh-number-row"><span><strong>{t("client.defaultCommandTimeout")}</strong><small>{t("client.maximumWaitTimeForTheAiSSshExec")}</small></span><input type="number" min="1000" max="300000" step="1000" value={settings.defaultCommandTimeoutMs} onChange={event => setSettings({ ...settings, defaultCommandTimeoutMs: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>{t("client.ms")}</em></label>
-        <label className="dsh-ssh-number-row"><span><strong>{t("client.maxCommandOutput")}</strong><small>{t("client.keepsTheNewestOutputBeyondThisLimitSoContext")}</small></span><input type="number" min="1000" max="1000000" step="1000" value={settings.maxOutputChars} onChange={event => setSettings({ ...settings, maxOutputChars: Number(event.target.value) })} onBlur={() => { void save(settings) }} /><em>{t("client.chars")}</em></label>
-      </div></section>}
-    </div>{error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-  </div>
 }
 
 function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileView; profiles: ProfileView[]; value?: ForwardView | undefined; onClose(): void; onSaved(): void }): JSX.Element {

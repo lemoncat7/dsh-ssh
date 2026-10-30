@@ -5,6 +5,8 @@ export interface Config {
   exposeWeb: boolean
   apiPrefix: string
   defaultCommandTimeoutMs: number
+  defaultConnectTimeoutMs?: number
+  reuseTerminalConnections?: boolean
   maxOutputChars: number
   allowPublicBind: boolean
 }
@@ -14,6 +16,8 @@ export const Config: Schema<Config> = Schema.object({
   exposeWeb: Schema.boolean().default(true),
   apiPrefix: Schema.string().default('/ssh-local/v1'),
   defaultCommandTimeoutMs: Schema.number().min(1000).max(300_000).default(30_000),
+  defaultConnectTimeoutMs: Schema.number().min(1000).max(120_000).default(15_000),
+  reuseTerminalConnections: Schema.boolean().default(false),
   maxOutputChars: Schema.number().min(1000).max(1_000_000).default(32_000),
   allowPublicBind: Schema.boolean().default(false),
 })
@@ -28,6 +32,8 @@ export function resolveConfig(config: Config): ResolvedConfig {
     exposeWeb: config.exposeWeb ?? true,
     apiPrefix,
     defaultCommandTimeoutMs: config.defaultCommandTimeoutMs ?? 30_000,
+    defaultConnectTimeoutMs: config.defaultConnectTimeoutMs ?? 15_000,
+    reuseTerminalConnections: config.reuseTerminalConnections ?? false,
     maxOutputChars: config.maxOutputChars ?? 32_000,
     allowPublicBind: config.allowPublicBind ?? false,
   }

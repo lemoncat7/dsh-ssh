@@ -31,6 +31,10 @@ FTP LIST timestamps are retained as `modifiedAtText` when MLSD timestamps are un
 - `src/file-transfer-manager.ts` owns bounded asynchronous jobs, recursive scans, stream backpressure, progress, cancellation, and cleanup.
 - `src/session-file-download.ts` owns bounded foreground downloads into the owning session directory. It reuses protocol adapters, validates local boundaries, streams into private staging files, and publishes with an exclusive hard link so existing targets are never overwritten. Tool visibility, approval and live session authorization stay in `src/file-transfer-tools.ts`; downloads are not background transfer jobs.
 - `src/connector.ts`, `src/terminal.ts`, `src/sftp.ts`, and `src/forwards.ts` retain SSH-specific resources and cleanup.
+- `src/connection-policy.ts` resolves inherited vs explicit connection deadlines without overwriting stored legacy custom values. `src/ssh-channel.ts` bounds channel opening/cancellation without killing shared transports.
+- `src/terminal-connection-pool.ts` owns bounded, owner-scoped authentication leases for terminals only. Closing a lease never closes another shell. Connection configuration or vault revisions retire old entries; active leases drain, idle entries expire after 30 seconds. No command is transparently replayed after disconnect.
+- `src/tool-entry.ts` is the sole model-facing `ssh` registration. Original definitions are kept as private operation implementations, discovered per current session and revalidated on execution. The host gates the entry; command/file pre-execute policies decode the selected operation without rewriting host execution identity. No additional tool schemas or long catalog are injected until requested. External name-based allowlists must authorize the new entry explicitly.
+- `src/settings-pane.tsx` owns settings fetch, serialized field patches and save feedback separately from client composition.
 
 ### Browser features
 

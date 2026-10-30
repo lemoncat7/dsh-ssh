@@ -7,6 +7,8 @@ const VAULT_SCOPE = 'dsh-ssh-vault'
 const PROXY_SCOPE = 'dsh-ssh-proxy'
 
 export class SshCredentialVault {
+  private generation = 0
+  revision(): number { return this.generation }
   constructor(private readonly provider: CredentialProvider) {}
 
   async describe(profileId: string): Promise<{ configured: boolean; writable: boolean; fields: string[] }> {
@@ -109,14 +111,17 @@ export class SshCredentialVault {
       const previous = current === undefined ? {} : parsePayload(current.payload)
       return { kind: 'grant', payload: compactSecrets({ ...previous, ...patch }) } satisfies GrantRecord
     })
+    this.generation++
   }
 
   private async replaceScoped(scope: string, id: string, value: SshCredentialPayload): Promise<void> {
     await this.provider.modifyRecord(credentialKey(scope, id), async () => ({ kind: 'grant', payload: compactSecrets(value) }))
+    this.generation++
   }
 
   private async deleteScoped(scope: string, id: string): Promise<void> {
     await this.provider.deleteRecord(credentialKey(scope, id))
+    this.generation++
   }
 }
 

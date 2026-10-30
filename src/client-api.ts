@@ -14,6 +14,7 @@ export interface ProfileView {
   credentialId?: string
   proxy: { type: 'none' } | { type: 'http' | 'socks5'; host: string; port: number; username?: string } | { type: 'saved'; proxyId: string } | { type: 'jump'; profileIds: string[] }
   keepAliveIntervalMs: number; connectTimeoutMs: number; terminalType: string; tags: string[]
+  useDefaultConnectTimeout?: boolean
   credential: CredentialView
 }
 export interface VaultEntryView {
@@ -54,7 +55,7 @@ export interface TransferJobView {
   currentPath?: string; error?: string; createdAt: number; startedAt?: number; completedAt?: number
 }
 export interface RemoteProjectView { id: string; profileId: string; name: string; path: string; createdAt: number; updatedAt: number }
-export interface SettingsView { allowPublicBind: boolean; defaultCommandTimeoutMs: number; maxOutputChars: number; githubProxy?: string }
+export interface SettingsView { allowPublicBind: boolean; defaultCommandTimeoutMs: number; defaultConnectTimeoutMs?: number; reuseTerminalConnections?: boolean; maxOutputChars: number; githubProxy?: string }
 export interface GistSyncView {
   authPaused?: boolean
   lastErrorAt?: number

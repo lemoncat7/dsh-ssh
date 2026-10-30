@@ -43,7 +43,7 @@ test('a regular fork inherits SSH and file-transfer access before prompt assembl
   }
   const dispose = registerSshTools(ctx, store, {}, {}, {})
   t.after(dispose)
-  const assembly = { sections: [], contexts: [], variables: {}, tools: [{ name: 'ssh_exec' }, { name: 'ssh_terminal_open' }, { name: 'ssh_list' }] }
+  const assembly = { sections: [], contexts: [], variables: {}, tools: [{ name: 'ssh' }] }
   await assemble(assembly, {}, async () => assembly)
 
   const inherited = store.injection('session-child')
@@ -55,7 +55,7 @@ test('a regular fork inherits SSH and file-transfer access before prompt assembl
   assert.equal(inherited.requireCommandApproval, false)
   assert.deepEqual(inherited.workingDirectories, { 'host-test': '/srv/project' })
   assert.deepEqual(inherited.workingProjectIds, { 'host-test': 'project-test' })
-  assert.deepEqual(assembly.tools.map(tool => tool.name), ['ssh_terminal_open', 'ssh_list'])
+  assert.deepEqual(assembly.tools.map(tool => tool.name), ['ssh'])
 })
 
 test('subagent lineage does not inherit user-granted session access', async t => {

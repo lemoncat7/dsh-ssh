@@ -904,6 +904,7 @@ function parseProfile(value: unknown): SshProfile {
     port: draft.port ?? 22, username: draft.username, authType: draft.authType, ...(draft.credentialId === undefined ? {} : { credentialId: draft.credentialId }),
     ...(draft.hostFingerprint === undefined ? {} : { hostFingerprint: draft.hostFingerprint }), proxy: draft.proxy ?? { type: 'none' },
     keepAliveIntervalMs: draft.keepAliveIntervalMs ?? 15_000, connectTimeoutMs: draft.connectTimeoutMs ?? 15_000,
+    ...(draft.useDefaultConnectTimeout === undefined ? {} : { useDefaultConnectTimeout: draft.useDefaultConnectTimeout }),
     terminalType: draft.terminalType ?? 'xterm-256color', tags: draft.tags ?? [], createdAt: timestamp(input.createdAt, 'createdAt'), updatedAt: timestamp(input.updatedAt, 'updatedAt'),
   }
 }

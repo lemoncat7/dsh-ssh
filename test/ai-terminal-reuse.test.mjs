@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { AiTerminalManager } from '../lib/terminal.js'
@@ -56,13 +57,13 @@ function terminalFixture(t) {
   const opened = []
   const connector = {
     connectCount: 0,
-    async connect(profileId) {
+    async connectTerminal(profileId) {
       this.connectCount += 1
       const channel = terminalChannel()
       channels.push(channel)
       return {
-        profile: { id: profileId, name: 'Test host', username: 'tester', host: '127.0.0.1', terminalType: 'xterm-256color' },
-        client: { shell(_options, callback) { queueMicrotask(() => callback(null, channel)) } },
+        profile: { id: profileId, name: 'Test host', username: 'tester', host: '127.0.0.1', terminalType: 'xterm-256color', connectTimeoutMs: 5000 },
+        client: Object.assign(new EventEmitter(), { shell(_options, callback) { queueMicrotask(() => callback(null, channel)) } }),
         close() {},
       }
     },

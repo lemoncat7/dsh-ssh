@@ -9,6 +9,7 @@ import { SshStore } from './store.js'
 import { SessionFileDownloads } from './session-file-download.js'
 import { SessionFileUploads } from './session-file-upload.js'
 import { canTransferFiles, requiresFileApproval } from './file-access-policy.js'
+import { sshOperation, type RegisterOperation } from './tool-entry.js'
 
 const FILE_TOOL_NAMES = new Set(['file_endpoint_list', 'file_directory_list', 'file_transfer_start', 'file_transfer_status', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
 const TRANSFER_TOOL_NAMES = new Set(['file_transfer_start', 'file_transfer_cancel', 'file_download_to_local', 'file_upload_from_local'])
@@ -16,21 +17,22 @@ const output = { schema: { type: 'string' as const }, render: (_args: unknown, v
 
 const DOWNLOAD_USAGE = 'Before calling file_download_to_local, determine that the task actually requires a saved local copy of this file. This tool saves remote bytes to disk; it is not a remote content-reading tool. Merely viewing, searching, or checking remote file contents is not a reason to download. If authorized remote access can satisfy that need without a local copy, do not download. Available transfer permission alone does not establish a need to download. Assess necessity before invoking the tool; this does not add a user-confirmation step or change existing approval policy.'
 
-export function registerFileTransferTools(ctx: Context, store: SshStore, files: RemoteFileSystems, transfers: FileTransferManager): () => void {
+export function registerFileTransferTools(ctx: Context, store: SshStore, files: RemoteFileSystems, transfers: FileTransferManager, register?: RegisterOperation): () => void {
   const downloads = new SessionFileDownloads(files)
   const uploads = new SessionFileUploads(files)
   const definitions = [endpointListTool(store, files), directoryListTool(store, files), transferStartTool(store, transfers), transferStatusTool(store, transfers), transferCancelTool(store, transfers), downloadTool(store, downloads), uploadTool(store, uploads)]
-  const disposers = definitions.map(definition => ctx.tools.register(definition))
+  const disposers = definitions.map(definition => register ? register(definition) : ctx.tools.register(definition))
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
-    if (exec.name !== 'file_transfer_start' && exec.name !== 'file_download_to_local' && exec.name !== 'file_upload_from_local') return next()
+    const operation = sshOperation(exec)
+    if (operation.name !== 'file_transfer_start' && operation.name !== 'file_download_to_local' && operation.name !== 'file_upload_from_local') return next()
     const injection = exec.agent === undefined ? undefined : store.injection(exec.agent.session.id)
     if (!injection) return next()
-    const args = exec.arguments as Record<string, unknown> | undefined
+    const args = operation.arguments as Record<string, unknown> | undefined
     const ids = [args?.endpointId, args?.sourceEndpointId, args?.destinationEndpointId].filter((id): id is string => typeof id === 'string')
     if (ids.length ? !ids.some(id => requiresFileApproval(injection, id)) : injection.requireFileApproval !== true) return next()
-    return { kind: 'ask', reason: exec.name === 'file_download_to_local' ? 'Download an authorized remote file into the current DSH session directory.' : exec.name === 'file_upload_from_local' ? 'Upload a file from the current DSH session directory to an authorized remote endpoint.' : 'The conversation requested a remote file transfer between authorized endpoints.' }
+    return { kind: 'ask', reason: operation.name === 'file_download_to_local' ? 'Download an authorized remote file into the current DSH session directory.' : operation.name === 'file_upload_from_local' ? 'Upload a file from the current DSH session directory to an authorized remote endpoint.' : 'The conversation requested a remote file transfer between authorized endpoints.' }
   })
-  const disposeVisibility = installVisibility(ctx, store)
+  const disposeVisibility = register ? () => {} : installVisibility(ctx, store)
   return () => { uploads.close(); downloads.close(); disposeVisibility(); disposeApproval(); for (const dispose of disposers.reverse()) dispose() }
 }
 

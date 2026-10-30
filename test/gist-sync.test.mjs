@@ -531,4 +531,6 @@ test('backup HTTP routes require management header and round-trip without a GitH
   assert.equal((await request('import', { content, passphrase })).status, 200)
   assert.equal(fixture.store.profiles().length, 2)
   assert.equal((await service.view()).tokenConfigured, false)
+  // Drain background metadata writes before the fixture's earlier cleanup hook.
+  await service.close()
 })

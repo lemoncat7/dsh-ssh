@@ -7,6 +7,7 @@ import { executeSshCommand } from './exec.js'
 import { normalizeRemoteDirectory } from './directory.js'
 import { currentHumanText, consentMatches, confirmsPending } from './temporary-consent.js'
 import { TemporaryTaskAccess, type PartnerTaskResolver, type TaskTarget } from './temporary-task-access.js'
+import type { RegisterOperation } from './tool-entry.js'
 
 /** Resolve only explicit identifiers; ambiguous numeric shortcuts never pick a host. */
 export function resolveTemporaryHost(profiles: SshProfile[], target: string): SshProfile {
@@ -19,7 +20,7 @@ export function resolveTemporaryHost(profiles: SshProfile[], target: string): Ss
   return matches[0]!
 }
 
-export function registerTemporaryAccess(ctx: Context, store: SshStore, connector: SshConnector): () => void {
+export function registerTemporaryAccess(ctx: Context, store: SshStore, connector: SshConnector, register: RegisterOperation = tool => ctx.tools.register(tool)): () => void {
   // No durable injection is changed. Cross-session leases require an exact board task.
   const turns = new Map<string, { turn: number; signal: AbortSignal; grants: Map<string, string> }>()
   const pending = new Map<string, { identity: string; taskId?: string; scope?: string; text: string; turn: number; expiresAt: number }>()
@@ -47,7 +48,7 @@ export function registerTemporaryAccess(ctx: Context, store: SshStore, connector
     ctx.provide('dshSshTemporaryAccess', { bind: tasks.bind.bind(tasks) }),
   ]
   const output = { schema: { type: 'string' as const }, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: String(value) }] }
-  disposers.push(ctx.tools.register(defineTool({
+  disposers.push(register(defineTool({
     name: 'ssh_request_temporary_access',
     description: 'Request temporary SSH command access to a saved host explicitly authorized in the CURRENT HUMAN message. The plugin verifies the real message, not your claim of consent; no approval popup is needed. If consent is unclear, show the returned scope and ask the user in chat, then retry only after their reply. For delegation, FIRST create the board task with autoRun=false and an assignee, then pass taskId here; the user must authorize that recipient, or confirm the returned scope. Only after granted=true submit that same task. Without taskId access expires at this turn end. Task grants apply to one execution, at most 60 minutes, never to other tasks or reviewers. Use ssh_temporary_exec; do not change permanent mounts.',
     parameters: { target: { type: 'string', required: true }, task: { type: 'string', required: true, description: 'The concrete task requested by the user.' }, taskId: { type: 'string', description: 'Optional exact planned board task ID for a designated executor. Create it with autoRun=false before requesting access.' } },
@@ -89,7 +90,7 @@ export function registerTemporaryAccess(ctx: Context, store: SshStore, connector
       return JSON.stringify({ granted: true, authorization: confirmation ? 'human-confirmed-request' : 'current-human-message', profileId: profile.id, name: profile.name, host: profile.host, ...(target ? { taskId: target.taskId, companion: target.companionName } : {}), expires: target ? 'one-task-execution-max-60-minutes' : 'current-agent-turn-end', tool: 'ssh_temporary_exec' })
     },
   })))
-  disposers.push(ctx.tools.register(defineTool({
+  disposers.push(register(defineTool({
     name: 'ssh_temporary_exec',
     description: 'Execute a command using temporary SSH access verified from a human message, or a task-bound grant injected by the partner runtime. Does not change permanent mounts. Use cwd for the working directory. Expired grants must be authorized again; never assume another session shares access.',
     parameters: { profileId: { type: 'string', required: true }, command: { type: 'string', required: true }, cwd: { type: 'string' }, timeoutMs: { type: 'integer' } },

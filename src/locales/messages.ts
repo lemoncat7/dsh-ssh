@@ -1,6 +1,17 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  'connection.timeout': { zh: 'SSH 连接超时', en: 'SSH connection timeout' },
+  'connection.timeoutMs': { zh: '连接超时（ms）', en: 'Connection timeout (ms)' },
+  'connection.timeoutHint': { zh: '包含握手和认证等待，测试连接同样生效；不限制终端使用时长。', en: 'Includes handshake and authentication, including connection tests. Does not limit terminal lifetime.' },
+  'connection.followDefault': { zh: '跟随 SSH 设置', en: 'Use SSH settings' },
+  'connection.custom': { zh: '为此主机单独设置', en: 'Override for this host' },
+  'connection.defaultTimeout': { zh: '默认连接超时', en: 'Default connection timeout' },
+  'connection.defaultHint': { zh: '1–120 秒；慢认证可设为 60000 ms。主机单独设置优先。', en: '1–120 seconds; use 60000 ms for slow authentication. Host overrides take priority.' },
+  'connection.reuse': { zh: '复用终端 SSH 连接', en: 'Reuse terminal SSH connections' },
+  'connection.reuseHint': { zh: '新终端复用同一访问范围内的认证连接，shell 与输出独立。空闲 30 秒释放；连接断开会影响共享终端。关闭不打断已打开的终端。', en: 'New terminals share authentication within the same access scope, not shells or output. Idle connections expire after 30s. Disconnects affect all shared terminals. Disabling does not interrupt open terminals.' },
+  'connection.saving': { zh: '正在保存…', en: 'Saving…' },
+  'connection.saved': { zh: '已保存，新连接生效', en: 'Saved; applies to new connections' },
   "backup.title": {"zh": "配置导入与导出", "en": "Import and export"},
   "backup.description": {"zh": "将常用配置保存为加密文件，便于备份或迁移。", "en": "Save an encrypted file to back up or move your configuration."},
   "backup.scope": {"zh": "包含主机、FTP/FTPS、项目目录、密钥库、代理库、分组代理和常用命令。", "en": "Includes hosts, FTP/FTPS, projects, credentials, proxies, group proxies and commands."},

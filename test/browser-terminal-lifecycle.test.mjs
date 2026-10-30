@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import test from 'node:test'
 import { PassThrough } from 'node:stream'
 import { BrowserTerminalManager } from '../lib/terminal.js'
@@ -8,12 +9,12 @@ function connection() {
   channel.stderr = new PassThrough()
   channel.setWindow = () => {}
   let closes = 0
-  return { channel, get closes() { return closes }, profile: { terminalType: 'xterm-256color' }, client: { shell(_size, callback) { callback(null, channel) } }, close() { closes++; channel.destroy() } }
+  return { channel, get closes() { return closes }, profile: { terminalType: 'xterm-256color', connectTimeoutMs: 5000 }, client: Object.assign(new EventEmitter(), { shell(_size, callback) { callback(null, channel) } }), close() { closes++; channel.destroy() } }
 }
 
 test('browser tabs open independent terminals, start in selected directory and close independently', async t => {
   const connections = []
-  const manager = new BrowserTerminalManager({ async connect() { const value = connection(); connections.push(value); return value } })
+  const manager = new BrowserTerminalManager({ async connectTerminal() { const value = connection(); connections.push(value); return value } })
   t.after(() => manager.closeAll())
   const a = await manager.create('a', 120, 32, undefined, '/srv/my app')
   const b = await manager.create('a', 120, 32, undefined, '/logs')
@@ -30,7 +31,7 @@ test('browser tabs open independent terminals, start in selected directory and c
 test('shutdown cancels a browser terminal that is still opening', async () => {
   let release
   const conn = connection()
-  const manager = new BrowserTerminalManager({ connect: () => new Promise(resolve => { release = resolve }) })
+  const manager = new BrowserTerminalManager({ connectTerminal: () => new Promise(resolve => { release = resolve }) })
   const opening = manager.create('a', 80, 24)
   await manager.closeAll()
   release(conn)
@@ -41,7 +42,7 @@ test('shutdown cancels a browser terminal that is still opening', async () => {
 
 test('connection capacity includes pending opens and releases failed reservations', async t => {
   const pending = []
-  const manager = new BrowserTerminalManager({ connect: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) })
+  const manager = new BrowserTerminalManager({ connectTerminal: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) })
   t.after(() => manager.closeAll())
   const opens = Array.from({ length: 32 }, () => manager.create('a', 80, 24))
   const results = Promise.allSettled(opens)

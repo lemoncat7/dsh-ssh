@@ -13,6 +13,7 @@ import { registerFileTransferTools } from './file-transfer-tools.js'
 import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager } from './file-transfer-manager.js'
 import { registerTemporaryAccess } from './temporary-access.js'
+import { sshEntry, sshOperation } from './tool-entry.js'
 
 const textOutput = {
   schema: { type: 'string' as const },
@@ -20,8 +21,6 @@ const textOutput = {
 }
 
 const APPROVAL_TOOLS = new Set(['ssh_exec', 'ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_signal', 'ssh_forward_start', 'ssh_forward_stop'])
-const TERMINAL_ONLY_TOOLS = new Set(['ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_read', 'ssh_terminal_signal', 'ssh_terminal_close'])
-
 export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager, files?: RemoteFileSystems, transfers?: FileTransferManager): () => void {
   const tools: ToolDefinition[] = [
     listTool(store),
@@ -36,19 +35,22 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
     forwardStartTool(store, forwards),
     forwardStopTool(store, forwards),
   ]
-  const disposers = tools.map(tool => ctx.tools.register(tool))
-  disposers.push(registerTemporaryAccess(ctx, store, connector))
+  const operations = new Map<string, ToolDefinition>(tools.map(tool => [tool.name, tool]))
+  const register = (tool: ToolDefinition): (() => void) => { operations.set(tool.name, tool); return () => { operations.delete(tool.name) } }
+  const disposers = [registerTemporaryAccess(ctx, store, connector, register)]
 
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
-    if (!APPROVAL_TOOLS.has(exec.name)) return next()
+    const operation = sshOperation(exec)
+    if (!APPROVAL_TOOLS.has(operation.name)) return next()
     const sessionId = exec.agent?.session.id
     if (sessionId === undefined) return next()
     const injection = store.injection(sessionId)
     if (injection?.requireCommandApproval !== true) return next()
-    return { kind: 'ask', reason: `SSH access to an injected remote host was requested by ${exec.name}.` }
+    return { kind: 'ask', reason: `SSH access to an injected remote host was requested by ${operation.name}.` }
   })
   const disposeVisibility = installModeToolVisibility(ctx, store)
-  const disposeFileTools = files === undefined || transfers === undefined ? () => {} : registerFileTransferTools(ctx, store, files, transfers)
+  const disposeFileTools = files === undefined || transfers === undefined ? () => {} : registerFileTransferTools(ctx, store, files, transfers, register)
+  disposers.push(ctx.tools.register(sshEntry(store, operations)))
   return () => {
     disposeFileTools()
     disposeVisibility()
@@ -286,13 +288,9 @@ function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
 }
 
 function applyModeToolVisibility(assembly: PromptAssembly, permission: 'exec' | 'terminal' | undefined): void {
-  if (permission === undefined) return
-  assembly.tools = assembly.tools.filter(schema => permission === 'terminal' ? schema.name !== 'ssh_exec' : !TERMINAL_ONLY_TOOLS.has(schema.name))
   assembly.contexts.push({
     name: 'dsh-ssh:permission-mode',
-    text: permission === 'terminal'
-      ? 'SSH permission mode: terminal control. Open one terminal for each required SSH host and working directory, retain the terminalId returned by ssh_terminal_open, and use that same terminalId for subsequent ssh_terminal_send/read calls. Do not call ssh_terminal_open again before each command. If the terminalId is unavailable, ssh_terminal_open is idempotent and safely returns the existing terminal. ssh_exec is intentionally unavailable so commands and output remain visible in SSH Activity.'
-      : 'SSH permission mode: one-shot commands. Use ssh_exec; interactive terminal tools are intentionally unavailable.',
+    text: `Use the ssh entry for all SSH and FTP/SFTP operations: list → describe → call. Operation names are not standalone tools. Current SSH mode: ${permission === 'terminal' ? 'terminal control; keep the returned terminalId for subsequent send/read operations' : permission === 'exec' ? 'one-shot commands' : 'no mounted host; temporary access requires current human consent'}. Discovery never grants access.`,
   })
 }
 

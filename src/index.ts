@@ -38,6 +38,8 @@ export function apply(context: Context, config: SshConfig): void {
     const store = await SshStore.open(resolved.statePath, {
       allowPublicBind: resolved.allowPublicBind,
       defaultCommandTimeoutMs: resolved.defaultCommandTimeoutMs,
+      defaultConnectTimeoutMs: resolved.defaultConnectTimeoutMs ?? 15_000,
+      reuseTerminalConnections: resolved.reuseTerminalConnections ?? false,
       maxOutputChars: resolved.maxOutputChars,
     })
     const credentials = new SshCredentialVault(ctx.credentials)
@@ -74,6 +76,7 @@ export function apply(context: Context, config: SshConfig): void {
     return async () => {
       disposeTools()
       disposeApi?.()
+      connector.close()
       await terminals.closeAll()
       await aiTerminals.closeAll()
       await transfers.closeAll()

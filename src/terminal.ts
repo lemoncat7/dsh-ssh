@@ -13,6 +13,7 @@ import { TerminalBootstrapEcho } from './terminal-bootstrap-echo.js'
 import { OrderedTerminalInput, TerminalOutputBuffer, type TerminalOutputListener } from './terminal-io.js'
 import type { TerminalOpenedEvent } from './activity-events.js'
 import { terminalControlByte } from './terminal-control.js'
+import { openSshChannel } from './ssh-channel.js'
 
 const MAX_SCROLLBACK_CHARS = 256_000
 
@@ -26,9 +27,9 @@ export class SshTerminalBackend implements TerminalBackend {
     const injection = this.store.injection(spec.owner.session.id)
     if (injection === undefined || !injection.profileIds.includes(profileId)) throw new Error('This SSH profile is not injected into the current DSH session')
     if (injection.permission !== 'terminal') throw new Error('This SSH injection allows one-shot commands only')
-    const connection = await this.connector.connect(profileId, spec.signal)
+    const connection = await this.connector.connectTerminal(profileId, `session:${spec.owner.session.id}`, spec.signal)
     try {
-      const channel = await openShell(connection, 120, 32)
+      const channel = await openShell(connection, 120, 32, spec.signal)
       return new SshTerminalSession(connection, channel, `Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
     } catch (error) {
       connection.close()
@@ -51,6 +52,7 @@ export class SshTerminalSession implements TerminalBackendSession {
     channel.on('data', (chunk: string | Buffer) => this.receive(String(chunk)))
     channel.stderr?.setEncoding('utf8')
     channel.stderr?.on('data', (chunk: string | Buffer) => this.receive(String(chunk)))
+    channel.on('error', () => { channel.destroy() })
     channel.on('exit', (code: number | undefined, signal: string | undefined) => {
       this.terminalStatus = { kind: 'exited', exitCode: code ?? null, signal: normalizeSignal(signal) }
       this.active?.settle('session_exit')
@@ -217,9 +219,9 @@ export class BrowserTerminalManager {
     this.pending++
     let connection: ManagedSshConnection | undefined
     try {
-      connection = await this.connector.connect(profileId, signal)
+      connection = await this.connector.connectTerminal(profileId, 'browser', signal)
       const promptShell = await detectPromptShell(connection.client)
-      const channel = await openShell(connection, clamp(cols, 20, 400), clamp(rows, 5, 200))
+      const channel = await openShell(connection, clamp(cols, 20, 400), clamp(rows, 5, 200), signal)
       if (this.closing || signal?.aborted) { channel.destroy(); throw new Error('SSH terminal opening was cancelled') }
       const terminal = new BrowserTerminal(randomUUID(), profileId, connection, channel, () => this.sessions.delete(terminal.id))
       this.sessions.set(terminal.id, terminal)
@@ -285,9 +287,9 @@ export class AiTerminalManager {
     await this.removeRecords(ownerId, obsolete)
     if (reusable !== undefined) return terminalOpenResult(reusable, true)
 
-    const connection = await this.connector.connect(profileId, signal)
+    const connection = await this.connector.connectTerminal(profileId, `session:${ownerId}`, signal)
     try {
-      const channel = await openShell(connection, 120, 32)
+      const channel = await openShell(connection, 120, 32, signal)
       const terminalId = randomUUID()
       const session = new SshTerminalSession(connection, channel, `Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
       const record: AiTerminalRecord = {
@@ -494,6 +496,7 @@ export class BrowserTerminal {
     channel.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
     channel.stderr?.setEncoding('utf8')
     channel.stderr?.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
+    channel.on('error', () => { channel.destroy() })
     channel.once('close', () => {
       this.finishBootstrap()
       this.closed = true
@@ -559,10 +562,8 @@ export class BrowserTerminal {
   }
 }
 
-function openShell(connection: ManagedSshConnection, cols: number, rows: number): Promise<ClientChannel> {
-  return new Promise((resolve, reject) => {
-    connection.client.shell({ term: connection.profile.terminalType, cols, rows }, (error, channel) => error ? reject(error) : resolve(channel))
-  })
+function openShell(connection: ManagedSshConnection, cols: number, rows: number, signal?: AbortSignal): Promise<ClientChannel> {
+  return openSshChannel(connection.client, connection.profile.connectTimeoutMs, done => connection.client.shell({ term: connection.profile.terminalType, cols, rows }, done), signal)
 }
 
 function normalizeSignal(signal: string | undefined): NodeJS.Signals | null {

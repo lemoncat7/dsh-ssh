@@ -24,12 +24,12 @@ const server = net.createServer(socket => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
 try {
   const port = server.address().port
-  const connector = new SshConnector({}, {})
+  const connector = new SshConnector({ settings: () => ({}) }, {})
   const profile = { id: 'silent', name: 'Silent SSH', host: '127.0.0.1', port,
     username: 'test', authType: 'password', keepAliveIntervalMs: 0, connectTimeoutMs: 100,
     proxy: proxy ? { type: 'socks5', host: '127.0.0.1', port } : { type: 'none' } }
   for (let i = 0; i < 3; i++) {
-    await assert.rejects(connector.connectDraft(profile, { password: 'test' }), /Timed out while waiting for handshake/)
+    await assert.rejects(connector.connectDraft(profile, { password: 'test' }), /SSH handshake did not finish/)
     await delay(30)
   }
   const controller = new AbortController()

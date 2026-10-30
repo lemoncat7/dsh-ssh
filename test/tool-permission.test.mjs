@@ -9,16 +9,16 @@ import { registerSshTools } from '../lib/tools.js'
 test('terminal-control mode rejects ssh_exec at the tool boundary', async t => {
   const fixture = await toolFixture(t, 'terminal')
   await assert.rejects(
-    fixture.tools.get('ssh_exec').execute({ profileId: 'host-test', command: 'uptime' }, fixture.execution),
-    /uses terminal control/,
+    fixture.tools.get('ssh').execute({ action: 'call', tool: 'ssh_exec', arguments: { profileId: 'host-test', command: 'uptime' } }, fixture.execution),
+    /not allowed by this session permission mode/,
   )
 })
 
 test('exec mode rejects interactive terminal tools at the tool boundary', async t => {
   const fixture = await toolFixture(t, 'exec')
   await assert.rejects(
-    fixture.tools.get('ssh_terminal_send').execute({ terminalId: 'terminal-test', text: 'uptime' }, fixture.execution),
-    /permits one-shot commands/,
+    fixture.tools.get('ssh').execute({ action: 'call', tool: 'ssh_terminal_send', arguments: { terminalId: 'terminal-test', text: 'uptime' } }, fixture.execution),
+    /not allowed by this session permission mode/,
   )
 })
 
@@ -41,9 +41,9 @@ test('terminal-control mode removes ssh_exec from the model-facing tool assembly
   }
   const dispose = registerSshTools(ctx, store, {}, {}, {})
   t.after(dispose)
-  const assembly = { sections: [], contexts: [], variables: {}, tools: [{ name: 'ssh_exec' }, { name: 'ssh_terminal_open' }, { name: 'ssh_list' }] }
+  const assembly = { sections: [], contexts: [], variables: {}, tools: [{ name: 'ssh' }] }
   const result = await assemble(assembly, {}, async () => assembly)
-  assert.deepEqual(result.tools.map(tool => tool.name), ['ssh_terminal_open', 'ssh_list'])
+  assert.deepEqual(result.tools.map(tool => tool.name), ['ssh'])
   assert.match(result.contexts[0].text, /terminal control/)
 })
 

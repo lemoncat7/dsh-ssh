@@ -833,9 +833,12 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'PUT') {
       requireMutationHeader(req)
       const body = await readObject(req)
+      if (body.reuseTerminalConnections !== undefined && typeof body.reuseTerminalConnections !== 'boolean') throw Object.assign(new Error('reuseTerminalConnections must be boolean'), { status: 400 })
       const settings = {
         defaultSessionPermission: runtime.store.settings().defaultSessionPermission ?? 'exec',
         defaultRequireCommandApproval: runtime.store.settings().defaultRequireCommandApproval ?? true,
+        defaultConnectTimeoutMs: requireInteger(body.defaultConnectTimeoutMs ?? runtime.store.settings().defaultConnectTimeoutMs ?? 15_000, 'defaultConnectTimeoutMs', 1000, 120_000),
+        reuseTerminalConnections: (body.reuseTerminalConnections as boolean | undefined) ?? runtime.store.settings().reuseTerminalConnections ?? false,
         allowPublicBind: body.allowPublicBind === true,
         defaultCommandTimeoutMs: requireInteger(body.defaultCommandTimeoutMs, 'defaultCommandTimeoutMs', 1000, 300_000),
         maxOutputChars: requireInteger(body.maxOutputChars, 'maxOutputChars', 1000, 1_000_000),

@@ -19,6 +19,7 @@ import {
 } from './client-api.js'
 import { Dialog, Field, SuggestionInput, errorMessage } from './ui-components.js'
 import { findDuplicateProfileEndpoint } from './profile-endpoint.js'
+import { usesDefaultConnectTimeout } from './connection-policy.js'
 
 export function ProfileDeleteDialog({ profile, dependents, onClose, onDeleted }: { profile: ProfileView; dependents: ProfileView[]; onClose(): void; onDeleted(): void }): JSX.Element {
   useSshLocale()
@@ -57,6 +58,8 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
     group: profile?.group ?? '',
     host: profile?.host ?? '',
     port: String(profile?.port ?? 22),
+    connectTimeoutMs: String(profile?.connectTimeoutMs ?? 15000),
+    timeoutMode: profile && !usesDefaultConnectTimeout(profile) ? 'custom' : 'default',
     username: profile?.username ?? '',
     authType: profile?.authType ?? 'password',
     credentialId: profile?.credentialId ?? '',
@@ -82,6 +85,7 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
   const [endpointTouched, setEndpointTouched] = useState(false)
   const endpointErrorId = useId()
   const hostInputRef = useRef<HTMLInputElement>(null)
+  const timeoutInputRef = useRef<HTMLInputElement>(null)
 
   const field = (name: Exclude<keyof typeof form, 'jumpProfileIds'>) => ({
     value: form[name],
@@ -116,7 +120,8 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
         ...(hostFingerprint ? { hostFingerprint } : {}),
         proxy,
         keepAliveIntervalMs: profile?.keepAliveIntervalMs ?? 15000,
-        connectTimeoutMs: profile?.connectTimeoutMs ?? 15000,
+        connectTimeoutMs: Number(form.connectTimeoutMs),
+        useDefaultConnectTimeout: form.timeoutMode === 'default',
         terminalType: profile?.terminalType ?? 'xterm-256color',
         tags: form.tags.split(',').map(item => item.trim()).filter(Boolean),
       },
@@ -125,6 +130,7 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
   }
 
   const testConnection = async (confirmation?: typeof pendingFingerprint): Promise<void> => {
+    if (form.timeoutMode === 'custom' && !timeoutInputRef.current?.reportValidity()) return
     setEndpointTouched(true)
     if (duplicateProfile !== undefined) { hostInputRef.current?.focus(); return }
     setTesting(true)
@@ -172,6 +178,10 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
         <div className="dsh-ssh-form-grid is-host"><Field label={t("client.host")}><input ref={hostInputRef} required aria-invalid={endpointValidationMessage === undefined ? undefined : true} aria-describedby={endpointValidationMessage === undefined ? undefined : endpointErrorId} placeholder="server.example.com" spellCheck={false} {...field('host')} onBlur={() => setEndpointTouched(true)} />{endpointValidationMessage && <small id={endpointErrorId} className="dsh-ssh-field-error" role="alert">{endpointValidationMessage}</small>}</Field><Field label={t("ftp-profile-editor.port")}><input required aria-invalid={endpointValidationMessage === undefined ? undefined : true} aria-describedby={endpointValidationMessage === undefined ? undefined : endpointErrorId} type="number" inputMode="numeric" min="1" max="65535" {...field('port')} onBlur={() => setEndpointTouched(true)} /></Field></div>
         <Field label={t("profile-editor.tags")} hint={t("ftp-profile-editor.pickExistingTagsOrTypeNewOnesSeparateMultiple")}><SuggestionInput ariaLabel={t("profile-editor.hostTags")} multiple options={tagOptions} placeholder={t("ftp-profile-editor.selectOrEnterTags")} value={form.tags} onChange={tags => setForm(current => ({ ...current, tags }))} /></Field>
       </div>
+      <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-grid">
+        <Field label={t('connection.timeout')} hint={t('connection.timeoutHint')}><select {...field('timeoutMode')}><option value="default">{t('connection.followDefault')}</option><option value="custom">{t('connection.custom')}</option></select></Field>
+        {form.timeoutMode === 'custom' && <Field label={t('connection.timeoutMs')}><input ref={timeoutInputRef} required type="number" inputMode="numeric" min="1000" max="120000" step="1000" {...field('connectTimeoutMs')} /></Field>}
+      </div></div>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>{t("ftp-profile-editor.authentication")}</strong><small>{t("profile-editor.chooseSharedCredentialsOrSaveSeparately")}</small></div>
         <Field label={t("ftp-profile-editor.credentialSource")} hint={t("profile-editor.useThisConnectionSOwnCredentialsOrReferenceA")}><select {...field('credentialId')}><option value="">{t("profile-editor.savedWithThisConnectionOnly")}</option>{vaultEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.username}</option>)}</select></Field>
         {selectedCredential ? <div className="dsh-ssh-credential-reference"><span><IconUserOutline16 size={16} /></span><span><strong>{selectedCredential.name}</strong><small>{selectedCredential.username} · {selectedCredential.authType === 'password' ? t("client.password") : t("client.privateKey")}</small></span><em>{selectedCredential.credential.configured ? t("profile-editor.ready") : t("client.missingCredentials")}</em></div> : <>

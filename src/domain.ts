@@ -19,6 +19,7 @@ export interface SshProfile {
   proxy: ProxyConfig
   keepAliveIntervalMs: number
   connectTimeoutMs: number
+  useDefaultConnectTimeout?: boolean
   terminalType: string
   tags: string[]
   createdAt: number
@@ -141,6 +142,8 @@ export interface RemoteProject {
 }
 
 export interface SshSettings {
+  defaultConnectTimeoutMs?: number
+  reuseTerminalConnections?: boolean
   defaultSessionPermission?: 'exec' | 'terminal'
   defaultRequireCommandApproval?: boolean
   allowPublicBind: boolean
@@ -215,6 +218,7 @@ export interface ProfileDraft {
   proxy?: ProxyConfig
   keepAliveIntervalMs?: number
   connectTimeoutMs?: number
+  useDefaultConnectTimeout?: boolean
   terminalType?: string
   tags?: string[]
 }
@@ -246,6 +250,7 @@ export interface ForwardDraft {
 
 export function normalizeProfileDraft(value: unknown): ProfileDraft {
   const input = record(value, 'profile')
+  if (input.useDefaultConnectTimeout !== undefined && typeof input.useDefaultConnectTimeout !== 'boolean') throw bad('useDefaultConnectTimeout must be boolean')
   const authType = input.authType
   if (authType !== 'password' && authType !== 'private-key' && authType !== 'agent') throw bad('authType must be password, private-key, or agent')
   const proxy = normalizeProxy(input.proxy)
@@ -260,6 +265,7 @@ export function normalizeProfileDraft(value: unknown): ProfileDraft {
     ...optionalText(input.hostFingerprint, 'hostFingerprint', 8, 256),
     proxy,
     keepAliveIntervalMs: integer(input.keepAliveIntervalMs ?? 15_000, 'keepAliveIntervalMs', 0, 120_000),
+    ...(input.useDefaultConnectTimeout === undefined ? {} : { useDefaultConnectTimeout: input.useDefaultConnectTimeout as boolean }),
     connectTimeoutMs: integer(input.connectTimeoutMs ?? 15_000, 'connectTimeoutMs', 1000, 120_000),
     terminalType: text(input.terminalType ?? 'xterm-256color', 'terminalType', 1, 64),
     tags: stringArray(input.tags, 'tags', 20, 32),
