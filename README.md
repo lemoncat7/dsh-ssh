@@ -40,3 +40,8 @@ dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 - [架构与终端生命周期](ARCHITECTURE.md)
 - [版本与发布说明](https://github.com/lemoncat7/dsh-ssh/releases)
 - [发布维护约定](docs/releases/README.md)
+
+
+## DSH 0.2.2-rc.1
+
+1.14.2 支持 DSH 0.2.2-rc.1，要求 Node.js >=24.9.0。[兼容说明](docs/compatibility-0.2.2-rc.1.md)。

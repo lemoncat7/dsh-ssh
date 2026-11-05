@@ -1,3 +1,4 @@
+import {dispatchTool} from './runtime-022.mjs'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -80,9 +81,9 @@ test('real host runtime denies approval-required entry before any network operat
   t.after(async () => { await runtime.dispose(); await prompt.dispose() })
   ctx.tools.register(f.definitions.get('ssh'))
   for (const hook of f.hooks.get('tools/pre-execute')) ctx.on('tools/pre-execute', hook)
-  const result = await ctx.tools.execute({ ...f.exec, callId: 'fixture-call', name: 'ssh', arguments: { action: 'call', tool: 'ssh_exec', arguments: { profileId: 'host', command: 'true' } } })
+  const result = await dispatchTool(ctx.tools, { ...f.exec, callId: 'fixture-call', name: 'ssh', arguments: { action: 'call', tool: 'ssh_exec', arguments: { profileId: 'host', command: 'true' } } })
   assert.equal(result.isError, true)
   assert.equal(f.connects, 0)
-  const described = await ctx.tools.execute({ ...f.exec, callId: 'fixture-describe', name: 'ssh', arguments: { action: 'describe', tool: 'ssh_exec' } })
+  const described = await dispatchTool(ctx.tools, { ...f.exec, callId: 'fixture-describe', name: 'ssh', arguments: { action: 'describe', tool: 'ssh_exec' } })
   assert.equal(described.isError, false)
 })

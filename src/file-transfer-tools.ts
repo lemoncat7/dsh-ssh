@@ -1,5 +1,5 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
+import type { PromptAssembly, PromptPresentation } from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import type { TransferConflictPolicy } from './file-transfer-manager.js'
@@ -21,7 +21,7 @@ export function registerFileTransferTools(ctx: Context, store: SshStore, files: 
   const downloads = new SessionFileDownloads(files)
   const uploads = new SessionFileUploads(files)
   const definitions = [endpointListTool(store, files), directoryListTool(store, files), transferStartTool(store, transfers), transferStatusTool(store, transfers), transferCancelTool(store, transfers), downloadTool(store, downloads), uploadTool(store, uploads)]
-  const disposers = definitions.map(definition => register ? register(definition) : ctx.tools.register(definition))
+  const disposers = definitions.map(definition => register ? register(definition) : ctx.tools.register(definition,{when:({agent})=>{const injection=store.injection(agent.session.id);const view={tools:[definition],sections:[],contexts:[],variables:{}};applyVisibility(view,injection);return view.tools.length>0}}))
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
     const operation = sshOperation(exec)
     if (operation.name !== 'file_transfer_start' && operation.name !== 'file_download_to_local' && operation.name !== 'file_upload_from_local') return next()
@@ -176,9 +176,9 @@ function installVisibility(ctx: Context, store: SshStore): () => void {
   return () => { disposed(); created(); for (const dispose of attached.values()) dispose(); attached.clear() }
 }
 
-function applyVisibility(assembly: PromptAssembly, injection: ReturnType<SshStore['injection']>): void {
-  if (injection === undefined || (injection.fileEndpointIds ?? []).length === 0) { assembly.tools = assembly.tools.filter(schema => !FILE_TOOL_NAMES.has(schema.name)); return }
-  if (!injection.fileEndpointIds.some(id => canTransferFiles(injection, id))) assembly.tools = assembly.tools.filter(schema => !TRANSFER_TOOL_NAMES.has(schema.name))
+function applyVisibility(assembly: PromptPresentation & { tools?: PromptAssembly['tools'] }, injection: ReturnType<SshStore['injection']>): void {
+  if (injection === undefined || (injection.fileEndpointIds ?? []).length === 0) { if (assembly.tools) assembly.tools = assembly.tools.filter(schema => !FILE_TOOL_NAMES.has(schema.name)); return }
+  if (assembly.tools && !injection.fileEndpointIds.some(id => canTransferFiles(injection, id))) assembly.tools = assembly.tools.filter(schema => !TRANSFER_TOOL_NAMES.has(schema.name))
   assembly.contexts.push({
     name: 'dsh-ssh:file-access',
     text: `Remote file access is limited to authorized endpoints. Mounted SSH hosts automatically authorize their SFTP endpoints for browsing and transfer, with the host command-approval policy. FTP/FTPS permission: ${injection.filePermission}. Use file_endpoint_list for each endpoint's effective permission; do not apply SFTP permissions to FTP endpoints.

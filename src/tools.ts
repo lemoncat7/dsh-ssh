@@ -1,6 +1,6 @@
 import type { TerminalSignal } from '@deepseek-ai/dsh-terminal'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
+import type { PromptPresentation } from '@deepseek-ai/dsh-system-prompt'
 import { defineTool, type ParameterSchemaSpec, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import { executeSshCommand } from './exec.js'
@@ -287,7 +287,7 @@ function installModeToolVisibility(ctx: Context, store: SshStore): () => void {
   }
 }
 
-function applyModeToolVisibility(assembly: PromptAssembly, permission: 'exec' | 'terminal' | undefined): void {
+function applyModeToolVisibility(assembly: PromptPresentation, permission: 'exec' | 'terminal' | undefined): void {
   assembly.contexts.push({
     name: 'dsh-ssh:permission-mode',
     text: `Use the ssh entry for all SSH and FTP/SFTP operations: list → describe → call. Operation names are not standalone tools. Current SSH mode: ${permission === 'terminal' ? 'terminal control; keep the returned terminalId for subsequent send/read operations' : permission === 'exec' ? 'one-shot commands' : 'no mounted host; temporary access requires current human consent'}. Discovery never grants access.`,

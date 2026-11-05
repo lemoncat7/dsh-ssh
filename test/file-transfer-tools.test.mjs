@@ -47,6 +47,11 @@ test('file tools expose and transfer only endpoints authorized to the owning ses
   const fileContext = assembly.contexts.find(context => context.name === 'dsh-ssh:file-access')
   assert.match(fileContext.text, /Never start an HTTP or other file server/)
   assert.match(fileContext.text, /下载到本地/)
+  const modernPresentation = { sections: [], contexts: [], variables: {} }
+  await promptHandler(modernPresentation, {}, async () => modernPresentation)
+  assert.equal('tools' in modernPresentation, false, 'text presentation must not acquire a tool list')
+  assert.equal(modernPresentation.contexts.find(context => context.name === 'dsh-ssh:file-access').text, fileContext.text)
+
   // Necessity is assessed before a download, not via an extra approval dialog.
   for (const text of [tools.get('file_download_to_local').description, fileContext.text]) {
     assert.match(text, /Before calling file_download_to_local, determine that the task actually requires a saved local copy/)
