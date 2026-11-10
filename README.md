@@ -19,7 +19,7 @@
 
 ## 安装
 
-当前版本 **1.16.19**，支持 DeepSeek Harness **0.2.2-rc.1**（宿主仍为 RC），需要 Node.js **>=24.9.0**。请查阅[兼容说明](docs/compatibility-0.2.2-rc.1.md)及[本版更新](docs/releases/1.16.19.md)。
+当前版本 **1.16.20**，支持 DeepSeek Harness **0.2.2-rc.1**（宿主仍为 RC），需要 Node.js **>=24.9.0**。请查阅[兼容说明](docs/compatibility-0.2.2-rc.1.md)及[本版更新](docs/releases/1.16.20.md)。
 
 ```bash
 dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
@@ -31,7 +31,7 @@ dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 
 ## 使用边界
 
-凭据由 DSH 凭据服务保存，管理界面不返回明文。SSH 与文件端点授权独立，文件下载到 DSH 会话目录不等于浏览器电脑。会话浏览状态仅在当前页面生命周期保留，不跨刷新。首次连接需确认指纹，公开端口监听默认拒绝。
+凭据由 DSH 凭据服务保存，列表不返回明文；密钥库中已保存的密码可按需显示或复制，关闭后清除页面中的明文。SSH 与文件端点授权独立，文件下载到 DSH 会话目录不等于浏览器电脑。会话浏览状态仅在当前页面生命周期保留，不跨刷新。首次连接需确认指纹，公开端口监听默认拒绝。
 
 ## 文档
 

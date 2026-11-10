@@ -321,6 +321,14 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 201, await credentialEntryView(runtime, entry))
     }
     const id = segments[1]
+    if (id !== undefined && method === 'POST' && segments[2] === 'password' && segments.length === 3) {
+      requireMutationHeader(req)
+      const entry = requiredCredentialEntry(runtime.store, id)
+      if (entry.authType !== 'password') throw httpError(400, 'This credential does not use password authentication')
+      const secret = await runtime.credentials.readEntry(id)
+      if (secret.password === undefined) throw httpError(404, 'No saved password for this credential')
+      return sendJson(res, 200, { password: secret.password })
+    }
     if (id !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const previous = requiredCredentialEntry(runtime.store, id)

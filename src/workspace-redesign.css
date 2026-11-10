@@ -215,3 +215,15 @@
 .dsh-ssh-desk-tabbar > .dsh-ssh-icon-button { flex: none; }
 
 .dsh-ssh-workspace-v2 .dsh-ssh-catalogue-purpose { flex: none; margin: -4px 0 0; color: var(--ssh-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+
+.dsh-ssh-workspace-v2 .dsh-ssh-vault-row { grid-template-columns: 34px minmax(0,1fr) auto auto auto; }
+.dsh-ssh-vault-actions { display: flex; gap: 6px; align-items: center; }
+.dsh-ssh-vault-actions > .dsh-ssh-secondary-button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
+.dsh-ssh-vault-password { padding: 12px 16px 16px; }
+.dsh-ssh-vault-password-actions { display: flex; gap: 8px; margin-top: 12px; }
+@container dsh-ssh-workspace (max-width: 600px) {
+  .dsh-ssh-workspace-v2 .dsh-ssh-vault-row { grid-template-columns: 30px minmax(0,1fr) auto; gap: 5px 8px; }
+  .dsh-ssh-vault-row > .dsh-ssh-vault-state { grid-column: 2; grid-row: 2; justify-self: start; }
+  .dsh-ssh-vault-row > small { grid-column: 2; grid-row: 3; }
+  .dsh-ssh-vault-row > .dsh-ssh-vault-actions { grid-column: 3; grid-row: 1 / 4; }
+}

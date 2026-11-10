@@ -1,6 +1,16 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "vault-password.title": { "zh": "已保存的密码", "en": "Saved password" },
+  "vault-password.savedPassword": { "zh": "已保存的密码内容", "en": "Saved password value" },
+  "vault-password.openFor": { "zh": "查看或复制 {0} 的密码", "en": "View or copy password for {0}" },
+  "vault-password.show": { "zh": "显示密码", "en": "Show password" },
+  "vault-password.hide": { "zh": "隐藏密码", "en": "Hide password" },
+  "vault-password.copy": { "zh": "复制密码", "en": "Copy password" },
+  "vault-password.loading": { "zh": "正在读取…", "en": "Reading…" },
+  "vault-password.copyFailed": { "zh": "浏览器未允许复制，请显示密码后手动选择复制。", "en": "Copy was blocked. Show the password and select it to copy manually." },
+  "vault-password.editorHint": { "zh": "留空保留已保存的凭据；列表中的密码入口支持查看和复制。", "en": "Leave secrets blank to keep saved values. Use the password action in the list to view or copy a saved password." },
+  "vault-password.required": { "zh": "请输入连接密码", "en": "Enter the connection password" },
   "desk.mountPurpose": { "zh": "主要用于给当前 AI 会话挂载主机和项目目录，访问范围由会话权限控制。双击主机也可手动打开终端。", "en": "Mount hosts and project directories for the current AI session, with access controlled by session permissions. Double-click a host to open a terminal manually." },
   "host-select.search": { "zh": "输入主机名、地址或分组搜索", "en": "Search host name, address or group" },
   "host-select.show": { "zh": "展开或收起主机列表", "en": "Toggle host list" },
