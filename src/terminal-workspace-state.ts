@@ -77,3 +77,5 @@ export function terminalWorkspaceState(scope: string, profile: string, path: str
   cache.set(storageKey, state)
   return state
 }
+
+export { read as readTerminalStorage, write as writeTerminalStorage }

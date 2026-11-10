@@ -104,20 +104,20 @@ export function ActivitySftpBrowser({ sessionId, profile, profiles, onProfile, o
   return <SftpExplorer key={`${sessionId}:${profile.id}`} persistenceKey={explorerStateKey(sessionId, profile.id)} initialPath={profile.cwd} mountedDirectories={profile.mountedDirectories} header={header} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
 }
 
-export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false, terminalPath }: { profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean; terminalPath?: string | undefined }): JSX.Element {
+export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, embedded = false, terminalPath, paneKey, initialFollow = true }: { paneKey?: string; initialFollow?: boolean; profile: ProfileView; initialPath?: string; onEdit?(): void; onDelete?(): void; embedded?: boolean; terminalPath?: string | undefined }): JSX.Element {
   useSshLocale()
-  const [following, setFollowing] = useState(true)
+  const [following, setFollowing] = useState(initialFollow)
   const saveMarkdown = useCallback((input: MarkdownSaveInput) => saveProfileMarkdown(profile.id, input), [profile.id])
   const loadPathEntry = useCallback((path: string, signal?: AbortSignal) => loadProfileSftpPathEntry(profile.id, path, signal), [profile.id])
   const loadDirectory = useCallback((path: string) => loadProfileSftpDirectory(profile.id, path), [profile.id])
   const loadPreview = useCallback((path: string, signal?: AbortSignal) => loadProfileSftpFilePreview(profile.id, path, signal), [profile.id])
   const fileUrl = useCallback((path: string, inline = false) => profileSftpFileUrl(profile.id, path, inline), [profile.id])
   const uploadFile = useCallback((directory: string, file: File, overwrite: boolean) => uploadProfileSftpFile(profile.id, directory, file, overwrite), [profile.id])
-  const paneId = safePaneId(`profile-sftp-${profile.id}`)
+  const paneId = safePaneId(`profile-sftp-${profile.id}${paneKey ? `-${paneKey}` : ''}`)
   const endpointId = `sftp:${profile.id}`
   const remove = useCallback((directory: string, paths: string[]) => deleteFileEndpointEntries({ paneId, endpointId, directory, paths }), [endpointId, paneId])
   return <div className={`dsh-ssh-profile-sftp-pane${embedded ? ' is-embedded' : ''}`}>
-    <div className="dsh-ssh-content-heading"><div><h1>{embedded ? 'SFTP' : `${profile.name} · SFTP`}</h1><p>{embedded ? initialPath : `${profileAddress(profile)} · ${initialPath}`}</p></div><div className="dsh-ssh-heading-actions">{onDelete && <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={t("client.deleteHost", [profile.name])} title={t("client.deleteHost2")} onClick={onDelete}><IconTrashOutline16 size={16} /></button>}{onEdit && <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />{t("client.editHost")}</button>}</div></div>
+    {!embedded && <div className="dsh-ssh-content-heading"><div><h1>{embedded ? 'SFTP' : `${profile.name} · SFTP`}</h1><p>{embedded ? initialPath : `${profileAddress(profile)} · ${initialPath}`}</p></div><div className="dsh-ssh-heading-actions">{onDelete && <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={t("client.deleteHost", [profile.name])} title={t("client.deleteHost2")} onClick={onDelete}><IconTrashOutline16 size={16} /></button>}{onEdit && <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />{t("client.editHost")}</button>}</div></div>}
     <SftpExplorer key={profile.id} workspace initialPath={initialPath} followPath={embedded && following ? terminalPath : undefined} followControl={embedded && <button type="button" className="dsh-ssh-follow-directory" aria-label={t('sftp-client.followTerminal')} aria-pressed={following} data-waiting={following && terminalPath === undefined} title={terminalPath === undefined ? t('sftp-client.followWaiting') : t('sftp-client.followHint')} onClick={() => setFollowing(value => !value)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l2-2" /></svg></button>} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
   </div>
 }

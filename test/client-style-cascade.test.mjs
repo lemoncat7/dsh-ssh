@@ -17,11 +17,13 @@ const workbenchStylesheetUrl = new URL('../src/host-workbench.css', import.meta.
 const remoteTreeStylesheetUrl = new URL('../src/remote-workspace-tree.css', import.meta.url)
 const terminalSourceUrl = new URL('../src/terminal-view.ts', import.meta.url)
 
-test('compact host navigation leads the title, terminal close precedes SFTP', async () => {
+test('workbench separates host management from the global terminal desk', async () => {
   const source = await readFile(clientSourceUrl, 'utf8')
-  const heading = source.slice(source.indexOf('function HostWorkbench'), source.indexOf('function ForwardPane'))
-  assert.ok(heading.indexOf('<WorkspaceNavigationTrigger />') < heading.indexOf('dsh-ssh-host-monogram'))
-  assert.ok(heading.indexOf('onClick={onCloseAll}') < heading.indexOf('onClick={() => setSftpHidden'))
+  const workspace = source.slice(source.indexOf('function RemoteWorkspace'), source.indexOf('function ForwardPane'))
+  assert.match(workspace, /RemoteWorkspaceTree catalogue onOpen=/)
+  assert.match(workspace, /TerminalDesk key=\{scope\}/)
+  assert.doesNotMatch(workspace, /<AdaptiveWorkspace|function HostWorkbench/)
+  assert.match(workspace, /dsh-ssh-page-target/)
 })
 
 test('button reset stays below component styles in the cascade', async () => {

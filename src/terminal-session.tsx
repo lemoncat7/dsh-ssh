@@ -11,7 +11,7 @@ import { CommandsPanel } from './commands-panel.js'
 import type { BrowserTerminalHandle } from './terminal-workspace-state.js'
 import { terminalDirectory } from './terminal-directory.js'
 
-export function TerminalSession({ handle, profile, path, label, onControls, onConnected, onDirectory }: { handle: BrowserTerminalHandle; profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
+export function TerminalSession({ handle, profile, path, label, takeAutoConnect, onPhase, onControls, onConnected, onDirectory }: { takeAutoConnect?(): boolean; onPhase?(phase: 'idle' | 'connecting' | 'connected' | 'error'): void; handle: BrowserTerminalHandle; profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const hostRef = useRef<HTMLDivElement>(null)
   const directoryCallback = useRef(onDirectory)
@@ -26,6 +26,8 @@ export function TerminalSession({ handle, profile, path, label, onControls, onCo
   const epochRef = useRef<string>()
   const [id, setId] = useState<string>()
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
+  const phaseCallback = useRef(onPhase); phaseCallback.current = onPhase
+  useEffect(() => { phaseCallback.current?.(phase) }, [phase])
   const [error, setError] = useState<string>()
   const [picking, setPicking] = useState(false)
   const [draft, setDraft] = useState<string>()
@@ -118,7 +120,7 @@ export function TerminalSession({ handle, profile, path, label, onControls, onCo
     // StrictMode replays mount effects. Avoid initializing xterm in the temporary
     // mount, whose delayed viewport update would run after disposal.
     let cancelled = false
-    queueMicrotask(() => { if (!cancelled && (handle.id || handle.connecting)) void connect() })
+    queueMicrotask(() => { if (!cancelled && (handle.id || handle.connecting || takeAutoConnect?.())) void connect() })
     return () => { cancelled = true }
   }, [handle])
   // Publish only the selected session's controls; keep transport ownership here.

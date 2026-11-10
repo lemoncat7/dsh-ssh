@@ -77,7 +77,7 @@ export function SyncPane({ active }: { active: boolean }): JSX.Element {
   const blocked = Boolean(busy || saved?.running || setup)
   const dirty = saved && policy && JSON.stringify(policy) !== JSON.stringify(policyOf(saved))
   return <div className="dsh-ssh-settings-pane dsh-ssh-sync-page">
-    <div className="dsh-ssh-content-heading"><div><h1>{t('sync.title')}</h1><p>{t('sync.description')}</p></div></div>
+    <p className="dsh-ssh-page-hint">{t('sync.description')}</p>
     <div className="dsh-ssh-sync-layout">
       <aside className="dsh-ssh-sync-methods" aria-label={t('sync.methods')}><h2>{t('sync.methods')}</h2>
         {syncMethods.map(method => <button key={method.id} type="button" className={`dsh-ssh-sync-method${method.available ? ' is-selected' : ''}`} disabled={!method.available} aria-current={method.available ? 'page' : undefined}>

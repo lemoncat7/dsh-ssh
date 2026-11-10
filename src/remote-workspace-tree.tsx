@@ -1,6 +1,6 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import {
   IconChevronDownOutlineRegular as IconChevronDownOutline14, IconChevronRightOutlineRegular as IconChevronRightOutline14, IconEditOutlineRegular as IconEditOutline16, IconFolderCloseRegular as IconFolderClose16,
@@ -17,6 +17,7 @@ import { Dialog } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
 import { mountedProjects } from './project-mounts.js'
 import type { GroupProxy } from './domain.js'
+import { HostActionMenu, TerminalActionIcon } from './host-action-menu.js'
 import { SessionDefaults } from './session-defaults-ui.js'
 
 const HOST_DRAG_TYPE = 'application/x-dsh-ssh-profile'
@@ -25,9 +26,13 @@ export interface RemoteTarget {
   profileId: string
   path: string
   projectId?: string
+  label?: string
 }
 
 interface RemoteWorkspaceTreeProps {
+  catalogue?: boolean
+  onOpen?(target: RemoteTarget): void
+  onDeleteProfile?(profile: ProfileView): void
   profiles: ProfileView[]
   groupConfigs: GroupProxy[]
   access: InjectionView | null
@@ -57,6 +62,13 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   useSshLocale()
   const panelGlow = useBorderGlowSurface<HTMLElement>()
   const [query, setQuery] = useState('')
+  const [display, setDisplay] = useState<'cards' | 'list'>(() => { try { return localStorage.getItem('dsh-ssh:catalogue-view') === 'list' ? 'list' : 'cards' } catch { return 'cards' } })
+  const chooseDisplay = (value: 'cards' | 'list'): void => { setDisplay(value); try { localStorage.setItem('dsh-ssh:catalogue-view', value) } catch {} }
+  const [accessOpen, setAccessOpen] = useState(false)
+  const groupChoices = useRef(new Set<string>())
+  const hostClick = useRef<{ id: string; expanded: boolean }>()
+  const menuAnchor = useRef<HTMLButtonElement | null>(null)
+  const [collapsedHosts, setCollapsedHosts] = useState<Set<string>>(() => new Set())
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set())
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [projects, setProjects] = useState<Record<string, RemoteProjectView[]>>({})
@@ -65,27 +77,28 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   const [creatingSession, setCreatingSession] = useState<{ profile: ProfileView; project: RemoteProjectView; returnFocus: HTMLButtonElement }>()
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
   const [hostMenu, setHostMenu] = useState<string>()
+  const [projectMenu, setProjectMenu] = useState<string>()
   const [draggedProfileId, setDraggedProfileId] = useState<string>()
   const [dropGroup, setDropGroup] = useState<string | null>(null)
   const [movingProfileId, setMovingProfileId] = useState<string>()
   const [error, setError] = useState<string>()
   const normalized = query.trim().toLocaleLowerCase()
-  const groups = useMemo(() => groupProfiles(props.profiles, props.groupConfigs, normalized), [normalized, props.groupConfigs, props.profiles])
+  const groups = useMemo(() => groupProfiles(props.profiles, props.groupConfigs, normalized, projects), [normalized, props.groupConfigs, props.profiles, projects])
   const mountedGroups = JSON.stringify([...new Set(props.profiles.filter(profile => props.access?.profileIds.includes(profile.id)).map(profile => profile.group?.trim() || ''))].sort())
   useEffect(() => {
     const names: string[] = JSON.parse(mountedGroups)
-    if (names.length) setExpandedGroups(current => new Set([...current, ...names]))
-  }, [mountedGroups])
+    if (names.length) setExpandedGroups(current => new Set([...current, ...names.filter(name => !groupChoices.current.has(name))]))
+  }, [mountedGroups, props.catalogue])
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent): void => {
       if (event.target instanceof Element && event.target.closest('.dsh-ssh-tree-menu-wrap')) return
-      setCreateMenuOpen(false); setHostMenu(undefined)
+      setCreateMenuOpen(false); setHostMenu(undefined); setProjectMenu(undefined)
     }
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       const trigger = document.querySelector('.dsh-ssh-tree-menu')?.previousElementSibling
-      setCreateMenuOpen(false); setHostMenu(undefined)
+      setCreateMenuOpen(false); setHostMenu(undefined); setProjectMenu(undefined)
       if (trigger instanceof HTMLButtonElement) window.requestAnimationFrame(() => trigger.focus())
     }
     document.addEventListener('pointerdown', closeMenus)
@@ -101,8 +114,21 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
       setError(undefined)
     } catch (reason) { setError(message(reason)) } finally { setLoadingProfile(current => current === profileId ? undefined : current) }
   }
-  const selectProfile = (profileId: string): void => {
-    setExpanded(new Set([profileId]))
+  useEffect(() => {
+    if (!props.catalogue) return
+    let live = true
+    void Promise.allSettled(props.profiles.map(async profile => ({ id: profile.id, projects: await loadRemoteProjects(profile.id) }))).then(results => {
+      if (!live) return
+      setProjects(current => { const next = { ...current }; for (const result of results) if (result.status === 'fulfilled') next[result.value.id] = result.value.projects; return next })
+      const failed = results.find(result => result.status === 'rejected'); if (failed?.status === 'rejected') setError(message(failed.reason))
+    })
+    return () => { live = false }
+  }, [props.catalogue, props.profiles])
+  const selectProfile = (profileId: string, open: boolean): void => {
+    setHostMenu(undefined); setProjectMenu(undefined)
+    hostClick.current = { id: profileId, expanded: open }
+    setExpanded(current => { const next = new Set(current); if (open) next.delete(profileId); else next.add(profileId); return next })
+    setCollapsedHosts(current => { const next = new Set(current); if (open) next.add(profileId); else next.delete(profileId); return next })
     if (projects[profileId] === undefined) void refreshProjects(profileId)
     props.onSelect({ profileId, path: '~' })
   }
@@ -113,6 +139,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     if (enabled) props.onDirectory(profileId, undefined)
   }
   const toggleGroup = (name: string): void => setExpandedGroups(current => {
+    groupChoices.current.add(name)
     const next = new Set(current)
     if (next.has(name)) next.delete(name); else next.add(name)
     return next
@@ -125,7 +152,12 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     finally { setMovingProfileId(undefined); setDraggedProfileId(undefined); setDropGroup(null) }
   }
 
-  return <aside ref={panelGlow.ref} onPointerMove={panelGlow.onPointerMove} onPointerLeave={panelGlow.onPointerLeave} className="dsh-ssh-remote-tree dsh-ssh-border-surface">
+  return <aside ref={panelGlow.ref} onPointerMove={panelGlow.onPointerMove} onPointerLeave={panelGlow.onPointerLeave} className={`dsh-ssh-remote-tree dsh-ssh-border-surface${props.catalogue ? ` dsh-ssh-host-catalogue is-${display}` : ''}`}>
+    {props.catalogue ? <>
+
+      <div className="dsh-ssh-catalogue-tools"><label className="dsh-ssh-search"><span className="sr-only">{t('remote-workspace-tree.searchHosts')}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('desk.searchCatalogue')} /></label><div className="dsh-ssh-catalogue-actions"><button type="button" className="dsh-ssh-secondary-button" aria-haspopup="dialog" onClick={() => setAccessOpen(true)}>{t('remote-workspace-tree.currentSessionPermissions')}{props.accessSaving ? ` · ${t('remote-workspace-tree.saving')}` : props.accessError ? ' !' : ''}</button><button type="button" aria-pressed={display === 'list'} onClick={() => chooseDisplay('list')}>{t('desk.list')}</button><button type="button" aria-pressed={display === 'cards'} onClick={() => chooseDisplay('cards')}>{t('desk.cards')}</button><button type="button" className="dsh-ssh-secondary-button" onClick={props.onNewGroup}>{t('remote-workspace-tree.addGroup')}</button><button type="button" className="dsh-ssh-primary-button" onClick={props.onNewProfile}>{t('remote-workspace-tree.addHost')}</button></div></div>
+      {(error || props.accessError) && <p className="dsh-ssh-inline-error" role="alert">{error || props.accessError}</p>}
+    </> : <>
     <header className="dsh-ssh-tree-header">
       <span><strong>{t("remote-workspace-tree.hostsProjects")}</strong><small>{props.profiles.length}  {t("remote-workspace-tree.hosts")}</small></span>
       <div className="dsh-ssh-tree-menu-wrap">
@@ -137,9 +169,10 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
       </div>
     </header>
     <label className="dsh-ssh-search"><span className="sr-only">{t("remote-workspace-tree.searchHosts")}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t("remote-workspace-tree.searchHostsGroupsTags")} /></label>
+    </>}
     <div className="dsh-ssh-tree-scroll dsh-ssh-scroll-surface">
       {groups.map(group => {
-        const collapsed = !expandedGroups.has(group.name)
+        const collapsed = !expandedGroups.has(group.name) && !normalized
         const draggedProfile = props.profiles.find(profile => profile.id === draggedProfileId)
         const acceptsDrop = draggedProfile !== undefined && (draggedProfile.group?.trim() || '') !== group.name
         return <section className={`dsh-ssh-tree-group${dropGroup === group.name && acceptsDrop ? ' is-drop-target' : ''}`} key={group.name} data-collapsed={collapsed}
@@ -147,8 +180,8 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
           onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropGroup(current => current === group.name ? null : current) }}
           onDrop={event => { if (!acceptsDrop || draggedProfile === undefined) return; event.preventDefault(); void moveProfile(draggedProfile, group.name) }}>
         <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button>{group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.editTitle', [group.name])} title={t('group-proxy.editTitle', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}</h3>
-        {!collapsed && group.profiles.map(profile => {
-          const open = expanded.has(profile.id)
+        {!collapsed && <div className="dsh-ssh-catalogue-group-items">{group.profiles.map(profile => {
+          const open = !collapsedHosts.has(profile.id) && (expanded.has(profile.id) || (!!query.trim() && (projects[profile.id] ?? []).some(project => `${project.name} ${project.path}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))))
           const enabled = props.access?.profileIds.includes(profile.id) === true
           const children = projects[profile.id] ?? []
           const active = props.selected?.profileId === profile.id && props.selected.projectId === undefined
@@ -156,9 +189,18 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
             <div data-ssh-interactive="row" data-ssh-context-row draggable={movingProfileId !== profile.id} className={`dsh-ssh-tree-host-row${enabled ? ' is-authorized' : ''}${active ? ' is-active' : ''}${hostMenu === profile.id ? ' is-menu-open' : ''}${movingProfileId === profile.id ? ' is-moving' : ''}`}
               onDragStart={event => { setDraggedProfileId(profile.id); setHostMenu(undefined); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(HOST_DRAG_TYPE, profile.id) }}
               onDragEnd={() => { setDraggedProfileId(undefined); setDropGroup(null) }}>
-              <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={active} aria-expanded={open} title={t("remote-workspace-tree.selectAndExpand", [profile.name])} onClick={() => selectProfile(profile.id)}>
-                <span className="dsh-ssh-host-monogram">{profile.name.slice(0, 1).toUpperCase()}</span>
-                <span><strong>{profile.name}</strong><small>{profile.username}@{profile.host}</small></span>
+              <button type="button" className="dsh-ssh-tree-host-main" aria-pressed={active} aria-expanded={open} aria-label={`${profile.name} ${profile.username}@${profile.host}`} title={`${profile.name} · ${profile.username}@${profile.host}\n${t('desk.hostClickHint')}`} onClick={event => { if (event.detail <= 1) selectProfile(profile.id, open) }} onDoubleClick={() => {
+                // The first click toggles immediately; a double-click restores that
+                // disclosure state and opens exactly one terminal.
+                const before = hostClick.current
+                if (before?.id === profile.id) {
+                  setExpanded(current => { const next = new Set(current); if (before.expanded) next.add(profile.id); else next.delete(profile.id); return next })
+                  setCollapsedHosts(current => { const next = new Set(current); if (before.expanded) next.delete(profile.id); else next.add(profile.id); return next })
+                }
+                props.onOpen?.({ profileId: profile.id, path: '~' })
+              }} onKeyDown={event => { if (event.key === 'Enter' && props.onOpen) { event.preventDefault(); props.onOpen({ profileId: profile.id, path: '~' }) } }}>
+                <span className="dsh-ssh-host-monogram" aria-hidden="true">{profile.name.slice(0, 1).toUpperCase()}</span>
+                <span className="dsh-ssh-host-copy"><strong>{profile.name}</strong><small className="dsh-ssh-host-address">{profile.username}@{profile.host}</small>{props.catalogue && <small className="dsh-ssh-host-hover-hint">{t('desk.hostClickHint')}</small>}</span>
               </button>
               <button
                 type="button"
@@ -170,42 +212,49 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                 disabled={props.access === null || props.accessLoading || props.accessSaving}
                 onClick={() => toggleProfile(profile.id)}
               >{enabled ? t("remote-workspace-tree.unmount") : t("remote-workspace-tree.mount")}</button>
-              <div className="dsh-ssh-tree-menu-wrap is-host">
-                <button type="button" draggable={false} className="dsh-ssh-tree-more" aria-haspopup="menu" aria-expanded={hostMenu === profile.id} aria-label={t("remote-workspace-tree.hostMenuFor", [profile.name])} title={t("remote-workspace-tree.moreHostActions")} onClick={() => { setHostMenu(current => current === profile.id ? undefined : profile.id); setCreateMenuOpen(false) }}><IconEllipsisOutline16 size={15} /></button>
-                {hostMenu === profile.id && <div className="dsh-ssh-tree-menu is-host" role="menu" aria-label={t("remote-workspace-tree.hostMenuFor", [profile.name])} onKeyDown={navigateMenu}>
+              <div className="dsh-ssh-tree-menu-wrap is-host dsh-ssh-context-action">
+                <button type="button" draggable={false} className="dsh-ssh-tree-more" aria-haspopup="menu" aria-expanded={hostMenu === profile.id} aria-label={t("remote-workspace-tree.hostMenuFor", [profile.name])} title={t("remote-workspace-tree.moreHostActions")} onClick={event => { menuAnchor.current = event.currentTarget; setProjectMenu(undefined); setHostMenu(current => current === profile.id ? undefined : profile.id); setCreateMenuOpen(false) }}><IconEllipsisOutline16 size={15} /></button>
+                {hostMenu === profile.id && <HostActionMenu anchor={menuAnchor.current} label={t("remote-workspace-tree.hostMenuFor", [profile.name])} onKeyDown={navigateMenu}>
+                  {props.onOpen && <button type="button" role="menuitem" onClick={() => { setHostMenu(undefined); props.onOpen?.({ profileId: profile.id, path: '~' }) }}><TerminalActionIcon />{t('desk.openTerminal')}</button>}
                   <button type="button" role="menuitem" autoFocus onClick={() => { setHostMenu(undefined); props.onEditProfile(profile) }}><IconEditOutline16 size={14} />{t("client.editHost")}</button>
+                  {props.onDeleteProfile && <button type="button" role="menuitem" onClick={() => { setHostMenu(undefined); props.onDeleteProfile?.(profile) }}><IconTrashOutline16 size={14} />{t('client.deleteHost2')}</button>}
                   <button type="button" role="menuitem" onClick={() => { setHostMenu(undefined); setEditing({ profile }) }}><IconPlusOutline16 size={14} />{t("remote-workspace-tree.addPinnedDirectory")}</button>
-                </div>}
+                </HostActionMenu>}
               </div>
             </div>
             {open && <div className="dsh-ssh-tree-branches">
               {loadingProfile === profile.id && projects[profile.id] === undefined ? <p className="dsh-ssh-tree-state">{t("remote-workspace-tree.readingPinnedDirectories")}</p>
-                : children.length === 0 ? <button type="button" className="dsh-ssh-tree-empty" onClick={() => setEditing({ profile })}><IconPlusOutline16 size={13} />{t("remote-workspace-tree.addProjectDirectory")}</button>
+                : children.length === 0 ? <button type="button" className="dsh-ssh-tree-empty" onClick={() => setEditing({ profile })}><IconPlusOutline16 size={13} />{t("remote-workspace-tree.addPinnedDirectory")}</button>
                   : children.map(project => {
                     const projectActive = props.selected?.projectId === project.id
                     const bound = props.access !== null && mountedProjects(props.access, profile.id).includes(project.id)
                     const isDefault = props.access?.workingProjectIds[profile.id] === project.id
                     return <div className="dsh-ssh-tree-project" key={project.id}>
-                      <div data-ssh-interactive="row" className={`dsh-ssh-tree-project-row${projectActive ? ' is-active' : ''}${bound ? ' is-bound' : ''}`}>
-                        <button type="button" className="dsh-ssh-tree-project-main" aria-pressed={props.access === null ? undefined : bound} title={props.access === null ? t("remote-workspace-tree.noDshSessionIsAvailableToMountADirectory") : !enabled ? t("remote-workspace-tree.mountThisHostFirst") : bound ? t("remote-workspace-tree.unmountThisDirectoryFromTheCurrentSession") : t("remote-workspace-tree.mountDirectoryMultipleSelectionsAreAllowed")} onClick={() => {
-                          if (enabled && !props.accessLoading && !props.accessSaving) {
-                            props.onToggleProject(profile.id, project.id, project.path)
-                            props.onSelect(bound ? { profileId: profile.id, path: '~' } : { profileId: profile.id, path: project.path, projectId: project.id })
-                          }
-                        }}><span>{bound ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span><span><strong>{project.name}</strong><small>{project.path}</small>{bound && <em>{isDefault ? t("remote-workspace-tree.mountedDefaultWorkingDirectory") : t("client.mounted")}</em>}</span></button>
-                        <div className="dsh-ssh-tree-project-actions">{bound && !isDefault && <button type="button" className="dsh-ssh-tree-project-edit" disabled={props.accessSaving} title={t("remote-workspace-tree.setAsDefaultWorkingDirectory")} aria-label={t("remote-workspace-tree.setAsTheDefaultDirectory", [project.name])} onClick={() => props.onDirectory(profile.id, project.path, project.id)}><IconFolderOpenOutline16 size={13} /></button>}
-                        <button type="button" className="dsh-ssh-tree-project-new" aria-label={t("remote-workspace-tree.newSessionIn", [project.name])} title={t("remote-workspace-tree.newSession")} onClick={event => { setError(undefined); setCreatingSession({ profile, project, returnFocus: event.currentTarget }) }}><IconPlusOutline16 size={13} /></button>
-                        <button type="button" className="dsh-ssh-tree-project-edit" aria-label={t("client.edit2", [project.name])} title={t("remote-workspace-tree.editPinnedDirectory")} onClick={() => setEditing({ profile, project })}><IconEditOutline16 size={13} /></button></div>
+                      <div data-ssh-interactive="row" data-ssh-context-row className={`dsh-ssh-tree-project-row${projectActive ? ' is-active' : ''}${bound ? ' is-bound' : ''}${projectMenu === project.id ? ' is-menu-open' : ''}`}>
+                        <button type="button" className="dsh-ssh-tree-project-main" aria-pressed={projectActive} title={`${project.name} · ${project.path}\n${t('desk.openProjectHint')}${bound ? ` · ${isDefault ? t('remote-workspace-tree.mountedDefaultWorkingDirectory') : t('client.mounted')}` : ''}`} onClick={() => props.onSelect({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name })} onDoubleClick={() => props.onOpen?.({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name })} onKeyDown={event => { if (event.key === 'Enter' && props.onOpen) { event.preventDefault(); props.onOpen({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name }) } }}><span>{bound ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span><span><strong>{project.name}</strong><small>{project.path}</small></span></button>
+                        <div className="dsh-ssh-tree-project-actions dsh-ssh-context-action">
+                          <button type="button" className="dsh-ssh-tree-mount" aria-pressed={bound} aria-label={`${bound ? t('remote-workspace-tree.unmount') : t('remote-workspace-tree.mount')} ${project.name}`} disabled={!enabled || props.accessLoading || props.accessSaving} title={!enabled ? t('remote-workspace-tree.mountThisHostFirst') : t('desk.manualHint')} onClick={() => props.onToggleProject(profile.id, project.id, project.path)}>{bound ? t('remote-workspace-tree.unmount') : t('remote-workspace-tree.mount')}</button>
+                          <div className="dsh-ssh-tree-menu-wrap is-project">
+                            <button type="button" className="dsh-ssh-tree-more" aria-haspopup="menu" aria-expanded={projectMenu === project.id} aria-label={t('desk.projectActions', [project.name])} onClick={event => { menuAnchor.current = event.currentTarget; setHostMenu(undefined); setProjectMenu(current => current === project.id ? undefined : project.id) }}><IconEllipsisOutline16 size={15} /></button>
+                            {projectMenu === project.id && <HostActionMenu anchor={menuAnchor.current} label={t('desk.projectActions', [project.name])} onKeyDown={navigateMenu}>
+                              <button type="button" role="menuitem" onClick={() => { setProjectMenu(undefined); props.onOpen?.({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name }) }}><TerminalActionIcon />{t('desk.openTerminal')}</button>
+                              {bound && !isDefault && <button type="button" role="menuitem" disabled={props.accessSaving} onClick={() => { setProjectMenu(undefined); props.onDirectory(profile.id, project.path, project.id) }}><IconFolderOpenOutline16 size={14} />{t('remote-workspace-tree.setAsDefaultWorkingDirectory')}</button>}
+                              <button type="button" role="menuitem" onClick={event => { setError(undefined); setCreatingSession({ profile, project, returnFocus: menuAnchor.current ?? event.currentTarget }); setProjectMenu(undefined) }}><IconPlusOutline16 size={14} />{t('remote-workspace-tree.newSession')}</button>
+                              <button type="button" role="menuitem" onClick={() => { setProjectMenu(undefined); setEditing({ profile, project }) }}><IconEditOutline16 size={14} />{t('remote-workspace-tree.editPinnedDirectory')}</button>
+                            </HostActionMenu>}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   })}
             </div>}
           </div>
-        })}
+        })}</div>}
       </section>})}
       {groups.length === 0 && <p className="dsh-ssh-tree-no-results">{props.profiles.length === 0 ? t("remote-workspace-tree.noSshHostsYet") : t("remote-workspace-tree.noMatchingHosts")}</p>}
     </div>
-    <SessionAccessFooter access={props.access} loading={props.accessLoading} saving={props.accessSaving} error={props.accessError ?? error} onPermission={props.onPermission} onApproval={props.onApproval} />
+    {props.catalogue ? <p className="dsh-ssh-catalogue-hint">{t('desk.catalogueHint')}</p> : <SessionAccessFooter access={props.access} loading={props.accessLoading} saving={props.accessSaving} error={props.accessError ?? error} onPermission={props.onPermission} onApproval={props.onApproval} />}
+    {accessOpen && <Dialog title={t('remote-workspace-tree.currentSessionPermissions')} onClose={() => setAccessOpen(false)}><SessionAccessFooter access={props.access} loading={props.accessLoading} saving={props.accessSaving} error={props.accessError} onPermission={props.onPermission} onApproval={props.onApproval} /></Dialog>}
     {editing !== undefined && <RemoteProjectDialog profile={editing.profile} project={editing.project} onClose={() => setEditing(undefined)} onSaved={async () => { const profileId = editing.profile.id; setEditing(undefined); await refreshProjects(profileId); await props.onProjectsChanged() }} />}
     {creatingSession !== undefined && <ProjectSessionDialog {...creatingSession} workspaces={props.workspaces} currentWorkspaceId={props.currentWorkspaceId} recentWorkspaceId={props.recentWorkspaceId} onClose={() => setCreatingSession(undefined)} onCreate={props.onCreateSession} />}
   </aside>
@@ -216,10 +265,10 @@ function SessionAccessFooter({ access, loading, saving, error, onPermission, onA
   return <footer className="dsh-ssh-access-footer">
     <div className="dsh-ssh-access-heading"><span><strong>{t("remote-workspace-tree.currentSessionPermissions")}</strong><small>{access?.profileIds.length ?? 0}  {t("remote-workspace-tree.availableHosts")}</small></span><em>{loading ? t("remote-workspace-tree.loading") : saving ? t("remote-workspace-tree.saving") : error ? t("remote-workspace-tree.notSynced") : t("remote-workspace-tree.synced")}</em></div>
     <div className="dsh-ssh-access-segments" aria-label={t("remote-workspace-tree.sshPermissions")}>
-      <button type="button" data-ssh-interactive="choice" className={access?.permission === 'exec' ? 'is-active' : ''} aria-pressed={access?.permission === 'exec'} disabled={access === null} onClick={() => onPermission('exec')}>{t("remote-workspace-tree.commandsOnly")}</button>
-      <button type="button" data-ssh-interactive="choice" className={access?.permission === 'terminal' ? 'is-active' : ''} aria-pressed={access?.permission === 'terminal'} disabled={access === null} onClick={() => onPermission('terminal')}>{t("remote-workspace-tree.terminalControl")}</button>
+      <button type="button" data-ssh-interactive="choice" className={access?.permission === 'exec' ? 'is-active' : ''} aria-pressed={access?.permission === 'exec'} disabled={access === null || loading || saving} onClick={() => onPermission('exec')}>{t("remote-workspace-tree.commandsOnly")}</button>
+      <button type="button" data-ssh-interactive="choice" className={access?.permission === 'terminal' ? 'is-active' : ''} aria-pressed={access?.permission === 'terminal'} disabled={access === null || loading || saving} onClick={() => onPermission('terminal')}>{t("remote-workspace-tree.terminalControl")}</button>
     </div>
-    <label className="dsh-ssh-access-approval"><span><strong>{t("remote-workspace-tree.confirmBeforeRunning")}</strong><small>{access?.requireCommandApproval === false ? t("remote-workspace-tree.whenOffRunsDirectlyUnderCurrentSessionPermissions") : t("remote-workspace-tree.requiresDshAskModeFullAccessIsRejectedOutright")}</small></span><input type="checkbox" checked={access?.requireCommandApproval ?? true} disabled={access === null} onChange={event => onApproval(event.target.checked)} /><i aria-hidden="true" /></label>
+    <label className="dsh-ssh-access-approval"><span><strong>{t("remote-workspace-tree.confirmBeforeRunning")}</strong><small>{access?.requireCommandApproval === false ? t("remote-workspace-tree.whenOffRunsDirectlyUnderCurrentSessionPermissions") : t("remote-workspace-tree.requiresDshAskModeFullAccessIsRejectedOutright")}</small></span><input type="checkbox" checked={access?.requireCommandApproval ?? true} disabled={access === null || loading || saving} onChange={event => onApproval(event.target.checked)} /><i aria-hidden="true" /></label>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     <SessionDefaults />
   </footer>
@@ -256,7 +305,7 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
   </Dialog>
 }
 
-function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], query: string): Array<{ name: string; profiles: ProfileView[] }> {
+function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], query: string, projects: Record<string, RemoteProjectView[]> = {}): Array<{ name: string; profiles: ProfileView[] }> {
   const result = new Map<string, ProfileView[]>()
   if (profiles.length > 0) result.set('', [])
   for (const profile of profiles) {
@@ -266,15 +315,15 @@ function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], quer
   }
   for (const group of groupConfigs) if (!result.has(group.name)) result.set(group.name, [])
   return [...result]
-    .map(([name, grouped]) => ({ name, profiles: grouped }))
-    .filter(group => !query || group.name.toLocaleLowerCase().includes(query) || group.profiles.some(profile => searchText(profile).includes(query)))
+    .map(([name, grouped]) => ({ name, profiles: grouped.filter(profile => !query || name.toLocaleLowerCase().includes(query) || searchText(profile).includes(query) || (projects[profile.id] ?? []).some(project => `${project.name} ${project.path}`.toLocaleLowerCase().includes(query))) }))
+    .filter(group => !query || group.profiles.length > 0 || group.name.toLocaleLowerCase().includes(query))
 }
 
 function searchText(profile: ProfileView): string { return `${profile.name} ${profile.group ?? ''} ${profile.host} ${profile.username} ${profile.tags.join(' ')}`.toLocaleLowerCase() }
 function navigateMenu(event: React.KeyboardEvent<HTMLDivElement>): void {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
   event.preventDefault()
-  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')]
   if (items.length === 0) return
   const current = items.indexOf(document.activeElement as HTMLButtonElement)
   const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1

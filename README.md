@@ -7,7 +7,8 @@
 ## 功能
 
 - SSH 主机与分组、固定目录、密码 / 私钥 / SSH Agent 认证，以及分组代理。
-- 多标签与分屏终端；离开工作台保留连接，返回或刷新恢复当前浏览器标签页内的终端与布局。SFTP 目录浏览，FTP / FTPS / SFTP 跨端点文件传输。
+- 独立的「主机与项目」首页，支持卡片／列表、搜索、双击打开终端；AI 挂载单独操作。
+- 跨主机统一多标签与分屏终端；离开工作台保留连接，返回或刷新恢复当前浏览器标签页内的终端与布局。SFTP 目录浏览，FTP / FTPS / SFTP 跨端点文件传输。
 - 可配置连接超时与主机覆盖值；可选终端 SSH 连接复用（默认关闭），新标签共享认证但保持独立 shell。
 - AI 只加载一个 `ssh` 工具，通过 `list / describe / call` 按需发现、查询和执行操作，减少常驻工具上下文。
 - 文本、SQL、配置、图片、PDF 与静态 HTML 预览；无法安全预览或超限时提供下载。
@@ -18,7 +19,7 @@
 
 ## 安装
 
-当前版本 **1.15.0**，支持 DeepSeek Harness **0.2.2-rc.1**（宿主仍为 RC），需要 Node.js **>=24.9.0**。请查阅[兼容说明](docs/compatibility-0.2.2-rc.1.md)及[本版更新](docs/releases/1.15.0.md)。
+当前版本 **1.16.8**，支持 DeepSeek Harness **0.2.2-rc.1**（宿主仍为 RC），需要 Node.js **>=24.9.0**。请查阅[兼容说明](docs/compatibility-0.2.2-rc.1.md)及[本版更新](docs/releases/1.16.8.md)。
 
 ```bash
 dsh plugin --profile web add @lemoncat7/dsh-ssh@latest

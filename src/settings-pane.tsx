@@ -39,7 +39,7 @@ export function SettingsPane(): JSX.Element {
     onChange: (event: React.ChangeEvent<HTMLInputElement>) => { setSaved(false); setSettings(current => current && { ...current, [key]: Number(event.target.value) }) },
     onBlur: (event: React.FocusEvent<HTMLInputElement>) => { if (event.currentTarget.reportValidity()) void save({ [key]: Number(event.currentTarget.value) }) },
   })
-  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-content-heading"><div><h1>{t('client.sshSettings')}</h1><p>{t('sync.localSettingsHint')}</p></div><small role="status">{saving ? t('connection.saving') : saved ? t('connection.saved') : ''}</small></div>
+  return <div className="dsh-ssh-settings-pane"><div className="dsh-ssh-page-tools"><p className="dsh-ssh-page-hint">{t('sync.localSettingsHint')}</p><small role="status">{saving ? t('connection.saving') : saved ? t('connection.saved') : ''}</small></div>
     <div className="dsh-ssh-settings-stack">
       <ConfigBackupPanel />
       {settings && <>
