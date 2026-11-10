@@ -1,3 +1,4 @@
+import { normalizeSftpPathMappings, type SftpPathMapping } from './sftp-path-mapping.js'
 export type SshAuthType = 'password' | 'private-key' | 'agent'
 export type ProxyConfig =
   | { type: 'none' }
@@ -7,6 +8,7 @@ export type ProxyConfig =
   | { type: 'jump'; profileIds: string[] }
 
 export interface SshProfile {
+  sftpPathMappings?: SftpPathMapping[]
   id: string
   name: string
   group?: string
@@ -207,6 +209,7 @@ export interface RemoteProjectDraft {
 }
 
 export interface ProfileDraft {
+  sftpPathMappings?: SftpPathMapping[]
   name: string
   group?: string
   host: string
@@ -267,6 +270,7 @@ export function normalizeProfileDraft(value: unknown): ProfileDraft {
     keepAliveIntervalMs: integer(input.keepAliveIntervalMs ?? 15_000, 'keepAliveIntervalMs', 0, 120_000),
     ...(input.useDefaultConnectTimeout === undefined ? {} : { useDefaultConnectTimeout: input.useDefaultConnectTimeout as boolean }),
     connectTimeoutMs: integer(input.connectTimeoutMs ?? 15_000, 'connectTimeoutMs', 1000, 120_000),
+    ...(input.sftpPathMappings === undefined ? {} : { sftpPathMappings: normalizeSftpPathMappings(input.sftpPathMappings) }),
     terminalType: text(input.terminalType ?? 'xterm-256color', 'terminalType', 1, 64),
     tags: stringArray(input.tags, 'tags', 20, 32),
   }

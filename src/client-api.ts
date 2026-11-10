@@ -8,6 +8,7 @@ export function openNativeDirectory(sessionId: string, path: string): Promise<{ 
 
 export interface CredentialView { configured: boolean; writable: boolean; fields: string[]; source: 'profile' | 'vault'; entryId?: string; entryName?: string }
 export interface ProfileView {
+  sftpPathMappings?: import('./sftp-path-mapping.js').SftpPathMapping[]
   id: string; name: string; host: string; port: number; username: string
   group?: string
   authType: 'password' | 'private-key' | 'agent'; hostFingerprint?: string

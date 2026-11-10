@@ -1,3 +1,4 @@
+import { mapTerminalSftpPath } from './sftp-path-mapping.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { trackDownloadClick } from './browser-transfers.js'
 import { LocalTransferTasks } from './transfer-task-list.js'
@@ -118,7 +119,7 @@ export function ProfileSftpPane({ profile, initialPath = '~', onEdit, onDelete, 
   const remove = useCallback((directory: string, paths: string[]) => deleteFileEndpointEntries({ paneId, endpointId, directory, paths }), [endpointId, paneId])
   return <div className={`dsh-ssh-profile-sftp-pane${embedded ? ' is-embedded' : ''}`}>
     {!embedded && <div className="dsh-ssh-content-heading"><div><h1>{embedded ? 'SFTP' : `${profile.name} · SFTP`}</h1><p>{embedded ? initialPath : `${profileAddress(profile)} · ${initialPath}`}</p></div><div className="dsh-ssh-heading-actions">{onDelete && <button type="button" className="dsh-ssh-icon-button is-danger" aria-label={t("client.deleteHost", [profile.name])} title={t("client.deleteHost2")} onClick={onDelete}><IconTrashOutline16 size={16} /></button>}{onEdit && <button type="button" className="dsh-ssh-secondary-button" onClick={onEdit}><IconEditOutline16 size={16} />{t("client.editHost")}</button>}</div></div>}
-    <SftpExplorer key={profile.id} workspace initialPath={initialPath} followPath={embedded && following ? terminalPath : undefined} followControl={embedded && <button type="button" className="dsh-ssh-follow-directory" aria-label={t('sftp-client.followTerminal')} aria-pressed={following} data-waiting={following && terminalPath === undefined} title={terminalPath === undefined ? t('sftp-client.followWaiting') : t('sftp-client.followHint')} onClick={() => setFollowing(value => !value)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l2-2" /></svg></button>} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
+    <SftpExplorer key={profile.id} workspace initialPath={embedded ? mapTerminalSftpPath(initialPath, profile.sftpPathMappings) : initialPath} followPath={embedded && following && terminalPath !== undefined ? mapTerminalSftpPath(terminalPath, profile.sftpPathMappings) : undefined} followControl={embedded && <button type="button" className="dsh-ssh-follow-directory" aria-label={t('sftp-client.followTerminal')} aria-pressed={following} data-waiting={following && terminalPath === undefined} title={terminalPath === undefined ? t('sftp-client.followWaiting') : t('sftp-client.followHint')} onClick={() => setFollowing(value => !value)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l2-2" /></svg></button>} loadPathEntry={loadPathEntry} loadDirectory={loadDirectory} loadPreview={loadPreview} saveMarkdown={saveMarkdown} fileUrl={fileUrl} uploadFile={uploadFile} operations={{ paneId, endpointId, endpointName: profile.name }} deletion={{ locationName: profile.name, locationKind: 'remote', remove }} />
   </div>
 }
 
@@ -144,7 +145,7 @@ function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, 
   const [operationMessage, setOperationMessage] = useState<string>()
   const [error, setError] = useState<string>()
   const lastFollowed = useRef<string>()
-  const browse = useCallback(async (target: string, persist: boolean, restore?: ExplorerState) => {
+  const browse = useCallback(async (target: string, persist: boolean, restore?: ExplorerState, fromFollow = false) => {
     const request = ++navigationId.current
     setLoading(true); setError(undefined); setOpenedFile(undefined); setPendingOverwrite(undefined)
     try {
@@ -152,7 +153,7 @@ function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, 
       if (request !== navigationId.current) return
       scrollTop.current = restore?.scrollTop ?? 0
       setDirectory(next); setPath(next.path); setOpenedFile(restore?.openedFile)
-    } catch (reason) { if (request === navigationId.current) setError(errorMessage(reason)) } finally { if (request === navigationId.current) setLoading(false) }
+    } catch (reason) { if (request === navigationId.current) setError(fromFollow ? t('sftp-client.followUnavailable', [target, errorMessage(reason)]) : errorMessage(reason)) } finally { if (request === navigationId.current) setLoading(false) }
   }, [loadDirectory])
   // A session's working directory may change while a browse request is in
   // flight. It is a default, not a command to reset this remembered browser.
@@ -170,13 +171,13 @@ function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, 
   useEffect(() => {
     if (followPath === undefined) { lastFollowed.current = undefined; return }
     // Never dismiss a preview/draft, a confirmation, a path being typed, or an upload.
-    if (loading || openedFile || uploading || pendingOverwrite || deleteTarget || !directory || path !== directory.path || lastFollowed.current === followPath) return
+    if (loading || openedFile || uploading || pendingOverwrite || deleteTarget || path !== (directory?.path ?? initialPath) || lastFollowed.current === followPath) return
     const timer = window.setTimeout(() => {
       lastFollowed.current = followPath
-      if (followPath !== directory.path) void browse(followPath, false)
+      if (followPath !== directory?.path) void browse(followPath, false, undefined, true)
     }, 250)
     return () => window.clearTimeout(timer)
-  }, [followPath, loading, openedFile, uploading, pendingOverwrite, deleteTarget, directory, path, browse])
+  }, [followPath, loading, openedFile, uploading, pendingOverwrite, deleteTarget, directory, path, initialPath, browse])
   const openEntry = (entry: SftpEntryView): void => {
     if (isNavigableRemoteEntry(entry)) { void browse(entry.path, true); return }
     navigationId.current++; setLoading(false); setError(undefined); setPath(directory?.path ?? initialPath); setOpenedFile(entry)

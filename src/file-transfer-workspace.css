@@ -24,7 +24,8 @@
 }
 .dsh-ssh-transfer-header h1 { margin: 0; color: var(--ssh-text); font-size: 18px; font-weight: 650; letter-spacing: -.015em; }
 .dsh-ssh-transfer-header p { margin: 3px 0 0; color: var(--ssh-text-subtle); font-size: var(--ssh-type-label); line-height: var(--ssh-leading-compact); }
-.dsh-ssh-transfer-actions { display: flex; align-items: center; gap: 8px; }
+.dsh-ssh-connection-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.dsh-ssh-file-pane.is-connections .dsh-ssh-pane-heading > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dsh-ssh-transfer-stage {
   position: relative;
   isolation: isolate;
@@ -903,8 +904,8 @@
 @media (max-width: 720px) {
   .dsh-ssh-transfer-header { align-items: flex-start; padding: 9px 10px; }
   .dsh-ssh-transfer-header p { display: none; }
-  .dsh-ssh-transfer-actions { gap: 4px; }
-  .dsh-ssh-transfer-actions button { padding-inline: 8px; font-size: var(--ssh-type-label); }
+  .dsh-ssh-connection-actions { gap: 4px; }
+  .dsh-ssh-connection-actions button { padding-inline: 8px; font-size: var(--ssh-type-label); }
   .dsh-ssh-transfer-stage { margin: 6px 8px 8px; border-radius: 14px; }
   .dsh-ssh-transfer-tabbar { align-items: flex-start; flex-direction: column; gap: 5px; }
   .dsh-ssh-pane-layout { align-self: flex-end; }

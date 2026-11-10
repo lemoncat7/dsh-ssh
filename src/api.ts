@@ -1,3 +1,4 @@
+import { normalizeSftpPathMappings } from './sftp-path-mapping.js'
 import { exportConfiguration, previewConfiguration, importConfiguration } from './config-backup.js'
 import { randomBytes } from 'node:crypto'
 import { uploadEndpointFile } from './endpoint-upload.js'
@@ -467,6 +468,16 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && segments[2] === 'sftp') {
       requiredProfile(runtime.store, id)
       const operation = segments[3]
+      if (method === 'PUT' && operation === 'path-mappings' && segments.length === 4) {
+        requireMutationHeader(req)
+        const mappings = normalizeSftpPathMappings((await readObject(req)).mappings)
+        await runtime.store.update(state => {
+          const profile = state.profiles.find(profile => profile.id === id)
+          if (!profile) throw httpError(404, 'profile not found')
+          profile.sftpPathMappings = mappings; profile.updatedAt = Date.now()
+        })
+        return sendJson(res, 200, { mappings })
+      }
       if (method === 'PUT' && operation === 'markdown' && segments.length === 4) {
         requireMutationHeader(req)
         return sendJson(res, 200, await saveSftpMarkdown(runtime.connector, id, parseMarkdownSave(await readObject(req, 2_097_152))))

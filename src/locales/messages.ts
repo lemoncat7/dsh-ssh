@@ -1,6 +1,15 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "desk.mountPurpose": { "zh": "主要用于给当前 AI 会话挂载主机和项目目录，访问范围由会话权限控制。双击主机也可手动打开终端。", "en": "Mount hosts and project directories for the current AI session, with access controlled by session permissions. Double-click a host to open a terminal manually." },
+  "host-select.search": { "zh": "输入主机名、地址或分组搜索", "en": "Search host name, address or group" },
+  "host-select.show": { "zh": "展开或收起主机列表", "en": "Toggle host list" },
+  "host-select.matches": { "zh": "匹配的主机", "en": "Matching hosts" },
+  "host-select.noMatches": { "zh": "没有匹配的主机，请换个关键词", "en": "No matching hosts. Try another search." },
+  "host-select.empty": { "zh": "暂无主机，请先在主机与项目中添加", "en": "No hosts yet. Add one in Hosts & Projects." },
+  "sftp-client.pathMappings": {"zh": "终端与 SFTP 目录映射", "en": "Terminal to SFTP directory mappings"},
+  "sftp-client.pathMappingsHint": {"zh": "仅用于终端目录跟随。每行填写：终端绝对路径 => SFTP 绝对路径。未匹配的路径保持原样。", "en": "For terminal directory following only. One terminal absolute path => SFTP absolute path per line. Unmatched paths stay unchanged."},
+  "sftp-client.followUnavailable": {"zh": "SFTP 无法访问终端目录 {0}，已保留当前列表。终端与 SFTP 的目录根可能不同，可在主机编辑中配置目录映射。详情：{1}", "en": "SFTP cannot access terminal directory {0}; the current listing is retained. The terminal and SFTP may use different roots. Configure directory mappings in the host editor. Details: {1}"},
   "desk.unavailableHost": {"zh": "主机已移除或不可用", "en": "Host removed or unavailable"},
   "desk.projectActions": {"zh": "{0} 的目录操作", "en": "Directory actions for {0}"},
   "desk.hostClickHint": {"zh": "单击展开／收起固定目录，双击打开终端", "en": "Click to toggle pinned directories; double-click to open a terminal"},
@@ -16,6 +25,16 @@ export const messages = {
   "desk.terminalAndFiles": {"zh": "终端与文件", "en": "Terminal and files"},
   "desk.connectionDetails": {"zh": "连接详情", "en": "Connection details"},
   "desk.noTerminals": {"zh": "双击主机或项目打开终端，也可以新建独立连接。", "en": "Double-click a host or project, or open a new terminal."},
+  "desk.paneNumber": {"zh": "窗格 {0}", "en": "Pane {0}"},
+  "desk.gridLayout": {"zh": "四格分屏", "en": "Four-pane grid"},
+  "desk.keepPanesTitle": {"zh": "选择保留的终端", "en": "Choose terminals to keep"},
+  "desk.keepPanesHint": {"zh": "请选择保留 {0} 个终端。其余 {1} 个终端将关闭，可能中断正在运行的命令。", "en": "Choose {0} terminals to keep. The other {1} terminals will close, which may interrupt running commands."},
+  "desk.currentPane": {"zh": "当前", "en": "Current"},
+  "desk.willKeep": {"zh": "保留", "en": "Keep"},
+  "desk.willClose": {"zh": "将关闭", "en": "Will close"},
+  "desk.selectedPanes": {"zh": "已选 {0} / {1} 个", "en": "Selected {0} / {1}"},
+  "desk.confirmReduction": {"zh": "保留所选并关闭其余终端", "en": "Keep selected and close the rest"},
+  "desk.closeAllHint": {"zh": "将关闭所有标签中的 {0} 个终端，包括当前未显示的终端，可能中断正在运行的命令。", "en": "Close all {0} terminals across every tab, including hidden terminals. Running commands may be interrupted."},
   "desk.closeCount": {"zh": "关闭 {0} 个终端", "en": "Close {0} terminals"},
   "desk.noFingerprint": {"zh": "尚未保存主机指纹", "en": "No saved host fingerprint"},
   "desk.proxy": {"zh": "代理方式", "en": "Proxy"},
@@ -1312,6 +1331,7 @@ export const messages = {
     "zh": "FTP、FTPS 与 SFTP 之间直接流式互传",
     "en": "Direct streaming transfers between FTP, FTPS, and SFTP"
   },
+  "file-transfer-workspace.sessionAccessAction": { "zh": "会话访问", "en": "Session access" },
   "file-transfer-workspace.sessionAccess": {
     "zh": "FTP 会话访问",
     "en": "FTP session access"

@@ -413,7 +413,7 @@ function realpath(sftp: SFTPWrapper, value: string): Promise<string> {
 
 function readdir(sftp: SFTPWrapper, value: string): Promise<FileEntry[]> {
   return new Promise((resolve, reject) => {
-    sftp.readdir(value, (error, entries) => error ? reject(error) : resolve(entries))
+    sftp.readdir(value, (error, entries) => error ? reject(normalizeSftpPathError(error, value)) : resolve(entries))
   })
 }
 

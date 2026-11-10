@@ -1,3 +1,4 @@
+import { parseSftpPathMappings } from './sftp-path-mapping.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
 import { useId, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -55,6 +56,7 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
   const sshLocale = useSshLocale()
   const [form, setForm] = useState(() => ({
     name: profile?.name ?? '',
+    sftpMappings: (profile?.sftpPathMappings ?? []).map(item => `${item.terminal} => ${item.sftp}`).join('\n'),
     group: profile?.group ?? '',
     host: profile?.host ?? '',
     port: String(profile?.port ?? 22),
@@ -111,6 +113,7 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
     return {
       profile: {
         name: form.name,
+        sftpPathMappings: parseSftpPathMappings(form.sftpMappings),
         ...(form.group.trim() ? { group: form.group.trim() } : {}),
         host: form.host,
         port: Number(form.port),
@@ -182,6 +185,7 @@ export function ProfileEditor({ profile, profiles, groups = [], vaultEntries, pr
         <Field label={t('connection.timeout')} hint={t('connection.timeoutHint')}><select {...field('timeoutMode')}><option value="default">{t('connection.followDefault')}</option><option value="custom">{t('connection.custom')}</option></select></Field>
         {form.timeoutMode === 'custom' && <Field label={t('connection.timeoutMs')}><input ref={timeoutInputRef} required type="number" inputMode="numeric" min="1000" max="120000" step="1000" {...field('connectTimeoutMs')} /></Field>}
       </div></div>
+      <details className="dsh-ssh-form-section"><summary>{t('sftp-client.pathMappings')}</summary><Field label={t('sftp-client.pathMappings')} hint={t('sftp-client.pathMappingsHint')}><textarea rows={3} spellCheck={false} placeholder="/home/user => /home" {...field('sftpMappings')} /></Field></details>
       <div className="dsh-ssh-form-section"><div className="dsh-ssh-form-section-heading"><strong>{t("ftp-profile-editor.authentication")}</strong><small>{t("profile-editor.chooseSharedCredentialsOrSaveSeparately")}</small></div>
         <Field label={t("ftp-profile-editor.credentialSource")} hint={t("profile-editor.useThisConnectionSOwnCredentialsOrReferenceA")}><select {...field('credentialId')}><option value="">{t("profile-editor.savedWithThisConnectionOnly")}</option>{vaultEntries.map(entry => <option value={entry.id} key={entry.id}>{entry.name} · {entry.username}</option>)}</select></Field>
         {selectedCredential ? <div className="dsh-ssh-credential-reference"><span><IconUserOutline16 size={16} /></span><span><strong>{selectedCredential.name}</strong><small>{selectedCredential.username} · {selectedCredential.authType === 'password' ? t("client.password") : t("client.privateKey")}</small></span><em>{selectedCredential.credential.configured ? t("profile-editor.ready") : t("client.missingCredentials")}</em></div> : <>

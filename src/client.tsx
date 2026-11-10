@@ -55,6 +55,7 @@ import workbenchPagesCss from './workbench-pages.css'
 import { RemoteWorkspaceTree, type RemoteTarget } from './remote-workspace-tree.js'
 import { emptyAccess, useSessionAccess } from './session-access.js'
 import { subscribeSessionAccess } from './session-access-channel.js'
+import { HostSelect } from './host-select.js'
 import { Dialog, EmptyState, Field, PasswordInput, Segment, ServerGlyph, errorMessage } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
 import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
@@ -263,7 +264,7 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
   const [injection, setInjection] = useState<InjectionView | null>(null)
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const remoteOpen = useSyncExternalStore(props.controller.subscribe, props.controller.isOpen)
   const activityOpen = useSyncExternalStore(
     props.activityController.subscribe,
@@ -460,13 +461,15 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     {toolbar}{notice}
     <section className="dsh-ssh-page-body">
       <div hidden={view !== 'hosts'} className="dsh-ssh-catalogue-page">{catalogue}</div>
-      <div hidden={view !== 'workspace'} className="dsh-ssh-desk-page"><TerminalDesk key={scope} scope={scope} profiles={profiles} active={view === 'workspace'} request={openRequest} onManage={() => setView('hosts')} accessSummary={<button type="button" className="dsh-ssh-desk-access" title={t('desk.accessHint')} onClick={() => setView('hosts')}>{t('desk.aiMounts', [access.value?.profileIds.length ?? 0])}{access.error ? ' !' : ''}</button>} /></div>
+      <div hidden={view !== 'workspace'} className="dsh-ssh-desk-page"><TerminalDesk key={scope} scope={scope} profiles={profiles} active={view === 'workspace'} request={openRequest} onManage={() => setView('hosts')} /></div>
+      <div className="dsh-ssh-tool-page" hidden={view === 'hosts' || view === 'workspace' || view === 'transfer'}><div className="dsh-ssh-tool-card dsh-ssh-scroll-surface">
       {view === 'commands' && <CommandsPanel />}
       {view === 'vault' && <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />}
       {view === 'proxies' && <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />}
       {view === 'settings' && <SettingsPane />}
-      {view === 'forwards' && <div className="dsh-ssh-forward-page"><label className="dsh-ssh-page-target"><span>{t('client.host')}</span><select value={selected?.id ?? ''} onChange={event => setTarget({ profileId: event.target.value, path: '~' })}><option value="" disabled>{t('client.selectAHost')}</option>{profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name} · {profileAddress(profile)}</option>)}</select></label>{selected ? <ForwardPane key={selected.id} profiles={profiles} selected={selected} /> : <EmptyState />}</div>}
+      {view === 'forwards' && <div className="dsh-ssh-forward-page"><label className="dsh-ssh-page-target"><span>{t('client.host')}</span><HostSelect profiles={profiles} value={selected?.id ?? ''} onChange={id => setTarget({ profileId: id, path: '~' })} /></label>{selected ? <ForwardPane key={selected.id} profiles={profiles} selected={selected} /> : <EmptyState />}</div>}
       {syncMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'sync'}><SyncPane active={view === 'sync'} /></div>}
+      </div></div>
       {transferMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'transfer'}><FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} /></div>}
     </section>
     {editingGroup !== null && <GroupProxyEditor key={editingGroup || 'new-group'} name={editingGroup || undefined} value={groupProxies.find(group => group.name === editingGroup)} proxies={proxyEntries} onClose={() => setEditingGroup(null)} onSaved={() => { setEditingGroup(null); setRefreshKey(value => value + 1) }} />}

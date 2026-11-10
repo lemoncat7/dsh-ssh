@@ -239,10 +239,13 @@ body[data-ds-dark-theme] :is(
 }
 .dsh-ssh-sidebar-title {
   display: flex;
+  flex: 1;
+  align-self: stretch;
+  justify-content: flex-start;
   min-width: 0;
   align-items: center;
   gap: 5px;
-  height: 28px;
+  height: auto;
   padding: 0 5px;
   color: var(--ssh-text-muted);
   border: 0;

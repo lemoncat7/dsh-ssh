@@ -156,6 +156,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     {props.catalogue ? <>
 
       <div className="dsh-ssh-catalogue-tools"><label className="dsh-ssh-search"><span className="sr-only">{t('remote-workspace-tree.searchHosts')}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('desk.searchCatalogue')} /></label><div className="dsh-ssh-catalogue-actions"><button type="button" className="dsh-ssh-secondary-button" aria-haspopup="dialog" onClick={() => setAccessOpen(true)}>{t('remote-workspace-tree.currentSessionPermissions')}{props.accessSaving ? ` · ${t('remote-workspace-tree.saving')}` : props.accessError ? ' !' : ''}</button><button type="button" aria-pressed={display === 'list'} onClick={() => chooseDisplay('list')}>{t('desk.list')}</button><button type="button" aria-pressed={display === 'cards'} onClick={() => chooseDisplay('cards')}>{t('desk.cards')}</button><button type="button" className="dsh-ssh-secondary-button" onClick={props.onNewGroup}>{t('remote-workspace-tree.addGroup')}</button><button type="button" className="dsh-ssh-primary-button" onClick={props.onNewProfile}>{t('remote-workspace-tree.addHost')}</button></div></div>
+      <p className="dsh-ssh-catalogue-purpose">{t('desk.mountPurpose')}</p>
       {(error || props.accessError) && <p className="dsh-ssh-inline-error" role="alert">{error || props.accessError}</p>}
     </> : <>
     <header className="dsh-ssh-tree-header">
