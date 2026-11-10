@@ -868,10 +868,15 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         subscribe: listener => terminal.subscribeOutput(listener),
       })
     }
+    if (id !== undefined && method === 'POST' && segments[2] === 'attach') {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      return sendJson(res, 200, runtime.terminals.get(id).attach(requireText(body.profileId, 'profileId', 200)))
+    }
     if (id !== undefined && method === 'POST' && segments[2] === 'input') {
       requireMutationHeader(req)
       const body = await readObject(req)
-      runtime.terminals.get(id).writeOrdered(optionalInteger(body.sequence, 0, Number.MAX_SAFE_INTEGER), requireRawText(body.text, 'text', 100_000))
+      runtime.terminals.get(id).writeOrdered(optionalInteger(body.sequence, 0, Number.MAX_SAFE_INTEGER), requireRawText(body.text, 'text', 100_000), body.inputEpoch === undefined ? undefined : requireText(body.inputEpoch, 'inputEpoch', 200))
       return sendJson(res, 204, undefined)
     }
     if (id !== undefined && method === 'POST' && segments[2] === 'resize') {

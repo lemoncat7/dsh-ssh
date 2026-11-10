@@ -1,3 +1,4 @@
+import { readWorkbenchState, writeWorkbenchState } from './terminal-workspace-state.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { canSubscribeActivity, currentSession } from './current-session.js'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -352,11 +353,14 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [groupProxies, setGroupProxies] = useState<GroupProxy[]>([])
   const [editingGroup, setEditingGroup] = useState<string | null>(null)
   const [ftpProfiles, setFtpProfiles] = useState<FtpProfileView[]>([])
-  const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? null : { profileId: props.controller.selected()!, path: '~' })
+  const [scope] = useState(() => String(sessionId ?? 'no-session'))
+  const [remembered] = useState(() => readWorkbenchState(scope))
+  const [target, setTarget] = useState<RemoteTarget | null>(() => props.controller.selected() === undefined ? remembered.target : { profileId: props.controller.selected()!, path: remembered.target && remembered.target.profileId === props.controller.selected() ? remembered.target.path : '~' })
   const [view, setView] = useState<'workspace' | 'transfer' | 'forwards' | 'vault' | 'proxies' | 'settings' | 'sync' | 'commands'>('workspace')
   const [syncMounted, setSyncMounted] = useState(false)
   const [transferMounted, setTransferMounted] = useState(false)
-  const [visitedHosts, setVisitedHosts] = useState<string[]>([])
+  const [visitedHosts, setVisitedHosts] = useState<string[]>(remembered.hosts)
+  useEffect(() => { writeWorkbenchState(scope, visitedHosts, target) }, [scope, visitedHosts, target])
   const [closeAllRequest, setCloseAllRequest] = useState(0)
   const [closingAllTerminals, setClosingAllTerminals] = useState(false)
   const [terminalCounts, setTerminalCounts] = useState<Record<string, number>>({})
@@ -370,7 +374,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const [error, setError] = useState<string>()
   const access = useSessionAccess(sessionId === undefined ? undefined : String(sessionId))
   const openedSessionRef = useRef(sessionId)
-  const initialHostChosen = useRef(props.controller.selected() !== undefined)
+  const initialHostChosen = useRef(props.controller.selected() !== undefined || remembered.target !== null)
   const refreshGeneration = useRef(0)
   const refresh = useCallback(async () => {
     const generation = ++refreshGeneration.current
@@ -470,7 +474,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       />}
     >
       <section className="dsh-ssh-main-panel dsh-ssh-scroll-surface">
-        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onDelete={() => setDeleting(profile)} closeAllRequest={closeAllRequest} totalTerminals={totalTerminals} onCloseAll={() => setClosingAllTerminals(true)} reportTerminalCount={reportTerminalCount} /></div>)}
+        {profiles.filter(profile => visitedHosts.includes(profile.id)).map(profile => <div className="dsh-ssh-host-page" key={profile.id} hidden={view !== 'workspace' || selected?.id !== profile.id}><HostWorkbench scope={scope} profile={profile} initialPath={target?.profileId === profile.id ? target.path : '~'} active={view === 'workspace' && selected?.id === profile.id} onDelete={() => setDeleting(profile)} closeAllRequest={closeAllRequest} totalTerminals={totalTerminals} onCloseAll={() => setClosingAllTerminals(true)} reportTerminalCount={reportTerminalCount} /></div>)}
         {view === 'workspace' ? (selected === undefined ? <EmptyState /> : null) : view === 'transfer' ? null : view === 'commands' ? <CommandsPanel />
           : view === 'vault' ? <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />
           : view === 'proxies' ? <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />
@@ -489,7 +493,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   </>
 }
 
-function HostWorkbench({ profile, initialPath, active, onDelete, closeAllRequest, totalTerminals, onCloseAll, reportTerminalCount }: { profile: ProfileView; initialPath: string; active: boolean; onDelete(): void; closeAllRequest: number; totalTerminals: number; onCloseAll(): void; reportTerminalCount(id: string, count: number): void }): JSX.Element {
+function HostWorkbench({ scope, profile, initialPath, active, onDelete, closeAllRequest, totalTerminals, onCloseAll, reportTerminalCount }: { scope: string; profile: ProfileView; initialPath: string; active: boolean; onDelete(): void; closeAllRequest: number; totalTerminals: number; onCloseAll(): void; reportTerminalCount(id: string, count: number): void }): JSX.Element {
   useSshLocale()
   const [sftpReady, setSftpReady] = useState(false)
   const { ref: workbenchRef, hidden: sftpHidden, setHidden: setSftpHidden } = useResponsiveSftp(active)
@@ -510,7 +514,7 @@ function HostWorkbench({ profile, initialPath, active, onDelete, closeAllRequest
       storageKey="dsh-ssh:workbench:sftp-width"
       label={t("client.adjustTheTerminalAndSftpWidths")}
       secondaryHidden={sftpHidden}
-      primary={<section className="dsh-ssh-workbench-terminal" aria-label={t("client.terminal", [profile.name])}><TerminalWorkspace profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={onTerminalCount} onDirectory={setTerminalPath} /></section>}
+      primary={<section className="dsh-ssh-workbench-terminal" aria-label={t("client.terminal", [profile.name])}><TerminalWorkspace key={scope + profile.id} scope={scope} profile={profile} path={initialPath} onConnected={() => setSftpReady(true)} closeAllRequest={closeAllRequest} onCountChange={onTerminalCount} onDirectory={setTerminalPath} /></section>}
       secondary={<section className="dsh-ssh-workbench-files" aria-label={`${profile.name} SFTP`}>{sftpReady && active
         ? <ProfileSftpPane key={`${profile.id}:${initialPath}`} profile={profile} initialPath={initialPath} terminalPath={terminalPath} embedded />
         : <div className="dsh-ssh-sftp-deferred"><span>SFTP</span><strong>{t("client.waitingForTerminalConnection")}</strong><p>{t("client.theRemoteDirectoryLoadsOnceATerminalIsOpen")}</p></div>}

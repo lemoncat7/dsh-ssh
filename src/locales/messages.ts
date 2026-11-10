@@ -1,6 +1,7 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  'terminal-session.retentionHint': { zh: '离开工作台保留连接；返回可继续操作。离开后无输入、输出或订阅满 30 分钟会回收。关闭标签或断开连接会立即结束终端。', en: 'Leaving keeps the terminal connected. Return to resume. Detached terminals expire after 30 minutes without input, output or subscribers. Closing a tab or disconnecting ends the terminal.' },
   'connection.timeout': { zh: 'SSH 连接超时', en: 'SSH connection timeout' },
   'connection.timeoutMs': { zh: '连接超时（ms）', en: 'Connection timeout (ms)' },
   'connection.timeoutHint': { zh: '包含握手和认证等待，测试连接同样生效；不限制终端使用时长。', en: 'Includes handshake and authentication, including connection tests. Does not limit terminal lifetime.' },

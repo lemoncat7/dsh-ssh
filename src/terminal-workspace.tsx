@@ -5,15 +5,38 @@ import { IconCloseOutlineRegular as IconCloseOutline16, IconPlusOutlineRegular a
 import type { ProfileView } from './client-api.js'
 import { TerminalSession } from './terminal-session.js'
 import { closeTerminal, nextTerminalNumber, selectTerminal, splitTerminal, type TerminalLayout } from './terminal-layout.js'
-import { Dialog } from './ui-components.js'
+import { api, ApiError } from './client-api.js'
+import { BrowserTerminalHandle, terminalWorkspaceState, type PersistentTerminalTab } from './terminal-workspace-state.js'
+import { Dialog, errorMessage } from './ui-components.js'
 
-interface TerminalTab { id: number; number: number; path: string; directory?: string | undefined }
-export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest = 0, onCountChange, onDirectory }: { profile: ProfileView; path: string; onConnected(): void; closeAllRequest?: number; onCountChange?: (count: number) => void; onDirectory?(path: string | undefined): void }): JSX.Element {
+type TerminalTab = PersistentTerminalTab
+export function TerminalWorkspace({ scope, profile, path, onConnected, closeAllRequest = 0, onCountChange, onDirectory }: { scope: string; profile: ProfileView; path: string; onConnected(): void; closeAllRequest?: number; onCountChange?: (count: number) => void; onDirectory?(path: string | undefined): void }): JSX.Element {
   useSshLocale()
-  const [tabs, setTabs] = useState<TerminalTab[]>([{ id: 1, number: 1, path }])
-  const [serial, setSerial] = useState(1)
-  const [view, setView] = useState<TerminalLayout>({ panes: [1], focused: 1 })
-  const [direction, setDirection] = useState<'horizontal' | 'vertical'>('horizontal')
+  const [saved] = useState(() => terminalWorkspaceState(scope, profile.id, path))
+  const [tabs, renderTabs] = useState<TerminalTab[]>(saved.tabs)
+  const [serial, renderSerial] = useState(saved.serial)
+  const [view, renderView] = useState<TerminalLayout>(saved.view)
+  const [direction, renderDirection] = useState(saved.direction)
+  const [error, setError] = useState<string>()
+  const [busy, setBusy] = useState(false)
+  const setTabs = (next: TerminalTab[] | ((value: TerminalTab[]) => TerminalTab[])): void => { saved.tabs = typeof next === 'function' ? next(saved.tabs) : next; saved.save(); renderTabs(saved.tabs) }
+  const setView = (next: TerminalLayout | ((value: TerminalLayout) => TerminalLayout)): void => { saved.view = typeof next === 'function' ? next(saved.view) : next; saved.save(); renderView(saved.view) }
+  const setSerial = (next: number): void => { saved.serial = next; saved.save(); renderSerial(next) }
+  const setDirection = (next: 'horizontal' | 'vertical'): void => { saved.direction = next; saved.save(); renderDirection(next) }
+  const remove = async (id: string): Promise<void> => {
+    try { await api(`/terminals/${encodeURIComponent(id)}`, { method: 'DELETE' }) }
+    catch (reason) { if (!(reason instanceof ApiError && reason.status === 404)) throw reason }
+  }
+  const closeTabs = async (ids: number[]): Promise<void> => {
+    setBusy(true); setError(undefined)
+    const results = await Promise.allSettled(saved.tabs.filter(tab => ids.includes(tab.id)).map(async tab => { await tab.handle.close(remove); return tab.id }))
+    const closed = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+    setTabs(current => current.filter(tab => !closed.includes(tab.id)))
+    setView(current => closed.reduce((value, id) => closeTerminal(value, id, saved.tabs.map(tab => tab.id)), current))
+    const failed = results.find(result => result.status === 'rejected')
+    if (failed?.status === 'rejected') setError(errorMessage(failed.reason))
+    setClosing(undefined); setBusy(false)
+  }
   const [closing, setClosing] = useState<number>()
   const [controls, setControls] = useState<ReactNode>(null)
   const handledCloseRequest = useRef(closeAllRequest)
@@ -22,9 +45,7 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
   useEffect(() => {
     if (handledCloseRequest.current === closeAllRequest) return
     handledCloseRequest.current = closeAllRequest
-    setTabs([])
-    setView({ panes: [], focused: 0 })
-    setClosing(undefined)
+    void closeTabs(saved.tabs.map(tab => tab.id))
   }, [closeAllRequest])
   useEffect(() => { onCountChange?.(tabs.length) }, [onCountChange, tabs.length])
   const label = (id: number): string => t("activity-panel.terminal2", [tabs.find(tab => tab.id === id)?.number ?? ''])
@@ -33,7 +54,7 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
     if (tabs.length >= 8 || (split && view.panes.length >= 4)) return
     const id = serial + 1
     setSerial(id)
-    setTabs(current => [...current, { id, number: nextTerminalNumber(current.map(tab => tab.number)), path }])
+    setTabs(current => [...current, { id, number: nextTerminalNumber(current.map(tab => tab.number)), path, handle: new BrowserTerminalHandle(undefined, saved.save) }])
     setView(current => split ? splitTerminal(current, id) : selectTerminal(current, id))
   }
   const addSplit = (): void => {
@@ -48,6 +69,7 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
   }
   const count = view.panes.length
   return <div className="dsh-ssh-terminal-workspace">
+    {error && <p role="alert" className="dsh-ssh-inline-error">{error}</p>}
     <div className="dsh-ssh-terminal-tabbar">
       <div className="dsh-ssh-terminal-tabs" role="tablist" aria-label={t("terminal-workspace.terminalTabs", [profile.name])}>
         {tabs.map(tab => <span key={tab.id} className={`dsh-ssh-terminal-tab${view.focused === tab.id ? ' is-active' : ''}`} data-ssh-interactive="choice">
@@ -75,15 +97,12 @@ export function TerminalWorkspace({ profile, path, onConnected, closeAllRequest 
     </div>
     <div className={`dsh-ssh-terminal-panes${count > 2 ? ' is-grid' : count === 2 ? ` is-split is-${direction}` : ''}`}>
       {tabs.map(tab => <section key={tab.id} id={`ssh-terminal-${profile.id}-${tab.id}`} aria-label={label(tab.id)} className="dsh-ssh-terminal-slot" hidden={!view.panes.includes(tab.id)} style={{ order: view.panes.indexOf(tab.id) }} data-focused={view.focused === tab.id} onPointerDown={() => setView(current => ({ ...current, focused: tab.id }))} onFocusCapture={() => setView(current => ({ ...current, focused: tab.id }))}>
-        <TerminalSession profile={profile} path={tab.path} label={label(tab.id)} onControls={view.focused === tab.id ? setControls : undefined} onConnected={onConnected} onDirectory={directory => setTabs(current => current.find(item => item.id === tab.id)?.directory === directory ? current : current.map(item => item.id === tab.id ? { ...item, directory } : item))} />
+        <TerminalSession handle={tab.handle} profile={profile} path={tab.path} label={label(tab.id)} onControls={view.focused === tab.id ? setControls : undefined} onConnected={onConnected} onDirectory={directory => setTabs(current => current.find(item => item.id === tab.id)?.directory === directory ? current : current.map(item => item.id === tab.id ? { ...item, directory } : item))} />
       </section>)}
       {tabs.length === 0 && <div className="dsh-ssh-command-empty"><p>{t("terminal-workspace.allTerminalsAreClosed")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => add()}>{t("terminal-workspace.newTerminal")}</button></div>}
     </div>
-    {closing !== undefined && <Dialog variant="confirmation" title={t("terminal-workspace.close2", [label(closing)])} subtitle={t("terminal-workspace.closingDisconnectsThisTabSSshConnectionAndMay")} onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" onClick={() => {
-      const rest = tabs.filter(tab => tab.id !== closing)
-      setTabs(rest)
-      setView(current => closeTerminal(current, closing, rest.map(tab => tab.id)))
-      setClosing(undefined)
+    {closing !== undefined && <Dialog variant="confirmation" title={t("terminal-workspace.close2", [label(closing)])} subtitle={t("terminal-workspace.closingDisconnectsThisTabSSshConnectionAndMay")} onClose={() => setClosing(undefined)}><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setClosing(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-danger-button" disabled={busy} onClick={() => {
+      void closeTabs([closing])
     }}>{t("terminal-workspace.closeConnection")}</button></div></Dialog>}
   </div>
 }

@@ -102,9 +102,10 @@ export class TerminalTransport {
       }
     }
     source.onerror = () => {
-      // A confirmed EventSource reconnects with Last-Event-ID and does not need a
-      // competing poller. Before the first event, fall back if the proxy buffers SSE.
-      if (!streamConfirmed && source?.readyState === EventSource.CLOSED) startPolling()
+      // Allow native SSE reconnection briefly, then verify existence via polling.
+      // A server restart / expired terminal otherwise reconnects to 404 forever.
+      if (streamWatchdog !== undefined) clearTimeout(streamWatchdog)
+      streamWatchdog = window.setTimeout(startPolling, 1_500)
     }
     streamWatchdog = window.setTimeout(() => {
       if (!streamConfirmed) startPolling()
@@ -118,6 +119,7 @@ export class TerminalTransport {
   }
 
   private deliverInput(text: string, sequence: number, onError: (reason: unknown) => void, attempt = 0): void {
+    if (this.disposed) return
     void this.endpoints.send(text, sequence).catch(reason => {
       if (this.disposed) return
       if (attempt < 2 && isRetryable(reason)) {

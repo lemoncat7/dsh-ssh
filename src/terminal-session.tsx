@@ -8,9 +8,10 @@ import { TerminalTransport } from './terminal-transport.js'
 import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
 import { Dialog, errorMessage } from './ui-components.js'
 import { CommandsPanel } from './commands-panel.js'
+import type { BrowserTerminalHandle } from './terminal-workspace-state.js'
 import { terminalDirectory } from './terminal-directory.js'
 
-export function TerminalSession({ profile, path, label, onControls, onConnected, onDirectory }: { profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
+export function TerminalSession({ handle, profile, path, label, onControls, onConnected, onDirectory }: { handle: BrowserTerminalHandle; profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const hostRef = useRef<HTMLDivElement>(null)
   const directoryCallback = useRef(onDirectory)
@@ -22,12 +23,16 @@ export function TerminalSession({ profile, path, label, onControls, onConnected,
   const disposeViewportRef = useRef<() => void>()
   const generation = useRef(0)
   const connecting = useRef(false)
+  const epochRef = useRef<string>()
   const [id, setId] = useState<string>()
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   const [error, setError] = useState<string>()
   const [picking, setPicking] = useState(false)
   const [draft, setDraft] = useState<string>()
-  const close = (terminalId: string): Promise<void> => api(`/terminals/${encodeURIComponent(terminalId)}`, { method: 'DELETE' })
+  const close = async (terminalId: string): Promise<void> => {
+    try { await api(`/terminals/${encodeURIComponent(terminalId)}`, { method: 'DELETE' }) }
+    catch (reason) { if (!(reason instanceof ApiError && reason.status === 404)) throw reason }
+  }
 
   const initialize = (): Terminal | undefined => {
     if (terminalRef.current) return terminalRef.current
@@ -50,7 +55,8 @@ export function TerminalSession({ profile, path, label, onControls, onConnected,
   }
   useEffect(() => () => {
       generation.current++
-      if (idRef.current) void close(idRef.current).catch(() => {})
+      connecting.current = false
+      transportRef.current?.dispose()
       disposeViewportRef.current?.(); terminalRef.current?.dispose(); terminalRef.current = undefined
   }, [])
 
@@ -67,20 +73,21 @@ export function TerminalSession({ profile, path, label, onControls, onConnected,
           throw reason
         }
       },
-      send: (text, sequence) => api(`/terminals/${id}/input`, { method: 'POST', body: JSON.stringify({ text, sequence }) }),
+      send: (text, sequence) => api(`/terminals/${id}/input`, { method: 'POST', body: JSON.stringify({ text, sequence, inputEpoch: epochRef.current }) }),
     })
     transportRef.current = transport
     const input = terminal.onData(text => transport.sendInput(text, reason => setError(errorMessage(reason))))
     const stop = transport.observe({ output: value => {
       if (value.truncated) terminal.write(t("terminal-session.earlierOutputTruncated"))
       if (value.data) terminal.write(value.data)
-      if (value.closed) { idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
+      if (value.closed) { handle.clear(id); idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
     }, error: reason => setError(errorMessage(reason)) })
     return () => { stop(); input.dispose(); transport.dispose(); transportRef.current = undefined }
   }, [id])
 
   const connect = async (): Promise<void> => {
     if (connecting.current || idRef.current) return
+    terminalRef.current?.reset()
     connecting.current = true
     const current = generation.current
     setPhase('connecting'); setError(undefined)
@@ -88,17 +95,32 @@ export function TerminalSession({ profile, path, label, onControls, onConnected,
       const terminal = initialize()
       if (!terminal) { setPhase('idle'); return }
       fitRef.current?.fit()
-      const result = await api<{ id: string }>('/terminals', { method: 'POST', body: JSON.stringify({ profileId: profile.id, cwd: path, cols: terminal.cols, rows: terminal.rows }) })
-      if (generation.current !== current) { await close(result.id); return }
-      idRef.current = result.id; setId(result.id); setPhase('connected'); onConnected(); terminal.focus()
-    } catch (reason) { if (generation.current === current) { setPhase('error'); setError(errorMessage(reason)) } }
-    finally { connecting.current = false }
+      const terminalId = await handle.open(async () => (await api<{ id: string }>('/terminals', { method: 'POST', body: JSON.stringify({ profileId: profile.id, cwd: path, cols: terminal.cols, rows: terminal.rows }) })).id, close)
+      if (generation.current !== current) return
+      const attached = await handle.attach(() => api<{ inputEpoch: string }>(`/terminals/${encodeURIComponent(terminalId)}/attach`, { method: 'POST', body: JSON.stringify({ profileId: profile.id }) }))
+      if (generation.current !== current) return
+      epochRef.current = attached.inputEpoch
+      idRef.current = terminalId; setId(terminalId); setPhase('connected'); onConnected();
+      void api(`/terminals/${terminalId}/resize`, { method: 'POST', body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }) }).catch(() => {})
+      if (hostRef.current?.getClientRects().length) terminal.focus()
+    } catch (reason) { if (generation.current === current) {
+      if (reason instanceof ApiError && reason.status === 404 && handle.id) { handle.clear(handle.id); setPhase('idle'); setError(t('terminal-session.connectionEndedYouCanReconnect')) }
+      else { setPhase('error'); setError(errorMessage(reason)) }
+    } }
+    finally { if (generation.current === current) connecting.current = false }
   }
   const disconnect = async (): Promise<void> => {
     if (!idRef.current) return
-    try { await close(idRef.current); idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
+    try { await handle.close(close); idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
     catch (reason) { setError(errorMessage(reason)) }
   }
+  useEffect(() => {
+    // StrictMode replays mount effects. Avoid initializing xterm in the temporary
+    // mount, whose delayed viewport update would run after disposal.
+    let cancelled = false
+    queueMicrotask(() => { if (!cancelled && (handle.id || handle.connecting)) void connect() })
+    return () => { cancelled = true }
+  }, [handle])
   // Publish only the selected session's controls; keep transport ownership here.
   const actions = useRef({ connect, disconnect })
   actions.current = { connect, disconnect }
@@ -109,7 +131,7 @@ export function TerminalSession({ profile, path, label, onControls, onConnected,
   }, [onControls, label, id, phase, sshLocale])
   return <div className="dsh-ssh-terminal-pane is-embedded">
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
-    <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span>{label} · {id ? t("terminal-session.connected") : phase === 'connecting' ? t("client.connecting") : t("terminal-session.disconnected")}</span><span title={t("terminal-session.initialDirectory", [path, profileAddress(profile)])}>{path}</span></div></div>
+    <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span title={t("terminal-session.retentionHint")}>{label} · {id ? t("terminal-session.connected") : phase === 'connecting' ? t("client.connecting") : t("terminal-session.disconnected")}</span><span title={t("terminal-session.initialDirectory", [path, profileAddress(profile)])}>{path}</span></div></div>
     {draft !== undefined && <div className="dsh-ssh-command-draft"><label className="dsh-ssh-field"><span>{t("terminal-session.target")}{profile.name}  {t("terminal-session.makeSureTheTerminalIsAtACommandPrompt")}</span><textarea aria-label={t("terminal-session.commandToSend")} rows={3} value={draft} onChange={event => setDraft(event.target.value)} /></label><div className="dsh-ssh-heading-actions"><button type="button" className="dsh-ssh-secondary-button" onClick={() => setDraft(undefined)}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-primary-button" disabled={!id || !draft.trim()} onClick={() => {
       if (!transportRef.current) return
       transportRef.current.sendInput(`${draft.replace(/\r\n/g, '\n')}\r`, reason => setError(errorMessage(reason)))

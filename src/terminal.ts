@@ -44,7 +44,9 @@ export class SshTerminalSession implements TerminalBackendSession {
   private terminalStatus: TerminalSessionStatus = { kind: 'running' }
   private active: SendOperation | undefined
   private closing?: Promise<void>
-  private readonly orderedInput = new OrderedTerminalInput(text => this.write(text))
+  private orderedInput = new OrderedTerminalInput(text => this.write(text))
+  private inputEpoch: string | undefined
+  private subscribers = 0
 
   constructor(private readonly connection: ManagedSshConnection, readonly channel: ClientChannel, motd: string) {
     this.motd = motd
@@ -482,7 +484,9 @@ export class BrowserTerminal {
   private bootstrapEcho: TerminalBootstrapEcho | undefined
   private bootstrapTimer: ReturnType<typeof setTimeout> | undefined
   private idleTimer: ReturnType<typeof setTimeout>
-  private readonly orderedInput = new OrderedTerminalInput(text => this.write(text))
+  private orderedInput = new OrderedTerminalInput(text => this.write(text))
+  private inputEpoch: string | undefined
+  private subscribers = 0
 
   constructor(
     readonly id: string,
@@ -491,7 +495,7 @@ export class BrowserTerminal {
     private readonly channel: ClientChannel,
     private readonly onClose: () => void,
   ) {
-    this.idleTimer = setTimeout(() => { void this.close() }, 30 * 60_000)
+    this.idleTimer = setTimeout(() => { if (this.subscribers > 0) this.touch(); else void this.close() }, 30 * 60_000)
     channel.setEncoding('utf8')
     channel.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
     channel.stderr?.setEncoding('utf8')
@@ -527,7 +531,17 @@ export class BrowserTerminal {
   }
 
   write(text: string): void { this.touch(); if (this.closed) throw new Error('terminal is closed'); this.channel.write(text) }
-  writeOrdered(sequence: number | undefined, text: string): void { this.orderedInput.push(sequence, text) }
+  attach(profileId: string): { inputEpoch: string } {
+    if (profileId !== this.profileId || this.closed) throw Object.assign(new Error('Terminal is unavailable for this host'), { status: 404 })
+    this.inputEpoch = randomUUID()
+    this.orderedInput = new OrderedTerminalInput(text => this.write(text))
+    this.touch()
+    return { inputEpoch: this.inputEpoch }
+  }
+  writeOrdered(sequence: number | undefined, text: string, inputEpoch?: string): void {
+    if (this.inputEpoch !== inputEpoch) throw Object.assign(new Error('Terminal input belongs to an earlier connection; reconnect this view'), { status: 409 })
+    this.orderedInput.push(sequence, text)
+  }
   resize(cols: number, rows: number): void { this.touch(); this.channel.setWindow(clamp(rows, 5, 200), clamp(cols, 20, 400), 0, 0) }
 
   read(cursor: number): { data: string; cursor: number; truncated: boolean; closed: boolean } {
@@ -537,7 +551,10 @@ export class BrowserTerminal {
 
   subscribeOutput(listener: TerminalOutputListener): () => void {
     this.touch()
-    return this.output.subscribe(listener)
+    this.subscribers++
+    const stop = this.output.subscribe(listener)
+    let stopped = false
+    return () => { if (stopped) return; stopped = true; stop(); this.subscribers--; this.touch() }
   }
 
   async close(): Promise<void> {
@@ -552,13 +569,15 @@ export class BrowserTerminal {
   }
 
   private append(text: string): void {
+    this.touch()
     const visible = this.bootstrapEcho?.push(text) ?? text
     if (visible) this.output.append(visible)
   }
 
   private touch(): void {
+    if (this.closed) return
     clearTimeout(this.idleTimer)
-    this.idleTimer = setTimeout(() => { void this.close() }, 30 * 60_000)
+    this.idleTimer = setTimeout(() => { if (this.subscribers > 0) this.touch(); else void this.close() }, 30 * 60_000)
   }
 }
 
