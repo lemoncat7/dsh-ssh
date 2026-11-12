@@ -1,6 +1,6 @@
 {
   "name": "@lemoncat7/dsh-ssh",
-  "version": "1.16.20",
+  "version": "1.16.22",
   "description": "Secure SSH, FTP/FTPS/SFTP file transfer, browser terminals, proxies, port forwarding, and session-scoped AI access for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -47,7 +47,10 @@
     "docs/releases/1.10.4.md",
     "docs/dsh-021-compatibility.md",
     "docs/releases/1.11.4.md",
-    "docs/compatibility-0.2.2-rc.1.md"
+    "docs/compatibility-0.2.2-rc.1.md",
+    "docs/compatibility-0.2.2-rc.2.md",
+    "docs/releases/1.16.21.md",
+    "docs/releases/1.16.22.md"
   ],
   "dsh": {
     "bundle": {
@@ -70,14 +73,15 @@
   },
   "engines": {
     "node": ">=24.9.0",
-    "dsh": "=0.2.2-rc.1"
+    "dsh": "=0.2.2-rc.1 || =0.2.2-rc.2"
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "build": "tsc -p tsconfig.json && node scripts/build-client.mjs",
     "prepare": "npm run clean && npm run build",
     "test": "npm run build && node --test test/*.test.mjs",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "test:sidebar-browser": "node test/sidebar-anchor.browser.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",
@@ -139,7 +143,9 @@
     "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.1",
     "@deepseek-ai/dsh-ptc-runtime": "0.2.2-rc.1",
     "@hugeicons/core-free-icons": "^4.3.5",
-    "@hugeicons/react": "^1.1.10"
+    "@hugeicons/react": "^1.1.10",
+    "@types/react-dom": "18.3.7",
+    "react-dom": "18.3.1"
   },
   "publishConfig": {
     "access": "public"

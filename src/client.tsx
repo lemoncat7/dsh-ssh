@@ -43,7 +43,7 @@ import {
   type ForwardStatus, type ForwardView, type FtpProfileView,
   saveSessionAccess, type InjectionView, type ProfileView, type ProxyEntryView, type RemoteProjectView, type TerminalOpenedEvent, type VaultEntryView,
 } from './client-api.js'
-import { useWorkspaceTopAnchor } from './sidebar-anchor.js'
+import { WorkspaceTopAnchor } from './sidebar-anchor.js'
 import { refreshWorkspace, useWorkspaceRefresh } from './use-workspace-refresh.js'
 import { GroupProxyEditor } from './group-proxy-editor.js'
 import type { GroupProxy } from './domain.js'
@@ -94,12 +94,12 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => () => { controller.close(); activityController.dispose() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'ssh-remote', order: -100,
-  }, props => <RemoteSidebar
+  }, props => <WorkspaceTopAnchor id="ssh-remote" order={-100}><RemoteSidebar
     {...props}
     controller={controller}
     activityController={activityController}
     collapseSidebar={() => ctx.layout.toggleSidebar()}
-  />))
+  /></WorkspaceTopAnchor>))
 }
 
 function createController(ctx: ClientContext, beforeOpen: () => void): RemoteController {
@@ -259,8 +259,6 @@ function createDockedActivityController(ctx: ClientContext): ActivityController 
 
 function RemoteSidebar(props: SidebarActionProps & { controller: RemoteController; activityController: ActivityController; collapseSidebar(): void }): JSX.Element {
   useSshLocale()
-  const ref = useRef<HTMLElement>(null)
-  useWorkspaceTopAnchor(ref)
   const sessionId = props.useSessions((state: SessionListState) => currentSession(state))
   const currentSessionId = sessionId === undefined ? undefined : String(sessionId)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
@@ -316,11 +314,11 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
   }
 
   if (!props.wide) {
-    return <section ref={ref} className="dsh-ssh-sidebar is-rail">
+    return <section className="dsh-ssh-sidebar is-rail">
       <button type="button" data-ssh-interactive="choice" className={`dsh-ssh-rail-button${activityOpen ? ' is-active' : ''}`} title={currentSessionId === undefined ? t("client.openASessionToSeeTheSshSidebar") : activityOpen ? t("client.collapseSshSidebar") : t("client.expandSshSidebar")} aria-label={activityOpen ? t("client.collapseSshSidebar") : t("client.expandSshSidebar")} aria-pressed={activityOpen} disabled={currentSessionId === undefined} onClick={toggleActivity}><ServerGlyph /></button>
     </section>
   }
-  return <section ref={ref} className="dsh-ssh-sidebar">
+  return <section className="dsh-ssh-sidebar">
     <div className="dsh-ssh-sidebar-heading">
       <button type="button" className="dsh-ssh-sidebar-title" aria-expanded={open} onClick={() => setOpen(value => !value)}>
         <span className="dsh-ssh-disclosure" data-open={open}><IconChevronDownOutline14 size={14} /></span><span>{t("client.theRemote")}</span>

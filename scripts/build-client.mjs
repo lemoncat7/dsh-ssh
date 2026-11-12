@@ -17,6 +17,7 @@ await build({
   external: [
     'react',
     'react/jsx-runtime',
+    'react-dom',
     '@deepseek-ai/dsh-client-ui-primitives',
   ],
   loader: { '.css': 'text' },
