@@ -19,7 +19,7 @@
 
 ## 安装
 
-当前版本 **1.16.23**，支持 DeepSeek Harness **0.2.2-rc.1 / 0.2.2-rc.2**，需要 Node.js **>=24.9.0**。rc2 隔离验证结果见[兼容说明](docs/compatibility-0.2.2-rc.2.md)。本版制品包含上述兼容声明。
+需要 Node.js **>=24.9.0**。不按 DSH 版本号限制安装或加载；兼容性测试作为历史记录保留，见[宿主兼容策略](docs/host-compatibility-policy.md)。
 
 ```bash
 dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
@@ -43,9 +43,9 @@ dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 - [发布维护约定](docs/releases/README.md)
 
 
-## DSH 0.2.2 兼容性
+## 宿主兼容策略
 
-当前版本 **1.16.23**，支持 DeepSeek Harness **0.2.2-rc.1 / 0.2.2-rc.2**，需要 Node.js **>=24.9.0**。rc2 隔离验证结果见[兼容说明](docs/compatibility-0.2.2-rc.2.md)。本版制品包含上述兼容声明。
+DSH 更新后不再为了补版本声明单独发布插件；按实际接口和功能验证、修复。[策略及历史测试入口](docs/host-compatibility-policy.md)。
 
 ### 工作台终端保留
 

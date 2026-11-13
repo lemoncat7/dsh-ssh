@@ -1,6 +1,6 @@
 {
   "name": "@lemoncat7/dsh-ssh",
-  "version": "1.16.23",
+  "version": "1.16.24",
   "description": "Secure SSH, FTP/FTPS/SFTP file transfer, browser terminals, proxies, port forwarding, and session-scoped AI access for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -51,7 +51,9 @@
     "docs/compatibility-0.2.2-rc.2.md",
     "docs/releases/1.16.21.md",
     "docs/releases/1.16.22.md",
-    "docs/releases/1.16.23.md"
+    "docs/releases/1.16.23.md",
+    "docs/host-compatibility-policy.md",
+    "docs/releases/1.16.24.md"
   ],
   "dsh": {
     "bundle": {
@@ -73,8 +75,7 @@
     }
   },
   "engines": {
-    "node": ">=24.9.0",
-    "dsh": "=0.2.2-rc.1 || =0.2.2-rc.2"
+    "node": ">=24.9.0"
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
@@ -97,10 +98,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-agent": "^0.2.2-rc.1",
-    "@deepseek-ai/dsh-credentials": "^0.2.2-rc.1",
-    "@deepseek-ai/dsh-system-prompt": "^0.2.2-rc.1",
-    "@deepseek-ai/dsh-tools": "^0.2.2-rc.1"
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-credentials": "*",
+    "@deepseek-ai/dsh-system-prompt": "*",
+    "@deepseek-ai/dsh-tools": "*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
