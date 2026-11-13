@@ -15,19 +15,11 @@ export function WorkspaceTopAnchor({ children, id, order }: { children: ReactNod
     const place = (): void => {
       // A temporarily detached sidebar must not attach an entry elsewhere.
       if (!marker.isConnected) return
-      let parent: HTMLElement = marker
-      let ancestor: HTMLElement | null = marker.parentElement
-      while (ancestor !== null && ancestor !== document.body) {
-        const candidate = ancestor.previousElementSibling
-        if (candidate instanceof HTMLElement) {
-          const style = getComputedStyle(candidate)
-          if (style.display === 'flex' && style.flexDirection === 'column' && Number.parseFloat(style.flexGrow) > 0) {
-            parent = candidate
-            break
-          }
-        }
-        ancestor = ancestor.parentElement
-      }
+      // rc2 wraps navigation + workspaces in another growing scroll region.
+      // Anchor to the semantic workspace slot, never to layout heuristics:
+      // entries belong below navigation (including More), above workspaces.
+      const sidebar = marker.closest('[data-slot="sidebar"]')
+      const parent = sidebar?.querySelector<HTMLElement>('[data-slot="sidebar.workspaces"]') ?? marker
       // Preserve both plugin order and the native Workspace subtree. A new
       // instance never adopts/removes an old instance's private portal host.
       const siblings = Array.from(parent.children)

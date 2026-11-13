@@ -19,7 +19,7 @@
 
 ## 安装
 
-当前版本 **1.16.22**，支持 DeepSeek Harness **0.2.2-rc.1 / 0.2.2-rc.2**，需要 Node.js **>=24.9.0**。rc2 隔离验证结果见[兼容说明](docs/compatibility-0.2.2-rc.2.md)。本版制品包含上述兼容声明。
+当前版本 **1.16.23**，支持 DeepSeek Harness **0.2.2-rc.1 / 0.2.2-rc.2**，需要 Node.js **>=24.9.0**。rc2 隔离验证结果见[兼容说明](docs/compatibility-0.2.2-rc.2.md)。本版制品包含上述兼容声明。
 
 ```bash
 dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
@@ -45,7 +45,7 @@ dsh plugin --profile web add @lemoncat7/dsh-ssh@latest
 
 ## DSH 0.2.2 兼容性
 
-当前版本 **1.16.22**，支持 DeepSeek Harness **0.2.2-rc.1 / 0.2.2-rc.2**，需要 Node.js **>=24.9.0**。rc2 隔离验证结果见[兼容说明](docs/compatibility-0.2.2-rc.2.md)。本版制品包含上述兼容声明。
+当前版本 **1.16.23**，支持 DeepSeek Harness **0.2.2-rc.1 / 0.2.2-rc.2**，需要 Node.js **>=24.9.0**。rc2 隔离验证结果见[兼容说明](docs/compatibility-0.2.2-rc.2.md)。本版制品包含上述兼容声明。
 
 ### 工作台终端保留
 

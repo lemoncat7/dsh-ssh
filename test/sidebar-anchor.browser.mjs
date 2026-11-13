@@ -29,6 +29,16 @@ try {
       assert.equal(await page.locator('[data-dsh-workspace-anchor]').count(), expected)
       assert.equal(await page.locator('[data-other-plugin]').count(), 1)
       assert.deepEqual(errors, [])
+      if (await page.locator('[data-slot="sidebar.workspaces"]').count()) {
+        assert.equal(await page.locator('[data-slot="sidebar.workspaces"] > [data-dsh-workspace-anchor]').count(), expected)
+        assert.equal(await page.evaluate(() => {
+          const more = document.querySelector('[data-more]'), native = document.querySelector('[data-native]')
+          return [...document.querySelectorAll('[data-entry]')].every(entry =>
+            Boolean(more.compareDocumentPosition(entry) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+            Boolean(entry.compareDocumentPosition(native) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+            more.getBoundingClientRect().bottom <= entry.getBoundingClientRect().top)
+        }), true, 'Entries must remain below More and above native workspaces')
+      }
     }
     await page.waitForSelector('[data-workspaces] [data-entry="ssh"]')
     await page.locator('[data-native]').click()

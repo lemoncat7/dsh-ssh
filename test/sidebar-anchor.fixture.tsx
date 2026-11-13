@@ -20,7 +20,12 @@ function App() {
   ;(window as any).configure = (next: Partial<typeof state>) => setState(previous => ({ ...previous, ...next }))
   return <Boundary>{state.visible && <aside data-slot="sidebar">
     <header>Native sidebar</header>
-    {state.workspace && <div key={state.workspaceGeneration} data-workspaces style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}><NativeWorkspace /></div>}
+    <div data-scroll-region style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+      <div data-scroll-area style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+        <nav><button data-more>More</button></nav>
+        {state.workspace && <div key={state.workspaceGeneration} data-workspaces><div data-slot="sidebar.workspaces"><NativeWorkspace /></div></div>}
+      </div>
+    </div>
     <footer><div data-slot="sidebar.footer.action">{state.entries.map(entry => {
       const body = <WorkspaceTopAnchor id={entry.id} order={entry.id === 'partner' ? -120 : -100}><Entry {...entry} wide={state.wide} /></WorkspaceTopAnchor>
       return state.wrapped ? <div key={entry.id + entry.generation}>{body}</div> : <React.Fragment key={entry.id + entry.generation}>{body}</React.Fragment>
