@@ -52,6 +52,7 @@ export function attachTerminalViewport(
   terminal: Terminal,
   fitAddon: FitAddon,
   onSize?: (cols: number, rows: number) => void,
+  options: { preserveScroll?: boolean } = {},
 ): TerminalViewport {
   let animationFrame: number | undefined
   let disposed = false
@@ -59,8 +60,11 @@ export function attachTerminalViewport(
 
   const fit = (): void => {
     if (disposed || host.clientWidth === 0 || host.clientHeight === 0) return
+    const line = terminal.buffer.active.viewportY
+    const follow = line >= terminal.buffer.active.baseY
     fitAddon.fit()
-    terminal.scrollToBottom()
+    if (!options.preserveScroll || follow) terminal.scrollToBottom()
+    else terminal.scrollToLine(line)
     const size = `${terminal.cols}x${terminal.rows}`
     if (size === previousSize) return
     previousSize = size

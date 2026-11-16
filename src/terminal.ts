@@ -359,9 +359,8 @@ export class AiTerminalManager {
     return this.get(ownerId, terminalId).readOutput(cursor)
   }
 
-  activity(ownerId: string): AiTerminalActivity[] {
+  activity(ownerId: string, detail = false): AiTerminalActivity[] {
     return [...(this.sessions.get(ownerId) ?? new Map()).values()].map(record => {
-      const scrollback = record.session.read({ count: 500 }).text
       return {
         terminalId: record.terminalId,
         profileId: record.profileId,
@@ -369,8 +368,7 @@ export class AiTerminalManager {
         cwd: record.cwd,
         createdAt: record.createdAt,
         status: record.session.status(),
-        scrollback: scrollback.slice(-96_000),
-        commands: structuredClone(record.commands),
+        ...(detail ? { scrollback: record.session.read({ count: 500 }).text.slice(-96_000), commands: structuredClone(record.commands) } : {}),
       }
     })
   }
@@ -474,8 +472,8 @@ export interface AiTerminalActivity {
   cwd: string
   createdAt: number
   status: TerminalSessionStatus
-  scrollback: string
-  commands: AiTerminalCommand[]
+  scrollback?: string
+  commands?: AiTerminalCommand[]
 }
 
 export class BrowserTerminal {

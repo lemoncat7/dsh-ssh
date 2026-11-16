@@ -97,7 +97,9 @@ try{
   assert.equal(await page.getByRole('button',{name:'会话目录',exact:true}).getAttribute('aria-pressed'),'true')
   await page.evaluate(()=>window.switchSession('a'))
   await page.getByText('a: SELECT 1;', {exact:true}).waitFor()
-  console.log('activity passed',width);await page.goto(base+'/?groups')
+  console.log('activity passed',width)
+  if(process.env.SSH_ACTIVITY_ONLY==='1'){assert.deepEqual(errors,[]);await page.close();continue}
+  await page.goto(base+'/?groups')
   if(width===375)await page.getByRole('button',{name:'主机',exact:true}).click()
   const mounted=page.getByRole('button',{name:'Mounted 1',exact:true}),other=page.getByRole('button',{name:'Other 1',exact:true})
   await mounted.waitFor();await page.waitForFunction(()=>document.querySelector('.dsh-ssh-tree-host-row.is-active strong')?.textContent==='Mounted host')

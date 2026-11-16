@@ -83,7 +83,7 @@ export interface ActivityCommandView { id: string; command: string; submitted: b
 export interface ActivityTerminalView {
   terminalId: string; profileId: string; name: string; cwd: string; createdAt: number
   status: { kind: 'running' } | { kind: 'exited'; exitCode: number | null; signal: string | null }
-  scrollback: string; commands: ActivityCommandView[]
+  scrollback?: string; commands?: ActivityCommandView[]
 }
 export interface ActivityView { injection: InjectionView | null; profiles: ActivityProfileView[]; terminals: ActivityTerminalView[] }
 export interface TerminalOpenedEvent { type: 'terminal-opened'; sessionId: string; terminalId: string; profileId: string; createdAt: number }
@@ -167,7 +167,7 @@ export function deleteRemoteProject(profileId: string, projectId: string): Promi
 export function saveSessionAccess(value: InjectionView): Promise<InjectionView> {
   return api(`/injections/${encodeURIComponent(value.sessionId)}`, { method: 'PUT', body: JSON.stringify(value) })
 }
-export function loadActivity(sessionId: string): Promise<ActivityView> { return api(`/activity?sessionId=${encodeURIComponent(sessionId)}`) }
+export function loadActivity(sessionId: string, signal?: AbortSignal): Promise<ActivityView> { return api(`/activity?sessionId=${encodeURIComponent(sessionId)}`, signal ? { signal } : {}) }
 export function activityEventStreamUrl(sessionId: string): string {
   return `${SSH_API}/activity/events?sessionId=${encodeURIComponent(sessionId)}`
 }

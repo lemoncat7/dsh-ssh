@@ -80,3 +80,23 @@ function terminalChannel() {
   channel.signal = () => {}
   return channel
 }
+
+test('activity summaries do not read or clone terminal history; detail is explicit', async t => {
+  const fixture = terminalFixture(t)
+  const terminal = await fixture.manager.create('session-a', 'host-a', '/srv/app')
+  const record = fixture.manager.sessions.get('session-a').get(terminal.terminalId)
+  let reads = 0
+  record.session.read = () => { reads++; return { text: 's'.repeat(96000) } }
+  record.commands = Array.from({ length: 80 }, (_, i) => ({ id: String(i), output: 'x'.repeat(64000) }))
+  const summary = fixture.manager.activity('session-a')
+  assert.equal(reads, 0)
+  assert.equal('scrollback' in summary[0], false)
+  assert.equal('commands' in summary[0], false)
+  assert.ok(JSON.stringify(summary).length < 500)
+  const detail = fixture.manager.activity('session-a', true)
+  assert.equal(reads, 1)
+  assert.equal(detail[0].scrollback.length, 96000)
+  assert.equal(detail[0].commands.length, 80)
+  detail[0].commands[0].output = 'changed'
+  assert.equal(record.commands[0].output.length, 64000)
+})

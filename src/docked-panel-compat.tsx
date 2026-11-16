@@ -1,10 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { currentSession } from './current-session.js'
 import type { Context } from '@deepseek-ai/cordis'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
-type PanelProps = PropsRuntime<'details'>
+type PanelProps = { sessionId?: string; visible?: boolean }
 type TabInfo = { tab: { id: string; visible: boolean; signal: AbortSignal; actions: { close(): void } } }
 type TabProps = PanelProps & { useTabInfo(): TabInfo }
 type Sidebar = { openTab(kind: string): void }
@@ -35,6 +34,8 @@ export function createDockedPanel(
   }
   function Body(props: TabProps): JSX.Element | null {
     const { tab } = props.useTabInfo()
+    const visited = useRef(false)
+    if (tab.visible) visited.current = true
     const sessionId = String(props.sessionId)
     useEffect(() => {
       let entries = records.get(sessionId)
@@ -54,13 +55,13 @@ export function createDockedPanel(
         remove()
       }
     }, [sessionId, tab.id, tab.visible, tab.signal])
-    // Hidden tabs must not keep terminal polling and document fetching alive.
-    return tab.visible ? render(props) : null
+    // Retain the host-owned view; descendants pause work without losing xterm state.
+    return visited.current ? <div style={{ display: tab.visible ? 'contents' : 'none' }}>{render({ ...props, visible: tab.visible })}</div> : null
   }
   const fiber = ctx.inject(['sidebarRight', 'sidebarRightTabs'], child => {
     sidebar = child.get('sidebarRight') as Sidebar
     const registry = child.get('sidebarRightTabs') as Registry
-    const slots = child.slots as unknown as {
+    const slots = (child as unknown as { slots: unknown }).slots as {
       inject(name: string, effect: () => () => void): () => void
       register(options: { name: string; key: string }, body: typeof Body): () => void
     }

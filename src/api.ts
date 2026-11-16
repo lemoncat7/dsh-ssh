@@ -754,7 +754,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       return sendJson(res, 200, {
         injection,
         profiles,
-        terminals: injection.permission === 'terminal' ? runtime.aiTerminals.activity(sessionId) : [],
+        terminals: injection.permission === 'terminal' ? runtime.aiTerminals.activity(sessionId, url.searchParams.get('detail') === '1') : [],
       })
     }
     if (method === 'DELETE' && segments[1] === 'terminals' && segments[2] !== undefined && segments.length === 3) {

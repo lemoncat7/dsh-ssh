@@ -71,3 +71,18 @@ test('activity terminals support the proxy-safe close action route', async t => 
   assert.equal(response.status, 204)
   assert.deepEqual(closed, [{ sessionId: 'session-owner', terminalId: 'terminal-active' }])
 })
+
+test('activity API requests lightweight metadata by default and history only with detail=1', async t => {
+  let route
+  const calls=[]
+  registerSshApi({register(value){route=value;return()=>{}}},'/ssh-local/v1',{
+    store:{injection:()=>({profileIds:['host'],permission:'terminal',workingDirectories:{}}),profile:()=>({id:'host',name:'Host'}),remoteProjects:()=>[]},
+    aiTerminals:{activity(owner,detail){calls.push([owner,detail]);return [{terminalId:'t',...(detail?{commands:['history'],scrollback:'history'}:{})}]}},
+  })
+  const server=createServer((req,res)=>void route.handler(req,res))
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)))
+  const base=`http://127.0.0.1:${server.address().port}/ssh-local/v1/activity?sessionId=owner`
+  assert.equal('commands' in (await (await fetch(base)).json()).terminals[0],false)
+  assert.deepEqual((await (await fetch(base+'&detail=1')).json()).terminals[0].commands,['history'])
+  assert.deepEqual(calls,[['owner',false],['owner',true]])
+})

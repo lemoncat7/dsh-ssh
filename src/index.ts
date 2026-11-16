@@ -18,6 +18,7 @@ import { FileTransferManager } from './file-transfer-manager.js'
 import { EndpointSessionManager } from './endpoint-session-manager.js'
 import { GistSyncService, GistTokenVault } from './gist-sync.js'
 import type { NativeDirectoryController } from './native-directory.js'
+import { inheritSessionForks, type SessionForkController } from './session-fork.js'
 
 export const Config = ConfigSchema
 export type Config = SshConfig
@@ -57,6 +58,10 @@ export function apply(context: Context, config: SshConfig): void {
     const activityEvents = new ActivityEventBus()
     const aiTerminals = new AiTerminalManager(connector, event => { activityEvents.publish(event) })
     const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals, files, transfers)
+    const forkScope = ctx.inject?.(['sessionController'], runtime => {
+      const controller = runtime.get('sessionController') as SessionForkController
+      runtime.effect(() => inheritSessionForks(controller, store))
+    }) as { dispose(): unknown } | undefined
     let disposeApi: (() => void) | undefined
     const mountApi = (runtime: RuntimeContext): void => {
       if (!resolved.exposeWeb) return
@@ -74,6 +79,7 @@ export function apply(context: Context, config: SshConfig): void {
     await forwards.startAuto()
     ctx.logger.info(`dsh-ssh: ready with ${store.profiles().length} profiles`)
     return async () => {
+      await forkScope?.dispose()
       disposeTools()
       disposeApi?.()
       connector.close()

@@ -7,6 +7,11 @@ interface TerminalTransportEndpoints {
   send(text: string, sequence: number): Promise<void>
 }
 
+export interface TerminalObservation {
+  (): void
+  setVisible(visible: boolean): void
+}
+
 interface TerminalOutputObserver {
   output(value: TerminalOutputDelta): void
   error(reason: unknown): void
@@ -41,75 +46,96 @@ export class TerminalTransport {
     })
   }
 
-  observe(observer: TerminalOutputObserver): () => void {
+  observe(observer: TerminalOutputObserver, initiallyVisible = true): TerminalObservation {
     let stopped = false
+    let visible = initiallyVisible
     let cursor = 0
+    let generation = 0
     let source: EventSource | undefined
     let streamWatchdog: number | undefined
     let pollTimer: number | undefined
-    let streamConfirmed = false
-
-    const stop = (): void => {
-      if (stopped) return
-      stopped = true
+    let polling = false
+    const clearConnection = (): void => {
+      generation++
       source?.close()
+      source = undefined
       if (streamWatchdog !== undefined) clearTimeout(streamWatchdog)
       if (pollTimer !== undefined) clearTimeout(pollTimer)
+      streamWatchdog = pollTimer = undefined
+      polling = false
     }
-    const accept = (value: TerminalOutputDelta): void => {
+    const stop = (() => {
       if (stopped) return
+      stopped = true
+      clearConnection()
+    }) as TerminalObservation
+    const current = (epoch: number): boolean => !stopped && visible && generation === epoch
+    const accept = (value: TerminalOutputDelta): void => {
       cursor = value.cursor
       observer.output(value)
       if (value.closed) stop()
     }
-    const poll = async (): Promise<void> => {
-      if (stopped) return
-      try {
-        const value = await this.endpoints.read(cursor)
-        accept(value)
-        if (!stopped) pollTimer = window.setTimeout(() => { void poll() }, document.hidden || this.endpoints.isVisible?.() === false ? 1000 : value.data ? 16 : 64)
-      } catch (reason) {
-        if (stopped) return
-        observer.error(reason)
-        pollTimer = window.setTimeout(() => { void poll() }, 500)
-      }
-    }
-    const startPolling = (): void => {
-      if (stopped || pollTimer !== undefined) return
-      source?.close()
-      source = undefined
-      void poll()
-    }
-
-    if (typeof EventSource === 'undefined') {
-      startPolling()
-      return stop
-    }
-
-    source = new EventSource(this.endpoints.streamUrl)
-    source.onmessage = event => {
-      try {
-        const value = parseOutput(event.data)
-        streamConfirmed = true
-        if (streamWatchdog !== undefined) {
-          clearTimeout(streamWatchdog)
-          streamWatchdog = undefined
+    const start = (): void => {
+      if (stopped || !visible) return
+      const epoch = generation
+      let streamConfirmed = false
+      const poll = async (): Promise<void> => {
+        if (!current(epoch)) return
+        try {
+          const value = await this.endpoints.read(cursor)
+          if (!current(epoch)) return
+          accept(value)
+          if (current(epoch)) pollTimer = window.setTimeout(() => { void poll() }, document.hidden || this.endpoints.isVisible?.() === false ? 1000 : value.data ? 16 : 64)
+        } catch (reason) {
+          if (!current(epoch)) return
+          observer.error(reason)
+          pollTimer = window.setTimeout(() => { void poll() }, 500)
         }
-        accept(value)
-      } catch (reason) {
-        observer.error(reason)
-        startPolling()
       }
+      const startPolling = (): void => {
+        if (!current(epoch) || polling) return
+        polling = true
+        source?.close()
+        source = undefined
+        if (streamWatchdog !== undefined) clearTimeout(streamWatchdog)
+        streamWatchdog = undefined
+        void poll()
+      }
+      if (typeof EventSource === 'undefined') { startPolling(); return }
+      // Native SSE retries use Last-Event-ID; visibility resumes need the saved cursor too.
+      const url = new URL(this.endpoints.streamUrl, window.location.href)
+      url.searchParams.set('cursor', String(cursor))
+      const connection = new EventSource(url.toString())
+      source = connection
+      connection.onmessage = event => {
+        if (!current(epoch) || source !== connection) return
+        try {
+          const value = parseOutput(event.data)
+          streamConfirmed = true
+          if (streamWatchdog !== undefined) clearTimeout(streamWatchdog)
+          streamWatchdog = undefined
+          accept(value)
+        } catch (reason) {
+          observer.error(reason)
+          startPolling()
+        }
+      }
+      connection.onerror = () => {
+        if (!current(epoch) || source !== connection) return
+        if (streamWatchdog !== undefined) clearTimeout(streamWatchdog)
+        streamWatchdog = window.setTimeout(startPolling, 1500)
+      }
+      streamWatchdog = window.setTimeout(() => {
+        if (!streamConfirmed) startPolling()
+      }, 1500)
     }
-    source.onerror = () => {
-      // Allow native SSE reconnection briefly, then verify existence via polling.
-      // A server restart / expired terminal otherwise reconnects to 404 forever.
-      if (streamWatchdog !== undefined) clearTimeout(streamWatchdog)
-      streamWatchdog = window.setTimeout(startPolling, 1_500)
+    stop.setVisible = next => {
+      if (stopped || visible === next) return
+      visible = next
+      clearConnection()
+      if (visible) start()
     }
-    streamWatchdog = window.setTimeout(() => {
-      if (!streamConfirmed) startPolling()
-    }, 1_500)
+    start()
     return stop
   }
 

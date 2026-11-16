@@ -1,7 +1,6 @@
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   IconCloseOutlineRegular as IconCloseOutline16,
   IconCodeOutlineRegular as IconCodeOutline16,
@@ -21,11 +20,11 @@ import {
   type ActivityView,
 } from './client-api.js'
 import { ActivitySftpBrowser, LocalWorkspaceBrowser } from './sftp-client.js'
-import { TerminalTransport } from './terminal-transport.js'
+import { TerminalTransport, type TerminalObservation } from './terminal-transport.js'
 import { attachTerminalViewport, createSshTerminal } from './terminal-view.js'
 import { ServerGlyph, errorMessage, shortId } from './ui-components.js'
 
-type DetailsProps = PropsRuntime<'details'>
+type DetailsProps = { sessionId?: string; visible?: boolean }
 
 export type ActivityViewMode = 'local-directory' | 'remote-directory' | 'terminals'
 
@@ -43,6 +42,13 @@ export interface ActivityController {
 export function SshActivityPanel(props: DetailsProps & { controller: ActivityController }): JSX.Element {
   useSshLocale()
   const sessionId = String(props.sessionId)
+  const [documentVisible, setDocumentVisible] = useState(() => !document.hidden)
+  useEffect(() => {
+    const update = (): void => setDocumentVisible(!document.hidden)
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
+  const visible = props.visible !== false && documentVisible
   const [activity, setActivity] = useState<ActivityView>()
   const [view, setView] = useState<ActivityViewMode>(() => props.controller.requestedView(sessionId) ?? 'local-directory')
   const [error, setError] = useState<string>()
@@ -52,9 +58,10 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
     if (requested !== undefined) setView(requested)
   }), [props.controller, sessionId])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
-      const next = await loadActivity(sessionId)
+      const next = await loadActivity(sessionId, signal)
+      if (signal?.aborted) return
       setActivity(next)
       if (next.injection?.permission !== 'terminal') {
         if (props.controller.requestedView(sessionId) === 'terminals') props.controller.open(sessionId, undefined, 'local-directory')
@@ -62,37 +69,24 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
       }
       setError(undefined)
     } catch (reason) {
-      setError(errorMessage(reason))
+      if (!signal?.aborted) setError(errorMessage(reason))
     }
   }, [props.controller, sessionId])
 
   useEffect(() => {
-    let disposed = false
+    if (!visible) return
+    const abort = new AbortController()
     let timer: number | undefined
-    let polling = false
     const poll = async (): Promise<void> => {
-      if (polling) return
-      polling = true
-      await refresh()
-      polling = false
-      if (disposed) return
-      const foregroundDelay = view === 'terminals' ? 2200 : 3200
-      timer = window.setTimeout(() => { void poll() }, document.visibilityState === 'hidden' ? 12000 : foregroundDelay)
+      await refresh(abort.signal)
+      if (!abort.signal.aborted) timer = window.setTimeout(() => { void poll() }, view === 'terminals' ? 2200 : 3200)
     }
-    const resume = (): void => {
-      if (document.visibilityState !== 'visible' || disposed) return
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = undefined
-      void poll()
-    }
-    document.addEventListener('visibilitychange', resume)
     void poll()
     return () => {
-      disposed = true
+      abort.abort()
       if (timer !== undefined) window.clearTimeout(timer)
-      document.removeEventListener('visibilitychange', resume)
     }
-  }, [refresh, view])
+  }, [refresh, view, visible])
 
   return <section className="dsh-ssh-activity-panel" aria-label={t("activity-panel.sshActivity")}>
     <header className="dsh-ssh-activity-header">
@@ -109,9 +103,9 @@ export function SshActivityPanel(props: DetailsProps & { controller: ActivityCon
     </nav>}
     <div className="dsh-ssh-activity-body">
       {activity === undefined ? <p className="dsh-ssh-activity-state" role="status">{t("activity-panel.readingSshSessions")}</p>
-        : view === 'local-directory' ? <LocalWorkspaceBrowser sessionId={sessionId} />
-          : view === 'remote-directory' ? <RemoteDirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId, 'remote-directory')} onSaved={refresh} />
-            : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} onClosed={refresh} />}
+        : view === 'local-directory' ? (props.visible !== false && <LocalWorkspaceBrowser sessionId={sessionId} />)
+          : view === 'remote-directory' ? (props.visible !== false && <RemoteDirectoryActivity sessionId={sessionId} profiles={activity.profiles} selectedProfileId={props.controller.selected(sessionId)} onProfile={profileId => props.controller.open(sessionId, profileId, 'remote-directory')} onSaved={refresh} />)
+            : <TerminalActivity sessionId={sessionId} terminals={activity.terminals} visible={visible} onClosed={refresh} />}
       {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     </div>
   </section>
@@ -124,7 +118,7 @@ function RemoteDirectoryActivity({ sessionId, profiles, selectedProfileId, onPro
   return <ActivitySftpBrowser key={profile.id} sessionId={sessionId} profile={profile} profiles={profiles} onProfile={onProfile} onSaved={onSaved} />
 }
 
-function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: string; terminals: ActivityTerminalView[]; onClosed(): Promise<void> }): JSX.Element {
+function TerminalActivity({ sessionId, terminals, visible, onClosed }: { visible: boolean; sessionId: string; terminals: ActivityTerminalView[]; onClosed(): Promise<void> }): JSX.Element {
   useSshLocale()
   const preferred = [...terminals].reverse().find(item => item.status.kind === 'running') ?? terminals.at(-1)
   const [selectedId, setSelectedId] = useState(preferred?.terminalId)
@@ -162,53 +156,99 @@ function TerminalActivity({ sessionId, terminals, onClosed }: { sessionId: strin
     })}</nav>}
     <div className="dsh-ssh-terminal-observer">
       <div className="dsh-ssh-terminal-observer-heading"><span><strong>{terminal.name}</strong><small>{terminal.cwd}</small></span><div className="dsh-ssh-terminal-observer-actions"><span className={`dsh-ssh-terminal-state is-${terminal.status.kind}`}>{terminal.status.kind === 'running' ? t("activity-panel.running") : t("activity-panel.exited")}</span><button type="button" className="dsh-ssh-terminal-close" disabled={closingId !== undefined} aria-label={t("activity-panel.terminal3", [closeLabel, terminal.name])} title={terminal.status.kind === 'running' ? t("activity-panel.endAndCloseThisTerminal") : t("activity-panel.removeThisTerminalFromTheActivityPanel")} onClick={() => { void closeSelectedTerminal() }}><IconCloseOutline16 size={14} /><span>{closingId === terminal.terminalId ? t("activity-panel.processing") : closeLabel}</span></button></div></div>
-      <InteractiveTerminal key={terminal.terminalId} sessionId={sessionId} terminal={terminal} onError={setError} />
+      <InteractiveTerminal key={terminal.terminalId} sessionId={sessionId} terminal={terminal} visible={visible} onError={setError} />
     </div>
     {error && <p className="dsh-ssh-terminal-input-error" role="alert">{error}</p>}
   </div>
 }
 
-function InteractiveTerminal({ sessionId, terminal: activity, onError }: { sessionId: string; terminal: ActivityTerminalView; onError(value: string | undefined): void }): JSX.Element {
+function InteractiveTerminal({ sessionId, terminal: activity, visible, onError }: { visible: boolean; sessionId: string; terminal: ActivityTerminalView; onError(value: string | undefined): void }): JSX.Element {
   useSshLocale()
   const hostRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal>()
+  const outputRef = useRef<TerminalObservation>()
+  const viewportRef = useRef<ReturnType<typeof attachTerminalViewport>>()
+  const hiddenScrollRef = useRef<number>()
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
 
   useEffect(() => {
     const host = hostRef.current
     if (host === null) return
+    let disposed = false
+    let restoreFrame: number | undefined
+    const interacted = (): void => { hiddenScrollRef.current = undefined }
+    const inputEvents = ['wheel', 'pointerdown', 'touchstart', 'keydown']
+    for (const name of inputEvents) host.addEventListener(name, interacted, { capture: true, passive: true })
     const terminal = createSshTerminal({ compact: true, readOnly: activity.status.kind !== 'running', scrollback: 4000 })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
     terminal.open(host)
     terminalRef.current = terminal
-    terminal.focus()
+    if (visibleRef.current) terminal.focus()
     const transport = new TerminalTransport({
+      isVisible: () => visibleRef.current,
       streamUrl: activityTerminalStreamUrl(sessionId, activity.terminalId),
       read: cursor => readActivityTerminalOutput(sessionId, activity.terminalId, cursor),
       send: (text, sequence) => sendActivityTerminalInput(sessionId, activity.terminalId, text, sequence),
     })
+    const rendered = terminal.onRender(() => {
+      const desired = hiddenScrollRef.current
+      if (disposed || !visibleRef.current || desired === undefined) return
+      const target = Math.min(desired, terminal.buffer.active.baseY)
+      if (terminal.buffer.active.viewportY === target || restoreFrame !== undefined) return
+      restoreFrame = requestAnimationFrame(() => {
+        restoreFrame = undefined
+        const position = hiddenScrollRef.current
+        if (!disposed && visibleRef.current && position !== undefined) terminal.scrollToLine(Math.min(position, terminal.buffer.active.baseY))
+      })
+    })
     const input = terminal.onData(data => transport.sendInput(data, reason => onError(errorMessage(reason))))
     const stopOutput = transport.observe({
       output: value => {
-        if (value.truncated) terminal.reset()
+        if (value.truncated) { hiddenScrollRef.current = undefined; terminal.reset() }
         if (value.data) terminal.write(value.data)
-        terminal.scrollToBottom()
         onError(undefined)
       },
       error: reason => onError(errorMessage(reason)),
-    })
+    }, visibleRef.current)
+    outputRef.current = stopOutput
     const viewport = attachTerminalViewport(host, terminal, fit, (cols, rows) => {
       void resizeActivityTerminal(sessionId, activity.terminalId, cols, rows).catch(reason => onError(errorMessage(reason)))
-    })
+    }, { preserveScroll: true })
+    viewportRef.current = viewport
     return () => {
+      disposed = true
+      if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
+      for (const name of inputEvents) host.removeEventListener(name, interacted, true)
+      outputRef.current = undefined
+      viewportRef.current = undefined
       stopOutput()
       transport.dispose()
       input.dispose()
+      rendered.dispose()
       viewport.dispose()
       terminal.dispose()
       terminalRef.current = undefined
     }
   }, [activity.terminalId, onError, sessionId])
+
+  useLayoutEffect(() => {
+    if (!visible) {
+      const buffer = terminalRef.current?.buffer.active
+      hiddenScrollRef.current ??= buffer && buffer.viewportY < buffer.baseY ? buffer.viewportY : undefined
+      outputRef.current?.setVisible(false)
+      return
+    }
+    // Hidden xterm viewports may emit a DOM scroll when their dimensions collapse.
+    // Restore the user's history position after layout, before receiving new output.
+    const frame = requestAnimationFrame(() => {
+      viewportRef.current?.fit()
+      if (hiddenScrollRef.current !== undefined) terminalRef.current?.scrollToLine(hiddenScrollRef.current)
+      outputRef.current?.setVisible(true)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [visible])
 
   useEffect(() => {
     const terminal = terminalRef.current
