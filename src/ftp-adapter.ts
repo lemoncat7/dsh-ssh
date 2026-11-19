@@ -1,3 +1,4 @@
+import type { UploadOptions } from './sftp-upload-writer.js'
 import net from 'node:net'
 import tls, { type TLSSocket } from 'node:tls'
 import type { Readable, Writable } from 'node:stream'
@@ -108,12 +109,14 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
     await this.run(() => this.client.downloadTo(destination, value), signal)
   }
 
-  async upload(value: string, source: Readable, overwrite: boolean, signal?: AbortSignal): Promise<void> {
+  async upload(value: string, source: Readable, overwrite: boolean, signal?: AbortSignal, options?: UploadOptions): Promise<void> {
     if (!overwrite) {
       try { await this.stat(value, signal); throw Object.assign(new Error('A file with this name already exists'), { status: 409 }) }
       catch (error) { if ((error as { status?: number }).status !== 404) throw error }
     }
-    await this.run(() => this.client.uploadFrom(source, value), signal)
+    if (options?.onProgress) this.client.trackProgress(info => options.onProgress?.(info.bytes))
+    try { await this.run(() => this.client.uploadFrom(source, value), signal) }
+    finally { if (options?.onProgress) this.client.trackProgress() }
   }
 
   async ensureDirectory(value: string, signal?: AbortSignal): Promise<void> { await this.run(() => this.client.ensureDir(value), signal) }

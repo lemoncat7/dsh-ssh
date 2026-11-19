@@ -32,7 +32,7 @@ import { MarkdownPreviewEditor, supportsMarkdownEditing } from './markdown-previ
 import { useMarkdownDraft, type SaveMarkdown } from './use-markdown-draft.js'
 import { Dialog } from './ui-components.js'
 
-const MAX_UPLOAD_BYTES = 512 * 1024 * 1024
+
 
 interface SftpExplorerProps {
   persistenceKey?: string
@@ -197,19 +197,16 @@ function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, 
   }
   const uploadFiles = async (files: File[], targetDirectory = directory?.path, overwriteFirst = false): Promise<void> => {
     if (uploadFile === undefined || targetDirectory === undefined || files.length === 0) return
-    const accepted = files.filter(file => file.size <= MAX_UPLOAD_BYTES)
-    const oversized = files.length - accepted.length
-    if (accepted.length === 0) { setError(t("sftp-client.aSingleFileCannotExceed512Mb")); return }
     setPendingOverwrite(undefined); setError(undefined)
-    for (let index = 0; index < accepted.length; index += 1) {
-      const file = accepted[index]!
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index]!
       const overwrite = overwriteFirst && index === 0
       setUploading(file.name)
       try {
         await uploadFile(targetDirectory, file, overwrite)
       } catch (reason) {
         if (!overwrite && reason instanceof ApiError && reason.status === 409) {
-          setPendingOverwrite({ file, remaining: accepted.slice(index + 1), directory: targetDirectory })
+          setPendingOverwrite({ file, remaining: files.slice(index + 1), directory: targetDirectory })
         } else {
           setError(errorMessage(reason))
         }
@@ -219,7 +216,6 @@ function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, 
     }
     setUploading(undefined)
     await browse(targetDirectory, false)
-    if (oversized > 0) setError(t("sftp-client.skippedFilesLargerThan512Mb", [oversized]))
   }
   const canDropFiles = uploadFile !== undefined && directory !== undefined && uploading === undefined && pendingOverwrite === undefined
   const isFileDrag = (event: DragEvent<HTMLDivElement>): boolean => Array.from(event.dataTransfer.types).includes('Files')

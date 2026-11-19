@@ -1,6 +1,7 @@
+import { writeSftpUpload, type UploadOptions } from './sftp-upload-writer.js'
 import path from 'node:path'
 import { previewWithoutReading, textPreview } from './text-preview.js'
-import { Transform, type Readable, type Writable } from 'node:stream'
+import { Transform, Readable, type Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { FileEntry, SFTPWrapper } from 'ssh2'
 import { SshConnector, type ManagedSshConnection } from './connector.js'
@@ -110,10 +111,11 @@ class ReusableSftpSession implements RemoteFileSystemSession {
     }, signal)
   }
 
-  upload(requestedPath: string, source: Readable, overwrite: boolean, signal?: AbortSignal): Promise<void> {
+  upload(requestedPath: string, source: Readable, overwrite: boolean, signal?: AbortSignal, options?: UploadOptions): Promise<void> {
     return this.run(async () => {
       const target = expandHome(requestedPath, this.home).replaceAll('\\', '/')
       if (!overwrite && await sftpPathExists(this.sftp, target)) throw Object.assign(new Error('A file with this name already exists'), { status: 409 })
+      if (options) return writeSftpUpload(this.sftp, target, source, !overwrite, options, signal)
       const output = this.sftp.createWriteStream(target, { flags: 'w', mode: 0o600 })
       output.on('error', () => {})
       await pipeline(source, output, { signal })
@@ -344,7 +346,7 @@ export async function uploadSftpFile(
   requestedDirectory: string,
   filename: string,
   input: Readable,
-  options: { overwrite: boolean; maxBytes: number; signal?: AbortSignal },
+  options: { overwrite: boolean; maxBytes?: number; expectedSize?: number; upload?: UploadOptions; signal?: AbortSignal },
 ): Promise<SftpUploadResult> {
   options.signal?.throwIfAborted()
   const connection = await connector.connect(profileId, options.signal)
@@ -360,13 +362,26 @@ export async function uploadSftpFile(
     const limiter = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
         size += chunk.length
-        if (size > options.maxBytes) callback(Object.assign(new Error(`Upload exceeds the ${formatByteLimit(options.maxBytes)} limit`), { status: 413 }))
+        if (options.maxBytes !== undefined && size > options.maxBytes) callback(Object.assign(new Error(`Upload exceeds the ${formatByteLimit(options.maxBytes)} limit`), { status: 413 }))
         else callback(null, chunk)
       },
     })
-    const output = sftp.createWriteStream(target, { flags: 'w', mode: 0o600 })
-    output.on('error', () => {})
-    await pipeline(input, limiter, output, { signal: options.signal })
+    if (options.upload) {
+      const upload = options.upload
+      const channel = sftp
+      const abort = () => connection.close()
+      options.signal?.addEventListener('abort', abort, { once: true })
+      try {
+        await pipeline(input, limiter, async chunks => {
+          await writeSftpUpload(channel, target, Readable.from(chunks), !options.overwrite, upload, options.signal)
+        }, { signal: options.signal })
+      } finally { options.signal?.removeEventListener('abort', abort) }
+    } else {
+      const output = sftp.createWriteStream(target, { flags: 'w', mode: 0o600 })
+      output.on('error', () => {})
+      await pipeline(input, limiter, output, { signal: options.signal })
+    }
+    if (options.expectedSize !== undefined && size !== options.expectedSize) throw new Error('上传大小不一致')
     return { path: target, name: filename, size }
   } finally {
     sftp?.end()

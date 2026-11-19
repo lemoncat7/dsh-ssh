@@ -6,6 +6,7 @@ export interface BrowserTransfer {
   name: string
   direction: 'upload' | 'download'
   state: ClientDownloadUpdate['state'] | 'waiting' | 'unavailable'
+  remoteBytes?: number
   transferredBytes: number
   totalBytes?: number
   error?: string

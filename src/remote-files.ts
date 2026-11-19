@@ -1,3 +1,4 @@
+import type { UploadOptions } from './sftp-upload-writer.js'
 import path from 'node:path'
 import { compareFileNames } from './file-name-compare.js'
 import type { Readable, Writable } from 'node:stream'
@@ -36,7 +37,7 @@ export interface RemoteFileSystemSession {
   list(path: string, signal?: AbortSignal): Promise<RemoteDirectoryView>
   stat(path: string, signal?: AbortSignal): Promise<RemoteFileEntry>
   download(path: string, destination: Writable, signal?: AbortSignal): Promise<void>
-  upload(path: string, source: Readable, overwrite: boolean, signal?: AbortSignal): Promise<void>
+  upload(path: string, source: Readable, overwrite: boolean, signal?: AbortSignal, options?: UploadOptions): Promise<void>
   ensureDirectory(path: string, signal?: AbortSignal): Promise<void>
   move(sourcePath: string, destinationPath: string, signal?: AbortSignal): Promise<void>
   remove(path: string, recursive: boolean, signal?: AbortSignal): Promise<void>

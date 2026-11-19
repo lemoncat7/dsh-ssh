@@ -26,8 +26,23 @@ export function TransferTaskList({ activeCount, count, children }: { activeCount
 export function BrowserTransferTask({ job }: { job: BrowserTransfer }): JSX.Element {
   useSshLocale()
   const done = job.state === 'completed'
-  const progress = job.state === 'unavailable' || job.state === 'cancelled' ? undefined : done ? 100 : job.totalBytes ? Math.min(99, job.transferredBytes / job.totalBytes * 100) : undefined
-  const status = job.state === 'preparing' ? t('browser-transfer.preparing') : job.state === 'saving' ? t('browser-transfer.savingLocal') : job.state === 'cancelled' ? t('file-transfer-workspace.cancelled') : job.state === 'waiting' ? t('browser-transfer.waiting') : job.state === 'unavailable' ? t('browser-transfer.unavailable') : job.state === 'failed' ? job.error || t('browser-transfer.failed') : done ? job.direction === 'download' ? t('browser-transfer.savedLocal') : t('browser-transfer.saved') : `${progress === undefined ? '' : `${progress.toFixed(0)}% · `}${bytes(job.transferredBytes)}${job.totalBytes === undefined ? '' : ` / ${bytes(job.totalBytes)}`}`
+  const displayBytes = job.remoteBytes ?? job.transferredBytes
+  const progress = job.state === 'unavailable' || job.state === 'cancelled' ? undefined : done ? 100 : job.totalBytes ? Math.min(99, displayBytes / job.totalBytes * 100) : undefined
+  let status: string
+  switch (job.state) {
+    case 'preparing': status = t('browser-transfer.preparing'); break
+    case 'saving': status = t('browser-transfer.savingLocal'); break
+    case 'cancelled': status = t('file-transfer-workspace.cancelled'); break
+    case 'unavailable': status = t('browser-transfer.unavailable'); break
+    case 'failed': status = job.error || t('browser-transfer.failed'); break
+    case 'completed': status = job.direction === 'download' ? t('browser-transfer.savedLocal') : t('browser-transfer.saved'); break
+    default: {
+      const waiting = job.state === 'waiting' && (job.remoteBytes === undefined || job.remoteBytes === job.totalBytes)
+      const amount = job.totalBytes === undefined ? bytes(displayBytes) : `${bytes(displayBytes)} / ${bytes(job.totalBytes)}`
+      const label = job.remoteBytes !== undefined ? t('browser-transfer.remote') : job.direction === 'upload' ? t('browser-transfer.upload') : ''
+      status = waiting ? t('browser-transfer.waiting') : [label, progress === undefined ? '' : `${progress.toFixed(0)}%`, amount].filter(Boolean).join(' · ')
+    }
+  }
   const title = `${job.direction === 'upload' ? t('browser-transfer.upload') : t('browser-transfer.download')} · ${job.name}`
   return <article>
     <span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" />
@@ -48,4 +63,4 @@ export function LocalTransferTasks(): JSX.Element | null {
   return <TransferTaskList activeCount={active.length} count={jobs.length}>{ordered.map(job => <BrowserTransferTask key={job.id} job={job} />)}</TransferTaskList>
 }
 
-function bytes(value: number): string { return value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : `${(value / 1048576).toFixed(1)} MB` }
+function bytes(value: number): string { return value < 1024 ? `${value} B` : value < 1048576 ? `${(value / 1024).toFixed(1)} KB` : value < 1073741824 ? `${(value / 1048576).toFixed(1)} MiB` : `${(value / 1073741824).toFixed(2)} GiB` }

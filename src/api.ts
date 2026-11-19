@@ -2,6 +2,8 @@ import { normalizeSftpPathMappings } from './sftp-path-mapping.js'
 import { exportConfiguration, previewConfiguration, importConfiguration } from './config-backup.js'
 import { randomBytes } from 'node:crypto'
 import { uploadEndpointFile } from './endpoint-upload.js'
+import { defaultUploadConcurrency, uploadConcurrencyChoices } from './upload-concurrency.js'
+import type { UploadOptions } from './sftp-upload-writer.js'
 import { DownloadProgressStore } from './download-progress.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { pipeline } from 'node:stream/promises'
@@ -41,7 +43,7 @@ import { saveSftpMarkdown } from './sftp-markdown-file.js'
 import { newSessionAccess } from './session-defaults.js'
 
 const MAX_BODY_BYTES = 1_048_576
-const MAX_SFTP_UPLOAD_BYTES = 512 * 1024 * 1024
+
 
 export interface WebServerLike {
   register(route: {
@@ -69,6 +71,7 @@ export interface SshApiRuntime {
 }
 
 export function registerSshApi(webServer: WebServerLike, prefix: string, runtime: SshApiRuntime): () => void {
+  const uploads = new Map<string, number>()
   const downloads = new DownloadProgressStore()
   return webServer.register({
     kind: 'prefix',
@@ -84,7 +87,7 @@ export function registerSshApi(webServer: WebServerLike, prefix: string, runtime
         }
         const id = url.searchParams.get('transferId')
         if (req.method === 'GET' && id && /\/(?:download|local-download)$/.test(url.pathname) && url.searchParams.get('inline') !== '1') progress = downloads.track(id, res)
-        await dispatch(req, res, prefix, runtime)
+        await dispatch(req, res, prefix, runtime, uploads)
         progress?.complete()
       } catch (error) {
         progress?.fail(error)
@@ -94,12 +97,16 @@ export function registerSshApi(webServer: WebServerLike, prefix: string, runtime
   })
 }
 
-async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: string, runtime: SshApiRuntime): Promise<void> {
+async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: string, runtime: SshApiRuntime, uploads: Map<string, number>): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://ssh.local')
   const relative = url.pathname.slice(prefix.length).replace(/^\/+|\/+$/g, '')
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
 
+  if (method === 'GET' && relative === 'upload-progress') {
+    res.setHeader('Cache-Control', 'no-store')
+    return sendJson(res, 200, { bytes: uploads.get(url.searchParams.get('id') ?? '') ?? null })
+  }
   if (method === 'GET' && relative === 'workspace-revision') {
     res.setHeader('Cache-Control', 'no-store')
     return sendJson(res, 200, { revision: runtime.store.workspaceRevision() })
@@ -188,15 +195,8 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
       const directory = requireRawText(url.searchParams.get('directory'), 'directory', 4096)
       const name = requireRemoteFilename(url.searchParams.get('name'))
-      const length = req.headers['content-length'] === undefined ? undefined : Number(req.headers['content-length'])
-      if (length !== undefined && (!Number.isSafeInteger(length) || length < 0 || length > MAX_SFTP_UPLOAD_BYTES)) throw httpError(413, 'upload exceeds the 512 MB limit')
-      const controller = new AbortController()
-      const abort = (): void => { if (!res.writableEnded) controller.abort(new Error('上传连接已断开')) }
-      req.once('aborted', abort); res.once('close', abort)
-      try {
-        const result = await uploadEndpointFile(runtime.files, endpointId, directory, name, req, AbortSignal.any([controller.signal, AbortSignal.timeout(300_000)]), length)
-        return sendJson(res, 201, result)
-      } finally { req.off('aborted', abort); res.off('close', abort) }
+      return handleBrowserUpload(req, res, url, uploads, (signal, length, options) =>
+        uploadEndpointFile(runtime.files, endpointId, directory, name, req, signal, length, undefined, options))
     }
     if (method === 'GET' && segments[1] === 'stat' && segments.length === 2) {
       const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
@@ -504,16 +504,13 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       }
       if (method === 'PUT' && operation === 'upload' && segments.length === 4) {
         requireMutationHeader(req)
-        const contentLengthHeader = req.headers['content-length']
-        const contentLength = contentLengthHeader === undefined ? undefined : optionalInteger(Number(contentLengthHeader), 0, Number.MAX_SAFE_INTEGER)
-        if (contentLength !== undefined && contentLength > MAX_SFTP_UPLOAD_BYTES) throw httpError(413, 'upload exceeds the 512 MB limit')
         const directory = requireRawText(url.searchParams.get('directory'), 'directory', 4096)
         const filename = requireRemoteFilename(url.searchParams.get('name'))
-        const result = await uploadSftpFile(runtime.connector, id, directory, filename, req, {
-          overwrite: url.searchParams.get('overwrite') === '1',
-          maxBytes: MAX_SFTP_UPLOAD_BYTES,
-        })
-        return sendJson(res, 201, result)
+        return handleBrowserUpload(req, res, url, uploads, (signal, length, upload) =>
+          uploadSftpFile(runtime.connector, id, directory, filename, req, {
+            overwrite: url.searchParams.get('overwrite') === '1', signal, upload,
+            ...(length === undefined ? {} : { expectedSize: length }),
+          }))
       }
     }
     if (id !== undefined && method === 'PUT' && segments.length === 2) {
@@ -1259,4 +1256,36 @@ function sendError(res: ServerResponse, error: unknown): void {
     ...value.code === undefined ? {} : { code: value.code },
     ...value instanceof HostKeyRequiredError ? value.details : {},
   })
+}
+
+async function handleBrowserUpload(req: IncomingMessage, res: ServerResponse, url: URL, uploads: Map<string, number>,
+  perform: (signal: AbortSignal, length: number | undefined, options: UploadOptions) => Promise<unknown>): Promise<void> {
+  const length = req.headers['content-length'] === undefined ? undefined : Number(req.headers['content-length'])
+  if (length !== undefined && (!Number.isSafeInteger(length) || length < 0)) throw httpError(400, 'Invalid upload length')
+  const concurrency = Number(url.searchParams.get('concurrency') ?? defaultUploadConcurrency)
+  if (!uploadConcurrencyChoices.includes(concurrency)) throw httpError(400, 'Invalid upload concurrency')
+  const id = url.searchParams.get('transferId')
+  if (id !== null && !/^[a-f0-9]{32}$/.test(id)) throw httpError(400, 'Invalid transfer id')
+  if (id && uploads.has(id)) throw httpError(409, 'Transfer already active')
+  const controller = new AbortController()
+  const idle = setTimeout(() => controller.abort(new Error('上传长时间没有进展')), 300_000)
+  const abort = (): void => { if (!res.writableEnded) controller.abort(new Error('上传连接已断开')) }
+  req.once('aborted', abort)
+  res.once('close', abort)
+  if (id) uploads.set(id, 0)
+  let previous = 0
+  try {
+    const result = await perform(controller.signal, length, { concurrency, onProgress(bytes) {
+      if (bytes <= previous) return
+      previous = bytes
+      idle.refresh()
+      if (id) uploads.set(id, bytes)
+    } })
+    sendJson(res, 201, result)
+  } finally {
+    clearTimeout(idle)
+    if (id) uploads.delete(id)
+    req.off('aborted', abort)
+    res.off('close', abort)
+  }
 }

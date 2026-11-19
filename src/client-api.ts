@@ -1,5 +1,6 @@
 export const SSH_API = '/ssh-local/v1'
 import { createBrowserTransfer, updateBrowserTransfer } from './browser-transfers.js'
+import { readUploadConcurrency } from './upload-concurrency.js'
 import { createSharedRead } from './shared-read.js'
 export function loadNativeDirectorySupport(): Promise<{ available: boolean }> { return api('/activity/native-directory') }
 export function openNativeDirectory(sessionId: string, path: string): Promise<{ opened: boolean }> {
@@ -236,27 +237,44 @@ export function uploadFileEndpointFile(endpointId: string, directory: string, fi
 function uploadBrowserFile(url: string, file: File): Promise<{ path: string; name: string; size: number }> {
   const id = createBrowserTransfer(file.name, 'upload', file.size)
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    const failed = (error: Error): void => { updateBrowserTransfer(id, { state: 'failed', error: error.message }); reject(error) }
-    xhr.open('PUT', url)
-    xhr.timeout = 310_000
-    xhr.ontimeout = () => failed(new Error('上传超时，请检查远端文件后重试'))
-    xhr.setRequestHeader('Accept', 'application/json')
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
-    xhr.setRequestHeader('X-DSH-SSH-Request', '1')
-    xhr.upload.onprogress = event => updateBrowserTransfer(id, { state: 'transferring', transferredBytes: event.loaded })
-    xhr.upload.onload = () => updateBrowserTransfer(id, { state: 'waiting', transferredBytes: file.size })
-    xhr.onerror = () => failed(new Error('Upload connection failed'))
-    xhr.onabort = () => failed(new Error('Upload cancelled'))
-    xhr.onload = () => {
-      let body: Record<string, unknown> = {}
-      try { body = JSON.parse(xhr.responseText) as Record<string, unknown> } catch {}
-      if (xhr.status < 200 || xhr.status >= 300) { failed(new ApiError(xhr.status, typeof body.error === 'string' ? body.error : `HTTP ${xhr.status}`, body)); return }
-      if (typeof body.path !== 'string' || typeof body.size !== 'number') { failed(new Error('Invalid upload response')); return }
-      updateBrowserTransfer(id, { state: 'completed', transferredBytes: file.size })
-      resolve(body as { path: string; name: string; size: number })
+    const polling = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    function cleanup(): void { polling.abort(); clearTimeout(timer) }
+    function failed(error: Error): void {
+      cleanup()
+      updateBrowserTransfer(id, { state: 'failed', error: error.message })
+      reject(error)
     }
-    try { xhr.send(file) } catch (error) { failed(error instanceof Error ? error : new Error(String(error))) }
+    async function poll(): Promise<void> {
+      try {
+        const result = await api<{ bytes: number | null }>(`/upload-progress?id=${id}`, { signal: polling.signal })
+        if (!polling.signal.aborted && typeof result.bytes === 'number') updateBrowserTransfer(id, { remoteBytes: result.bytes })
+      } catch {}
+      if (!polling.signal.aborted) timer = setTimeout(() => { void poll() }, 1500)
+    }
+    try {
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', `${url}&transferId=${id}&concurrency=${readUploadConcurrency()}`)
+      xhr.setRequestHeader('Accept', 'application/json')
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+      xhr.setRequestHeader('X-DSH-SSH-Request', '1')
+      xhr.upload.onprogress = event => updateBrowserTransfer(id, { transferredBytes: event.loaded })
+      xhr.upload.onload = () => updateBrowserTransfer(id, { state: 'waiting', transferredBytes: file.size })
+      xhr.onerror = () => failed(new Error('上传连接失败'))
+      xhr.onabort = () => failed(new Error('上传已取消'))
+      xhr.onload = () => {
+        let body: Record<string, unknown> = {}
+        try { body = JSON.parse(xhr.responseText) as Record<string, unknown> } catch {}
+        if (xhr.status < 200 || xhr.status >= 300) { failed(new ApiError(xhr.status, typeof body.error === 'string' ? body.error : `HTTP ${xhr.status}`, body)); return }
+        if (typeof body.path !== 'string' || body.size !== file.size) { failed(new Error('上传回执大小不匹配')); return }
+        cleanup()
+        updateBrowserTransfer(id, { state: 'completed', transferredBytes: file.size })
+        resolve(body as { path: string; name: string; size: number })
+      }
+      updateBrowserTransfer(id, { state: 'transferring' })
+      timer = setTimeout(() => { void poll() }, 1200)
+      xhr.send(file)
+    } catch (error) { failed(error instanceof Error ? error : new Error(String(error))) }
   })
 }
 export interface TerminalOutputDelta { data: string; cursor: number; truncated: boolean; closed: boolean }

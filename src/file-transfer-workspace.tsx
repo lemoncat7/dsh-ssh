@@ -1,3 +1,4 @@
+import { readUploadConcurrency, saveUploadConcurrency, uploadConcurrencyChoices } from './upload-concurrency.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { trackDownloadClick } from './browser-transfers.js'
 import { BrowserTransferTask, TransferTaskList, isBrowserTransferActive, useBrowserTransferTasks } from './transfer-task-list.js'
@@ -30,6 +31,7 @@ const transferClockFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-dig
 
 export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries, access, onProfilesChanged }: { ftpProfiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; access: SessionAccessState; onProfilesChanged(): void }): JSX.Element {
   useSshLocale()
+  const [concurrency, setConcurrency] = useState(readUploadConcurrency)
   const stageGlow = useBorderGlowSurface<HTMLElement>()
   const [endpoints, setEndpoints] = useState<FileEndpointView[]>([])
   const [jobs, setJobs] = useState<TransferJobView[]>([])
@@ -140,6 +142,11 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     <section ref={stageGlow.ref} onPointerMove={stageGlow.onPointerMove} onPointerLeave={stageGlow.onPointerLeave} className="dsh-ssh-transfer-stage dsh-ssh-border-surface">
       <div className="dsh-ssh-transfer-tabbar" role="tablist" aria-label={t("file-transfer-workspace.fileTransferTasksPage")}>
         <div className="dsh-ssh-transfer-tabs">{tabs.map(tab => <span data-ssh-interactive="choice" className={`dsh-ssh-transfer-tab${tab.id === active?.id ? ' is-active' : ''}`} key={tab.id}><button type="button" role="tab" aria-selected={tab.id === active?.id} onClick={() => setActiveTabId(tab.id)}>{transferTabLabel(tab)}</button>{tabs.length > 1 && <button type="button" className="is-close" aria-label={t("file-transfer-workspace.close", [transferTabLabel(tab)])} onClick={() => closeTab(tab.id)}><IconCloseOutline16 size={13} /></button>}</span>)}<button type="button" data-ssh-interactive="control" className="is-add" aria-label={t("file-transfer-workspace.newTransferTasksPage")} onClick={addTab}><IconPlusOutline16 size={15} /></button></div>
+        <label>{t('browser-transfer.concurrency')} <select value={concurrency} onChange={event => {
+          const value = Number(event.target.value)
+          saveUploadConcurrency(value)
+          setConcurrency(value)
+        }}>{uploadConcurrencyChoices.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <div className="dsh-ssh-pane-layout" aria-label={t("file-transfer-workspace.panes")}>{[1, 2, 3, 4].map(count => <button key={count} type="button" data-ssh-interactive="choice" aria-pressed={active?.panes.length === count} className={active?.panes.length === count ? 'is-active' : ''} onClick={() => setPaneCount(count)}>{count}  {t("file-transfer-workspace.panes2")}</button>)}</div>
       </div>
       {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>{t("file-transfer-workspace.noFileConnectionsAvailableYet")}</strong><p>{t("file-transfer-workspace.createAnFtpFtpsConnectionOrAddAnSsh")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>{t("file-transfer-workspace.newFtpConnection")}</button></div>
