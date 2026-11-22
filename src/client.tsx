@@ -6,7 +6,7 @@ import { canSubscribeActivity, currentSession } from './current-session.js'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { t } from './i18n.js'
 import { bindHostLocale, type HostLocale } from './ssh-locale-binding.js'
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEvent } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -64,6 +64,7 @@ import { FileTransferWorkspace } from './file-transfer-workspace.js'
 import fileTransferCss from './file-transfer-workspace.css'
 import { createDockedPanel, supportsDockedPanels } from './docked-panel-compat.js'
 import { registerMainPanel } from './main-panel-compat.js'
+import { dismissWorkbenchSidebar, observeWorkbenchClearance } from './workbench-layout.js'
 
 const PLUGIN_ID = '@lemoncat7/dsh-ssh'
 const STYLE_ID = `${PLUGIN_ID}/client`
@@ -308,9 +309,9 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
     if (activityOpen) props.activityController.close(currentSessionId)
     else { props.controller.close(); props.activityController.open(currentSessionId) }
   }
-  const openWorkspace = (): void => {
+  const openWorkspace = (event: MouseEvent<HTMLButtonElement>): void => {
+    dismissWorkbenchSidebar(event.currentTarget, props.collapseSidebar)
     props.controller.open()
-    if (props.wide && window.matchMedia('(max-width: 820px)').matches) props.collapseSidebar()
   }
 
   if (!props.wide) {
@@ -342,6 +343,10 @@ function RemoteSidebar(props: SidebarActionProps & { controller: RemoteControlle
 function RemoteWorkspace(props: ConversationProps & { controller: RemoteController }): JSX.Element {
   useSshLocale()
   const toolbarGlow = useBorderGlowSurface<HTMLElement>()
+  useLayoutEffect(() => {
+    const toolbar = toolbarGlow.ref.current
+    if (toolbar) return observeWorkbenchClearance(toolbar)
+  }, [toolbarGlow.ref])
   const sessionId = props.useSessions((state: SessionListState) => currentSession(state))
   const workspaceList = props.useWorkspaces((state: WorkspaceSnapshot) => state)
   const [profiles, setProfiles] = useState<ProfileView[]>([])
