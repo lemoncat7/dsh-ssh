@@ -1,6 +1,14 @@
 /** UI-only catalog. Selected English translations adapted from knownasmobin/dsh-ssh PR #2 (MIT).
  * Semantic keys and explicit parameters must never be used for protocol or persisted data. */
 export const messages = {
+  "group-mount.mount": { "zh": "整组挂载", "en": "Mount group" },
+  "group-mount.unmount": { "zh": "整组卸载", "en": "Unmount group" },
+  "group-mount.count": { "zh": "已挂载 {0} / {1}", "en": "Mounted {0} / {1}" },
+  "group-mount.actions": { "zh": "「{0}」的整组挂载操作", "en": "Group mount actions for “{0}”" },
+  "group-mount.mountLabel": { "zh": "挂载「{0}」整组（共 {1} 台）", "en": "Mount all hosts in “{0}” ({1} total)" },
+  "group-mount.unmountLabel": { "zh": "卸载「{0}」整组（共 {1} 台）", "en": "Unmount all hosts in “{0}” ({1} total)" },
+  "group-mount.searchHint": { "zh": "整组操作包含搜索未显示的主机，数量按完整分组统计。", "en": "Group actions include hosts hidden by search. Counts show the full group." },
+  "group-mount.sessionTarget": { "zh": "立即更新当前会话的主机挂载", "en": "Update host mounts for the current session immediately" },
   "vault-password.title": { "zh": "已保存的密码", "en": "Saved password" },
   "vault-password.savedPassword": { "zh": "已保存的密码内容", "en": "Saved password value" },
   "vault-password.openFor": { "zh": "查看或复制 {0} 的密码", "en": "View or copy password for {0}" },

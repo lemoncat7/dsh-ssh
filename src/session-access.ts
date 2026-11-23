@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadInjection, saveMountMode, saveSessionAccess, type InjectionView } from './client-api.js'
 import type { MountMode } from './domain.js'
 import { publishSessionAccess } from './session-access-channel.js'
-import { mountedProjects } from './project-mounts.js'
+import { mountedProjects, withMountedProfiles } from './project-mounts.js'
 
 export interface SessionAccessState {
   value: InjectionView | null
@@ -124,7 +124,7 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
     },
     setProfiles: profileIds => {
       const current = valueRef.current
-      update({ profileIds, mountedProjectIds: Object.fromEntries(profileIds.map(id => [id, current ? mountedProjects(current, id) : []])) })
+      if (current) update(withMountedProfiles(current, profileIds))
     },
     toggleProject: (profileId, projectId, path) => {
       const current = valueRef.current

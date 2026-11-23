@@ -15,7 +15,7 @@ import { RemotePathInput } from './remote-path-input.js'
 import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
-import { mountedProjects } from './project-mounts.js'
+import { mountedProjects, withMountedProfiles } from './project-mounts.js'
 import type { GroupProxy, MountMode, WorkspaceMountConfiguration } from './domain.js'
 import { HostActionMenu, TerminalActionIcon } from './host-action-menu.js'
 import { SessionDefaults } from './session-defaults-ui.js'
@@ -171,19 +171,21 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     } catch (reason) { setMountError({ key: scopeKey, message: message(reason) }) }
     finally { setMountRequest(undefined) }
   }
+  const changeProfiles = (profileIds: string[]): void => {
+    if (cannotChangeMounts) return
+    if (projectMounts) setDraft({ key: scopeKey, mounts: withMountedProfiles(projectMounts, profileIds) })
+    else props.onProfiles(profileIds)
+  }
   const toggleProfile = (profileId: string): void => {
     const current = mounts?.profileIds ?? []
     const enabled = current.includes(profileId)
     const profileIds = enabled ? current.filter(id => id !== profileId) : [...current, profileId]
-    if (projectMounts) {
-      const mountedProjectIds = { ...projectMounts.mountedProjectIds }
-      const workingProjectIds = { ...projectMounts.workingProjectIds }
-      if (enabled) { delete mountedProjectIds[profileId]; delete workingProjectIds[profileId] }
-      setDraft({ key: scopeKey, mounts: { ...projectMounts, profileIds, mountedProjectIds, workingProjectIds } })
-    } else {
-      props.onProfiles(profileIds)
-      if (enabled) props.onDirectory(profileId, undefined)
-    }
+    changeProfiles(profileIds)
+  }
+  const changeGroup = (profileIds: string[], enabled: boolean): void => {
+    const current = mounts?.profileIds ?? []
+    const members = new Set(profileIds)
+    changeProfiles(enabled ? [...new Set([...current, ...profileIds])] : current.filter(id => !members.has(id)))
   }
   const toggleDirectory = (profileId: string, project: RemoteProjectView): void => {
     if (!projectMounts) { props.onToggleProject(profileId, project.id, project.path); return }
@@ -279,15 +281,27 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     <label className="dsh-ssh-search"><span className="sr-only">{t("remote-workspace-tree.searchHosts")}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t("remote-workspace-tree.searchHostsGroupsTags")} /></label>
     </>}
     <div className="dsh-ssh-tree-scroll dsh-ssh-scroll-surface">
+      {normalized && groups.length > 0 && <p className="dsh-ssh-group-search-hint">{t('group-mount.searchHint')}</p>}
       {groups.map(group => {
         const collapsed = !expandedGroups.has(group.name) && !normalized
+        const groupName = group.name || t('remote-workspace-tree.ungrouped')
+        const mountedCount = group.allProfileIds.filter(id => mounts?.profileIds.includes(id)).length
+        const total = group.allProfileIds.length
+        const mountHint = !props.access ? t('remote-workspace-tree.openADshSessionBeforeMountingHosts') : projectMounts ? t('desk.mountScopeProjectTarget') : inherited ? t('desk.mountScopeInheritedHint') : t('group-mount.sessionTarget')
         const draggedProfile = props.profiles.find(profile => profile.id === draggedProfileId)
         const acceptsDrop = draggedProfile !== undefined && (draggedProfile.group?.trim() || '') !== group.name
         return <section className={`dsh-ssh-tree-group${dropGroup === group.name && acceptsDrop ? ' is-drop-target' : ''}`} key={group.name} data-collapsed={collapsed}
           onDragOver={event => { if (!acceptsDrop || !event.dataTransfer.types.includes(HOST_DRAG_TYPE)) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropGroup(group.name) }}
           onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropGroup(current => current === group.name ? null : current) }}
           onDrop={event => { if (!acceptsDrop || draggedProfile === undefined) return; event.preventDefault(); void moveProfile(draggedProfile, group.name) }}>
-        <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button>{group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.editTitle', [group.name])} title={t('group-proxy.editTitle', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}</h3>
+        <h3><button type="button" aria-expanded={!collapsed} title={groupName} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{groupName}</span></button>
+          <span className="dsh-ssh-group-actions" role="group" aria-label={t('group-mount.actions', [groupName])}>
+            {group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.editTitle', [group.name])} title={t('group-proxy.editTitle', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}
+            <button type="button" className="dsh-ssh-group-mount-button" disabled={cannotChangeMounts || mountedCount === total} aria-label={t('group-mount.mountLabel', [groupName, total])} title={`${t('group-mount.mountLabel', [groupName, total])} · ${mountHint}`} onClick={() => changeGroup(group.allProfileIds, true)}>{t('group-mount.mount')}</button>
+            <button type="button" className="dsh-ssh-group-mount-button" disabled={cannotChangeMounts || mountedCount === 0} aria-label={t('group-mount.unmountLabel', [groupName, total])} title={`${t('group-mount.unmountLabel', [groupName, total])} · ${mountHint}`} onClick={() => changeGroup(group.allProfileIds, false)}>{t('group-mount.unmount')}</button>
+          </span>
+          <small className="dsh-ssh-group-mount-count">{t('group-mount.count', [mountedCount, total])}</small>
+        </h3>
         {!collapsed && <div className="dsh-ssh-catalogue-group-items">{group.profiles.map(profile => {
           const open = !collapsedHosts.has(profile.id) && (expanded.has(profile.id) || (!!query.trim() && (projects[profile.id] ?? []).some(project => `${project.name} ${project.path}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))))
           const enabled = mounts?.profileIds.includes(profile.id) === true
@@ -413,7 +427,7 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
   </Dialog>
 }
 
-function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], query: string, projects: Record<string, RemoteProjectView[]> = {}): Array<{ name: string; profiles: ProfileView[] }> {
+function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], query: string, projects: Record<string, RemoteProjectView[]> = {}): Array<{ name: string; profiles: ProfileView[]; allProfileIds: string[] }> {
   const result = new Map<string, ProfileView[]>()
   if (profiles.some(profile => !profile.group?.trim())) result.set('', [])
   for (const profile of profiles) {
@@ -423,7 +437,7 @@ function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], quer
   }
   for (const group of groupConfigs) if (!result.has(group.name)) result.set(group.name, [])
   return [...result]
-    .map(([name, grouped]) => ({ name, profiles: grouped.filter(profile => !query || name.toLocaleLowerCase().includes(query) || searchText(profile).includes(query) || (projects[profile.id] ?? []).some(project => `${project.name} ${project.path}`.toLocaleLowerCase().includes(query))) }))
+    .map(([name, grouped]) => ({ name, allProfileIds: grouped.map(profile => profile.id), profiles: grouped.filter(profile => !query || name.toLocaleLowerCase().includes(query) || searchText(profile).includes(query) || (projects[profile.id] ?? []).some(project => `${project.name} ${project.path}`.toLocaleLowerCase().includes(query))) }))
     .filter(group => !query || group.profiles.length > 0 || group.name.toLocaleLowerCase().includes(query))
 }
 

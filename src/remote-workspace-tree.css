@@ -139,23 +139,58 @@
 
 .dsh-ssh-tree-group > h3 {
   display: flex;
-  height: 26px;
+  min-height: 30px;
+  align-items: center;
+  gap: 4px;
   margin: 0;
   padding: 0;
 }
 
-.dsh-ssh-tree-group > h3 > button:first-child { flex: 1; min-width: 0; }
-.dsh-ssh-tree-group > h3 > .dsh-ssh-group-proxy-button { display: grid; flex: none; width: 28px; padding: 0; grid-template-columns: 1fr; place-items: center; }
+.dsh-ssh-tree-group > h3 > button:first-child { flex: 1; min-width: 26px; }
+.dsh-ssh-tree-group > h3 > button:first-child > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dsh-ssh-group-actions {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.dsh-ssh-tree-group > h3:is(:hover, :has(:focus-visible)) > .dsh-ssh-group-actions { display: inline-flex; }
+@media (hover: none) {
+  .dsh-ssh-group-actions { display: inline-flex; }
+}
+.dsh-ssh-group-mount-count { flex: none; }
+
+.dsh-ssh-group-actions > button {
+  appearance: none;
+  min-height: 30px;
+  padding: 3px 3px;
+  border: 1px solid var(--ssh-glass-border);
+  border-radius: 7px;
+  color: var(--ssh-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: var(--ssh-type-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dsh-ssh-group-actions > button:hover:not(:disabled) { color: var(--ssh-text); background: var(--ssh-hover); }
+.dsh-ssh-group-actions > button:focus-visible { outline: 2px solid var(--ssh-accent); outline-offset: 2px; }
+.dsh-ssh-group-actions > button:disabled { opacity: .45; cursor: default; }
+.dsh-ssh-group-actions > .dsh-ssh-group-proxy-button { display: grid; width: 26px; padding: 0; place-items: center; }
+.dsh-ssh-group-search-hint { margin: 4px 8px 10px; color: var(--ssh-text-muted); font-size: var(--ssh-type-caption); }
 
 .dsh-ssh-tree-group > h3 > button {
   appearance: none;
   display: grid;
   width: 100%;
   height: 26px;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
-  gap: 5px;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 4px;
   border: 0;
   border-radius: 7px;
   color: var(--ssh-text-subtle);
@@ -179,11 +214,13 @@
 .dsh-ssh-tree-group > h3 small {
   display: grid;
   min-width: 18px;
+  padding: 0 5px;
   height: 18px;
   place-items: center;
   border-radius: 6px;
   background: color-mix(in srgb, var(--ssh-text) 5%, transparent);
   font-size: var(--ssh-type-caption);
+  white-space: nowrap;
 }
 
 .dsh-ssh-tree-host {

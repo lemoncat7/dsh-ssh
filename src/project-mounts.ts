@@ -7,6 +7,23 @@ export function mountedProjects(access: MountAccess, profileId: string): string[
   return access.mountedProjectIds?.[profileId] ?? (access.workingProjectIds[profileId] ? [access.workingProjectIds[profileId]!] : [])
 }
 
+type HostMountAccess = MountAccess & Pick<SessionInjection, 'profileIds'> & Partial<Pick<SessionInjection, 'workingDirectories'>>
+
+/** Apply one host selection, keeping directory references only for retained hosts. */
+export function withMountedProfiles<T extends HostMountAccess>(access: T, profileIds: string[]): T {
+  const ids = [...new Set(profileIds)]
+  const retained = new Set(ids)
+  return {
+    ...access,
+    profileIds: ids,
+    mountedProjectIds: Object.fromEntries(ids.map(id => [id, mountedProjects(access, id)])),
+    workingProjectIds: Object.fromEntries(Object.entries(access.workingProjectIds).filter(([id]) => retained.has(id))),
+    ...(access.workingDirectories === undefined ? {} : {
+      workingDirectories: Object.fromEntries(Object.entries(access.workingDirectories).filter(([id]) => retained.has(id))),
+    }),
+  }
+}
+
 export function parseProjectMounts(value: unknown, profileIds: string[], projects: RemoteProject[]): Record<string, string[]> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) throw invalid()
   const entries = Object.entries(value)
