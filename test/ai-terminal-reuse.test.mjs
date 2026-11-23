@@ -52,7 +52,7 @@ test('keeps different working directories in separate AI terminals', async t => 
   assert.equal(fixture.connector.connectCount, 2)
 })
 
-function terminalFixture(t) {
+function terminalFixture(t, isAuthorized) {
   const channels = []
   const opened = []
   const connector = {
@@ -68,7 +68,7 @@ function terminalFixture(t) {
       }
     },
   }
-  const manager = new AiTerminalManager(connector, event => opened.push(event))
+  const manager = new AiTerminalManager(connector, event => opened.push(event), isAuthorized)
   t.after(() => manager.closeAll())
   return { manager, connector, channels, opened }
 }
@@ -99,4 +99,17 @@ test('activity summaries do not read or clone terminal history; detail is explic
   assert.equal(detail[0].commands.length, 80)
   detail[0].commands[0].output = 'changed'
   assert.equal(record.commands[0].output.length, 64000)
+})
+
+
+test('revoked project access blocks existing AI terminals and their reuse', async t => {
+  const grants = new Set(['host-a', 'host-b'])
+  const { manager } = terminalFixture(t, (_sessionId, hostId) => grants.has(hostId))
+  const first = await manager.create('session', 'host-a', '/srv/app')
+  const second = await manager.create('session', 'host-b', '/srv/worker')
+  grants.delete('host-a')
+  assert.throws(() => manager.get('session', first.terminalId), { status: 403 })
+  await manager.revokeUnauthorized()
+  assert.deepEqual(manager.activity('session').map(record => record.terminalId), [second.terminalId])
+  await assert.rejects(manager.create('session', 'host-a', '/srv/app'), { status: 403 })
 })

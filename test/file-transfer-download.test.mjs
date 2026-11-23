@@ -14,9 +14,13 @@ test('streams a browser-local download through an independent endpoint session',
         connectCount += 1
         assert.equal(endpointId, 'sftp:host-test')
         return {
-          endpoint: { id: endpointId },
+          endpoint: { id: endpointId, kind: 'sftp' },
           async stat(path) { return { name: '报告 1.txt', path, kind: 'file', size: 5, modifiedAt: 1 } },
-          async download(path, destination) { assert.equal(path, '/remote/报告 1.txt'); destination.end('hello') },
+          async download(path, destination, _signal, options) {
+            assert.equal(path, '/remote/报告 1.txt')
+            assert.deepEqual(options, { size: 5, concurrency: 8 })
+            destination.end('hello')
+          },
           close() { closeCount += 1 },
         }
       },
@@ -28,7 +32,10 @@ test('streams a browser-local download through an independent endpoint session',
   const address = server.address()
   assert(address && typeof address !== 'string')
 
-  const response = await fetch(`http://127.0.0.1:${address.port}/ssh-local/v1/file-transfer/download?endpointId=sftp%3Ahost-test&path=%2Fremote%2F%E6%8A%A5%E5%91%8A%201.txt`)
+  const url = `http://127.0.0.1:${address.port}/ssh-local/v1/file-transfer/download?endpointId=sftp%3Ahost-test&path=%2Fremote%2F%E6%8A%A5%E5%91%8A%201.txt`
+  assert.equal((await fetch(url + '&concurrency=128')).status, 400)
+  assert.equal(connectCount, 0)
+  const response = await fetch(url + '&concurrency=8')
   assert.equal(response.status, 200)
   assert.equal(response.headers.get('content-type'), 'application/octet-stream')
   assert.equal(response.headers.get('content-length'), '5')

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { loadInjection, saveSessionAccess, type InjectionView } from './client-api.js'
+import { loadInjection, saveMountMode, saveSessionAccess, type InjectionView } from './client-api.js'
+import type { MountMode } from './domain.js'
 import { publishSessionAccess } from './session-access-channel.js'
 import { mountedProjects } from './project-mounts.js'
 
@@ -16,6 +17,7 @@ export interface SessionAccessState {
   setFileEndpoints(endpointIds: string[]): void
   setFilePermission(permission: InjectionView['filePermission']): void
   setRequireFileApproval(value: boolean): void
+  setMountMode(workspaceId: string | null, mode: MountMode): Promise<InjectionView>
   replace(value: InjectionView): Promise<InjectionView>
   refresh(): Promise<void>
 }
@@ -38,6 +40,7 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
     confirmedRef.current = null
     setValue(null)
     setError(undefined)
+    setSaving(false)
     setLoading(sessionId !== undefined)
     if (sessionId === undefined) return () => { cancelled = true }
     void loadInjection(sessionId).then(stored => {
@@ -51,28 +54,32 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
     return () => { cancelled = true }
   }, [sessionId])
 
-  const replace = useCallback(async (next: InjectionView): Promise<InjectionView> => {
-    valueRef.current = next
-    setValue(next)
-    publishSessionAccess(next)
+  const commit = useCallback(async (
+    id: string, save: () => Promise<InjectionView>, optimistic?: InjectionView,
+  ): Promise<InjectionView> => {
+    if (optimistic) {
+      valueRef.current = optimistic
+      setValue(optimistic)
+      publishSessionAccess(optimistic)
+    }
     setError(undefined)
     pendingRef.current += 1
     setSaving(true)
-    const request = queueRef.current.catch(() => undefined).then(() => saveSessionAccess(next))
+    const request = queueRef.current.catch(() => undefined).then(save)
     queueRef.current = request
     try {
       const stored = await request
       if (sessionRef.current === stored.sessionId) confirmedRef.current = stored
-      if (sessionRef.current === stored.sessionId && valueRef.current === next) {
+      if (sessionRef.current === stored.sessionId && queueRef.current === request) {
         valueRef.current = stored
         setValue(stored)
         publishSessionAccess(stored)
       }
       return stored
     } catch (reason) {
-      if (sessionRef.current === next.sessionId) {
+      if (optimistic && sessionRef.current === id) {
         setError(errorMessage(reason))
-        if (valueRef.current === next && confirmedRef.current) {
+        if (queueRef.current === request && confirmedRef.current) {
           valueRef.current = confirmedRef.current
           setValue(confirmedRef.current)
           publishSessionAccess(confirmedRef.current)
@@ -81,9 +88,12 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
       throw reason
     } finally {
       pendingRef.current = Math.max(0, pendingRef.current - 1)
-      if (sessionRef.current === next.sessionId && pendingRef.current === 0) setSaving(false)
+      if (sessionRef.current === id && pendingRef.current === 0) setSaving(false)
     }
   }, [])
+
+  const replace = useCallback((next: InjectionView): Promise<InjectionView> =>
+    commit(next.sessionId, () => saveSessionAccess(next), next), [commit])
 
   const update = useCallback((patch: Partial<InjectionView>): void => {
     const currentSessionId = sessionRef.current
@@ -94,14 +104,21 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
 
   return {
     value, loading, saving, error,
+    setMountMode: (workspaceId, mode) => {
+      const id = sessionRef.current
+      if (id === undefined) return Promise.reject(new Error('No active SSH session'))
+      return commit(id, () => saveMountMode(id, workspaceId, mode))
+    },
     refresh: async () => {
       const id = sessionRef.current
       if (!id) return
       try {
-        await queueRef.current.catch(() => {})
+        const pending = queueRef.current
+        await pending.catch(() => {})
+        if (id !== sessionRef.current || pending !== queueRef.current) return
         const current = valueRef.current
         const next = await loadInjection(id) ?? emptyAccess(id)
-        if (id !== sessionRef.current || current !== valueRef.current) return
+        if (id !== sessionRef.current || pending !== queueRef.current || current !== valueRef.current) return
         valueRef.current = next; confirmedRef.current = next; setValue(next); publishSessionAccess(next)
       } catch (reason) { if (id === sessionRef.current) setError(errorMessage(reason)) }
     },

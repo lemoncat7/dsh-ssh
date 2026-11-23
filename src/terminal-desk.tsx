@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useSshLocale } from './use-ssh-locale.js'
 import { t } from './i18n.js'
-import { api, ApiError, loadRemoteProjects, profileAddress, type ProfileView, type RemoteProjectView } from './client-api.js'
+import { api, ApiError, createTemporaryTerminal, loadRemoteProjects, profileAddress, type ProfileView, type RemoteProjectView, type TemporaryTerminalView } from './client-api.js'
 import { terminalDesk, deskPaneRects, deskLayoutMode, deskLayoutSize, type DeskLayoutMode, type DeskTarget, type DeskTab, type DeskPane } from './terminal-desk-state.js'
 import { TerminalSession } from './terminal-session.js'
 import { ProfileSftpPane } from './sftp-client.js'
@@ -34,8 +34,11 @@ export function TerminalDesk({ scope, profiles, active, request, onManage }: { s
   const currentTab = state.activeTab
   const current = state.currentPane
   const profile = profiles.find(profile => profile.id === current?.profileId)
-  const title = (tab: DeskTab): string => `${profiles.find(p => p.id === tab.profileId)?.name ?? t('desk.unavailableHost')} · ${tab.label ?? (tab.path === '~' ? 'shell' : tab.path)}`
-  const showFiles = filesOnly || !filesHidden
+  const isTemporary = currentTab?.temporary !== undefined
+  const title = (tab: DeskTab): string => tab.temporary
+    ? `${profileAddress(tab.temporary)} · ${t('desk.temporaryTerminal')}`
+    : `${profiles.find(p => p.id === tab.profileId)?.name ?? t('desk.unavailableHost')} · ${tab.label ?? (tab.path === '~' ? 'shell' : tab.path)}`
+  const showFiles = !isTemporary && (filesOnly || !filesHidden)
   useLayoutEffect(() => {
     const list = tabsRef.current
     if (!list || !active) return
@@ -87,7 +90,7 @@ export function TerminalDesk({ scope, profiles, active, request, onManage }: { s
   }
   const panes = <div className="dsh-ssh-desk-pane-pages">
     {state.tabs.map(tab => {
-      const host = profiles.find(profile => profile.id === tab.profileId)
+      const host = tab.temporary ? { ...tab.temporary, id: tab.profileId, name: tab.temporary.host } : profiles.find(profile => profile.id === tab.profileId)
       const rects = deskPaneRects(tab.layout)
       return <div key={tab.id} id={`ssh-desk-${tab.id}`} role="tabpanel" hidden={state.activeId !== tab.id} aria-label={title(tab)} className="dsh-ssh-desk-pane-layout">
         {tab.panes.map((pane, index) => {
@@ -95,7 +98,7 @@ export function TerminalDesk({ scope, profiles, active, request, onManage }: { s
           const focused = state.activeId === tab.id && tab.focused === pane.id
           const label = `${title(tab)} · ${t('desk.paneNumber', [index + 1])}`
           return <section key={pane.id} className="dsh-ssh-terminal-slot" data-pane-id={pane.id} data-focused={focused} aria-label={label} style={{ left: `${rect.left}%`, top: `${rect.top}%`, width: `${rect.width}%`, height: `${rect.height}%` }} onPointerDown={() => state.focusPane(tab.id, pane.id)} onFocusCapture={() => state.focusPane(tab.id, pane.id)}>
-            {host ? <TerminalSession handle={pane.handle} profile={host} path={pane.path} label={label} onControls={focused ? setControls : undefined} takeAutoConnect={() => { const value = pane.autoConnect; pane.autoConnect = false; return value }} onPhase={phase => state.setPhase(pane.id, phase)} onConnected={() => {}} onDirectory={path => state.setDirectory(pane.id, path)} /> : <div className="dsh-ssh-desk-empty" role="status"><p>{t('desk.unavailableHost')}</p><button type="button" onClick={() => requestClose([tab.id])}>{t('terminal-workspace.closeTerminal')}</button></div>}
+            {host ? <TerminalSession handle={pane.handle} profile={host} temporary={!!tab.temporary} path={pane.path} label={label} onControls={focused ? setControls : undefined} takeAutoConnect={() => { const value = pane.autoConnect; pane.autoConnect = false; return value }} onPhase={phase => state.setPhase(pane.id, phase)} onConnected={() => {}} onDirectory={path => state.setDirectory(pane.id, path)} /> : <div className="dsh-ssh-desk-empty" role="status"><p>{t('desk.unavailableHost')}</p><button type="button" onClick={() => requestClose([tab.id])}>{t('terminal-workspace.closeTerminal')}</button></div>}
           </section>
         })}
       </div>
@@ -122,21 +125,30 @@ export function TerminalDesk({ scope, profiles, active, request, onManage }: { s
       <div className="dsh-ssh-desk-actions" role="group" aria-label={t('terminal-workspace.terminalLayout')}>
         {(['single', 'horizontal', 'vertical', 'grid'] as const).map(direction => {
           const label = direction === 'single' ? t('terminal-workspace.singlePane') : direction === 'grid' ? t('desk.gridLayout') : direction === 'horizontal' ? t('terminal-workspace.splitHorizontally') : t('terminal-workspace.splitVertically')
-          return <button key={direction} type="button" className="dsh-ssh-icon-button" aria-label={label} title={label} aria-pressed={!filesOnly && currentTab !== undefined && deskLayoutMode(currentTab) === direction && currentTab.panes.length === deskLayoutSize(direction)} disabled={busy || !current} onClick={() => chooseLayout(direction)}><SplitIcon direction={direction === 'single' ? undefined : direction} /></button>
+          return <button key={direction} type="button" className="dsh-ssh-icon-button" aria-label={label} title={label} aria-pressed={!filesOnly && currentTab !== undefined && deskLayoutMode(currentTab) === direction && currentTab.panes.length === deskLayoutSize(direction)} disabled={busy || !current || isTemporary && direction !== 'single'} onClick={() => chooseLayout(direction)}><SplitIcon direction={direction === 'single' ? undefined : direction} /></button>
         })}
-        <button type="button" className="dsh-ssh-icon-button" title="SFTP" aria-label="SFTP" disabled={!current} aria-pressed={showFiles} onClick={() => { setFilesOnly(false); setFilesHidden(showFiles) }}><IconFolderOpenOutlineRegular size={16} aria-hidden="true" /></button>
+        <button type="button" className="dsh-ssh-icon-button" title="SFTP" aria-label="SFTP" disabled={!current || isTemporary} aria-pressed={showFiles} onClick={() => { setFilesOnly(false); setFilesHidden(showFiles) }}><IconFolderOpenOutlineRegular size={16} aria-hidden="true" /></button>
       </div>
     </div>
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     {state.tabs.length ? <ResizableSplit storageKey="dsh-ssh:desk:sftp-width" label={t('client.adjustTheTerminalAndSftpWidths')} secondaryHidden={!showFiles} primary={<section className="dsh-ssh-workbench-terminal">{panes}</section>} secondary={files} /> : <div className="dsh-ssh-desk-empty"><p>{t('desk.noTerminals')}</p><div><button type="button" className="dsh-ssh-primary-button" onClick={() => setPicking(true)}>{t('terminal-workspace.newTerminal')}</button><button type="button" className="dsh-ssh-secondary-button" onClick={onManage}>{t('remote-workspace-tree.hostsProjects')}</button></div></div>}
     <footer className="dsh-ssh-desk-status">
-      <div className="dsh-ssh-desk-controls"><button type="button" className="dsh-ssh-danger-button dsh-ssh-close-all" disabled={busy || !state.tabs.length} onClick={() => requestClose(state.tabs.map(tab => tab.id), true)}>{t('client.closeAllTerminals')}</button><span className="dsh-ssh-desk-control-separator" aria-hidden="true" />{profile && controls}</div>
+      <div className="dsh-ssh-desk-controls"><button type="button" className="dsh-ssh-danger-button dsh-ssh-close-all" disabled={busy || !state.tabs.length} onClick={() => requestClose(state.tabs.map(tab => tab.id), true)}>{t('client.closeAllTerminals')}</button><span className="dsh-ssh-desk-control-separator" aria-hidden="true" />{(profile || isTemporary) && controls}</div>
       {profile ? <button type="button" className="dsh-ssh-desk-info" aria-label={t('desk.connectionDetails')} title={`${profile.name} · ${profileAddress(profile)} · ${current?.directory ?? current?.path}
-${t('desk.connectionDetails')}`} aria-haspopup="dialog" onClick={() => setDetails(true)}>{profile.name} · {profileAddress(profile)} · {current?.directory ?? current?.path}</button> : <span className="dsh-ssh-desk-info">{t('desk.chooseTarget')}</span>}
+${t('desk.connectionDetails')}`} aria-haspopup="dialog" onClick={() => setDetails(true)}>{profile.name} · {profileAddress(profile)} · {current?.directory ?? current?.path}</button> : <span className="dsh-ssh-desk-info">{currentTab?.temporary ? profileAddress(currentTab.temporary) : t('desk.chooseTarget')}</span>}
     </footer>
     {closing && <Dialog variant="confirmation" dismissible={!busy} title={closingAll ? t('client.closeAllTerminals') : t('desk.closeCount', [state.tabs.filter(tab => closing.includes(tab.id)).reduce((count, tab) => count + tab.panes.length, 0)])} subtitle={closingAll ? t('desk.closeAllHint', [state.tabs.filter(tab => closing.includes(tab.id)).reduce((count, tab) => count + tab.panes.length, 0)]) : t('terminal-workspace.closingDisconnectsThisTabSSshConnectionAndMay')} onClose={() => { if (!busy) setClosing(undefined) }}><div className="dsh-ssh-dialog-actions"><button type="button" disabled={busy} onClick={() => setClosing(undefined)}>{t('client.cancel')}</button><button type="button" disabled={busy} className="dsh-ssh-danger-button" onClick={() => { void closeTabs() }}>{t('terminal-workspace.closeConnection')}</button></div></Dialog>}
     {reduction && <LayoutReductionDialog tab={state.tabs.find(tab => tab.id === reduction.tabId)!} count={deskLayoutSize(reduction.mode)} busy={busy} onClose={() => { if (!busy) setReduction(undefined) }} onConfirm={keep => { void applyLayout(reduction.tabId, reduction.mode, keep, reduction.ids) }} />}
-    {picking && <NewDeskTerminal profiles={profiles} initial={current} onClose={() => setPicking(false)} onOpen={(target, files) => { try { state.open(target, true, !files); setFilesOnly(files); setPicking(false); setError(undefined) } catch (reason) { setError(errorMessage(reason)) } }} />}
+    {picking && <NewDeskTerminal profiles={profiles} initial={isTemporary ? undefined : current} onClose={() => setPicking(false)} onTemporary={terminal => {
+      const { id, profileId, host, username, port } = terminal
+      try {
+        state.open({ profileId, path: '~', temporary: { host, username, port } }, true, true, id)
+        setPicking(false); setError(undefined)
+      } catch (reason) {
+        void remove(id).catch(() => {})
+        throw reason
+      }
+    }} onOpen={(target, files) => { try { state.open(target, true, !files); setFilesOnly(files); setPicking(false); setError(undefined) } catch (reason) { setError(errorMessage(reason)) } }} />}
     {details && profile && <Dialog title={t('desk.connectionDetails')} onClose={() => setDetails(false)}><p>{profile.name} · {profileAddress(profile)}</p><p>{profile.hostFingerprint ?? t('desk.noFingerprint')}</p><p>{t('desk.proxy')}: {profile.proxy.type}</p><p>{t('terminal-session.retentionHint')}</p><p>{t('desk.restartHint')}</p></Dialog>}
   </div>
 }
@@ -157,7 +169,25 @@ function LayoutReductionDialog({ tab, count, busy, onClose, onConfirm }: { tab: 
     <div className="dsh-ssh-dialog-actions"><button type="button" disabled={busy} onClick={onClose}>{t('client.cancel')}</button><button type="button" className="dsh-ssh-danger-button" disabled={busy || keep.length !== count} onClick={() => onConfirm(keep)}>{t('desk.confirmReduction')}</button></div>
   </Dialog>
 }
-function NewDeskTerminal({ profiles, initial, onOpen, onClose }: { profiles: ProfileView[]; initial?: DeskTarget | undefined; onOpen(target: DeskTarget, filesOnly: boolean): void; onClose(): void }): JSX.Element {
+function NewDeskTerminal({ profiles, initial, onOpen, onClose, onTemporary }: {
+  profiles: ProfileView[]; initial?: DeskTarget | undefined
+  onOpen(target: DeskTarget, filesOnly: boolean): void; onClose(): void; onTemporary(terminal: TemporaryTerminalView): void
+}): JSX.Element {
+  const [temporary, setTemporary] = useState(profiles.length === 0)
+  return <Dialog title={t('terminal-workspace.newTerminal')} onClose={onClose}>
+    <div className="dsh-ssh-new-terminal-modes" role="group" aria-label={t('desk.terminalSource')}>
+      <button type="button" className="dsh-ssh-secondary-button" aria-pressed={!temporary} onClick={() => setTemporary(false)}>{t('desk.savedTerminalHost')}</button>
+      <button type="button" className="dsh-ssh-secondary-button" aria-pressed={temporary} onClick={() => setTemporary(true)}>{t('desk.temporaryTerminal')}</button>
+    </div>
+    {temporary
+      ? <TemporaryTerminalForm onOpen={onTemporary} />
+      : <SavedTerminalForm profiles={profiles} initial={initial} onOpen={onOpen} />}
+  </Dialog>
+}
+
+function SavedTerminalForm({ profiles, initial, onOpen }: {
+  profiles: ProfileView[]; initial?: DeskTarget | undefined; onOpen(target: DeskTarget, filesOnly: boolean): void
+}): JSX.Element {
   const [editingHost, setEditingHost] = useState(false)
   const [host, setHost] = useState(initial?.profileId ?? profiles[0]?.id ?? '')
   const [path, setPath] = useState(initial?.path ?? '~')
@@ -165,7 +195,62 @@ function NewDeskTerminal({ profiles, initial, onOpen, onClose }: { profiles: Pro
   const [error, setError] = useState<string>()
   useEffect(() => { let live = true; setProjects([]); setError(undefined); if (host) void loadRemoteProjects(host).then(value => { if (live) setProjects(value) }).catch(reason => { if (live) setError(errorMessage(reason)) }); return () => { live = false } }, [host])
   const open = (filesOnly: boolean): void => { if (!editingHost && profiles.some(profile => profile.id === host)) onOpen({ profileId: host, path: path.trim() || '~', label: projects.find(project => project.path === path)?.name }, filesOnly) }
-  return <Dialog title={t('terminal-workspace.newTerminal')} onClose={onClose}><form className="dsh-ssh-form" onSubmit={event => { event.preventDefault(); open(false) }}><label className="dsh-ssh-field"><span>{t('client.host')}</span><HostSelect profiles={profiles} value={host} onEditingChange={setEditingHost} onChange={id => { setHost(id); setPath('~') }} /></label><label className="dsh-ssh-field"><span>{t('desk.projectDirectory')}</span><select value={projects.some(project => project.path === path) ? path : ''} onChange={event => { if (event.target.value) setPath(event.target.value) }}><option value="">{t('desk.customDirectory')}</option>{projects.map(project => <option key={project.id} value={project.path}>{project.name} · {project.path}</option>)}</select><input aria-label={t('desk.directory')} value={path} onChange={event => setPath(event.target.value)} /></label>{error && <p role="alert" className="dsh-ssh-inline-error">{error}</p>}<p className="dsh-ssh-form-hint">{t('desk.manualHint')}</p><div className="dsh-ssh-dialog-actions"><button type="button" disabled={editingHost || !profiles.some(profile => profile.id === host)} onClick={() => open(true)}>{t('desk.filesOnly')}</button><button type="submit" disabled={editingHost || !profiles.some(profile => profile.id === host)} className="dsh-ssh-primary-button">{t('terminal-session.connect2')}</button></div></form></Dialog>
+  return <form className="dsh-ssh-form" onSubmit={event => { event.preventDefault(); open(false) }}><label className="dsh-ssh-field"><span>{t('client.host')}</span><HostSelect profiles={profiles} value={host} onEditingChange={setEditingHost} onChange={id => { setHost(id); setPath('~') }} /></label><label className="dsh-ssh-field"><span>{t('desk.projectDirectory')}</span><select value={projects.some(project => project.path === path) ? path : ''} onChange={event => { if (event.target.value) setPath(event.target.value) }}><option value="">{t('desk.customDirectory')}</option>{projects.map(project => <option key={project.id} value={project.path}>{project.name} · {project.path}</option>)}</select><input aria-label={t('desk.directory')} value={path} onChange={event => setPath(event.target.value)} /></label>{error && <p role="alert" className="dsh-ssh-inline-error">{error}</p>}<p className="dsh-ssh-form-hint">{t('desk.manualHint')}</p><div className="dsh-ssh-dialog-actions"><button type="button" disabled={editingHost || !profiles.some(profile => profile.id === host)} onClick={() => open(true)}>{t('desk.filesOnly')}</button><button type="submit" disabled={editingHost || !profiles.some(profile => profile.id === host)} className="dsh-ssh-primary-button">{t('terminal-session.connect2')}</button></div></form>
+}
+
+function TemporaryTerminalForm({ onOpen }: { onOpen(terminal: TemporaryTerminalView): void }): JSX.Element {
+  const [command, setCommand] = useState('')
+  const [password, setPassword] = useState('')
+  const [fingerprint, setFingerprint] = useState<string>()
+  const [error, setError] = useState<string>()
+  const [connecting, setConnecting] = useState(false)
+  const request = useRef<AbortController>()
+  useEffect(() => () => request.current?.abort(), [])
+
+  const connect = async (): Promise<void> => {
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
+    setConnecting(true); setError(undefined)
+    try {
+      const terminal = await createTemporaryTerminal(command, password, fingerprint, controller.signal)
+      if (controller.signal.aborted) {
+        void api(`/terminals/${encodeURIComponent(terminal.id)}`, { method: 'DELETE' }).catch(() => {})
+        return
+      }
+      setPassword('')
+      onOpen(terminal)
+    } catch (reason) {
+      if (controller.signal.aborted) return
+      if (reason instanceof ApiError && reason.body?.code === 'HOST_KEY_REQUIRED' && typeof reason.body.fingerprint === 'string') {
+        setFingerprint(reason.body.fingerprint)
+      } else setError(errorMessage(reason))
+    } finally {
+      request.current = undefined
+      if (!controller.signal.aborted) setConnecting(false)
+    }
+  }
+  return <form className="dsh-ssh-form" autoComplete="off" onSubmit={event => { event.preventDefault(); if (!fingerprint) void connect() }}>
+    <label className="dsh-ssh-field">
+      <span>{t('desk.temporarySshCommand')}</span>
+      <input value={command} onChange={event => { setCommand(event.target.value); setFingerprint(undefined); setError(undefined) }} placeholder="ssh user@example.com -p 2222" disabled={connecting} autoCapitalize="off" spellCheck={false} />
+    </label>
+    <label className="dsh-ssh-field">
+      <span>{t('desk.temporaryPassword')}</span>
+      <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" disabled={connecting} />
+    </label>
+    <p className="dsh-ssh-form-hint">{t('desk.temporaryTerminalHint')}</p>
+    {fingerprint && <div className="dsh-ssh-form-hint" role="status">
+      <p>{t('desk.temporaryHostKey')}</p>
+      <code className="dsh-ssh-temporary-fingerprint">{fingerprint}</code>
+    </div>}
+    {error && <p role="alert" className="dsh-ssh-inline-error">{error}</p>}
+    <div className="dsh-ssh-dialog-actions">
+      <button type={fingerprint ? 'button' : 'submit'} onClick={fingerprint ? () => { void connect() } : undefined} className="dsh-ssh-primary-button" disabled={!command.trim() || connecting}>
+        {connecting ? t('client.connecting') : fingerprint ? t('desk.temporaryConfirmFingerprint') : t('terminal-session.connect2')}
+      </button>
+    </div>
+  </form>
 }
 
 function phaseText(phase: DeskPane['phase']): string {

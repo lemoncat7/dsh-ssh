@@ -36,7 +36,7 @@ export interface RemoteFileSystemSession {
   readonly endpoint: RemoteEndpointView
   list(path: string, signal?: AbortSignal): Promise<RemoteDirectoryView>
   stat(path: string, signal?: AbortSignal): Promise<RemoteFileEntry>
-  download(path: string, destination: Writable, signal?: AbortSignal): Promise<void>
+  download(path: string, destination: Writable, signal?: AbortSignal, options?: { size: number; concurrency: number }): Promise<void>
   upload(path: string, source: Readable, overwrite: boolean, signal?: AbortSignal, options?: UploadOptions): Promise<void>
   ensureDirectory(path: string, signal?: AbortSignal): Promise<void>
   move(sourcePath: string, destinationPath: string, signal?: AbortSignal): Promise<void>

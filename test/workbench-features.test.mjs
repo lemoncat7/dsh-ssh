@@ -10,11 +10,11 @@ import { mountedProjects, parseProjectMounts } from '../lib/project-mounts.js'
 import { registerSshApi } from '../lib/api.js'
 
 const defaults = { allowPublicBind: false, defaultCommandTimeoutMs: 30000, maxOutputChars: 32000 }
-async function fixture(t) {
+async function fixture(t, resolveWorkspace) {
   const dir = await mkdtemp(join(tmpdir(), 'ssh-workbench-test-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   const path = join(dir, 'state.json')
-  const store = await SshStore.open(path, defaults)
+  const store = await SshStore.open(path, defaults, resolveWorkspace)
   await store.update(state => {
     state.profiles = ['a', 'b'].map(id => ({ id, name: id, host: '127.0.0.1', port: 22, username: 'test', authType: 'agent', proxy: { type: 'none' }, tags: [], createdAt: 1, updatedAt: 1 }))
     state.remoteProjects = [{ id: 'p1', profileId: 'a', name: 'App', path: '/app', createdAt: 1, updatedAt: 1 }, { id: 'p2', profileId: 'a', name: 'Logs', path: '/logs', createdAt: 1, updatedAt: 1 }, { id: 'p3', profileId: 'b', name: 'Other', path: '/other', createdAt: 1, updatedAt: 1 }]
@@ -79,4 +79,67 @@ test('management API gates mutations, supports commands and preserves mounts acr
   assert.equal((await put({ ...access, mountedProjectIds: { a: ['p3'] } })).status, 400)
   assert.equal((await put({ ...access, mountedProjectIds: { a: ['p2'] }, workingDirectories: {}, workingProjectIds: {} })).status, 200)
   assert.equal(store.injection('s').workingDirectories.a, '/logs')
+})
+
+test('project mounts are persisted, scoped to workspace membership and inherited only by eligible sessions', async t => {
+  const memberships = new Map([['old', 'mine'], ['active', 'mine'], ['other', 'elsewhere']])
+  const resolveWorkspace = id => memberships.get(id)
+  const { store, path } = await fixture(t, resolveWorkspace)
+  let route
+  registerSshApi({ register(value) { route = value; return () => {} } }, '/ssh-local/v1', {
+    store, aiTerminals: { async closeOwner() {}, async closeProfile() {} },
+    files: { endpoint: id => id === 'sftp:a' ? { id } : undefined },
+  })
+  const server = createServer((req, res) => { void route.handler(req, res) })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const root = `http://127.0.0.1:${server.address().port}/ssh-local/v1`
+  const request = (path, body, method = body === undefined ? 'GET' : 'PUT') => fetch(root + path, {
+    method, headers: { 'Content-Type': 'application/json', 'X-DSH-SSH-Request': '1' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  const saveMode = (session, mode, workspaceId = 'mine') => request(`/injections/${session}/mount-mode`, { mode, workspaceId })
+  const project = '/project-mounts?sessionId=active'
+
+  assert.equal(store.sessionAccess('active').mountMode, 'inherit')
+  assert.equal(store.injection('active'), undefined)
+  assert.equal((await request('/injections/old', { profileIds: ['b'], permission: 'terminal', requireCommandApproval: false })).status, 200)
+  const empty = await (await request(project)).json()
+  const draft = { ...empty, profileIds: ['a'], mountedProjectIds: { a: ['p1', 'p2'] }, workingProjectIds: { a: 'p2' } }
+  assert.equal((await request(project, { ...draft, workspaceId: 'elsewhere' })).status, 409)
+  assert.equal((await request(project, { ...draft, mountedProjectIds: { a: ['p3'] } })).status, 400)
+  assert.equal((await request(project, draft)).status, 200)
+  assert.equal((await request(project, draft)).status, 409)
+  assert.equal((await request('/project-mounts?sessionId=unknown')).status, 404)
+  assert.deepEqual(store.injection('old').profileIds, ['b'])
+  assert.deepEqual(store.injection('active').profileIds, ['a'])
+  assert.equal(store.injection('active').workingDirectories.a, '/logs')
+  assert.deepEqual(store.injection('active').fileEndpointIds, ['sftp:a'])
+  assert.equal(store.injection('active').requireCommandApproval, true)
+  assert.equal(store.injection('other'), undefined)
+  memberships.set('new', 'mine')
+  assert.deepEqual(store.injection('new').profileIds, ['a'])
+  assert.deepEqual((await SshStore.open(path, defaults, resolveWorkspace)).injection('new').mountedProjectIds, { a: ['p1', 'p2'] })
+
+  assert.equal((await saveMode('active', 'independent')).status, 200)
+  assert.equal((await request('/injections/active', { profileIds: ['b'], permission: 'exec', mountMode: 'independent' })).status, 200)
+  assert.equal((await saveMode('active', 'inherit')).status, 200)
+  assert.equal((await request('/injections/active', { ...store.injection('active'), requireCommandApproval: false })).status, 200)
+  assert.equal(store.injection('new').requireCommandApproval, true)
+  const current = await (await request(project)).json()
+  const updated = { ...current, profileIds: [], mountedProjectIds: {}, workingProjectIds: {} }
+  assert.deepEqual((await Promise.all([request(project, updated), request(project, updated)])).map(res => res.status).sort(), [200, 409])
+  assert.deepEqual(store.injection('active').profileIds, [])
+  assert.equal(store.injection('new'), undefined)
+  assert.equal((await saveMode('active', 'independent')).status, 200)
+  assert.deepEqual(store.injection('active').profileIds, ['b'])
+  assert.equal(store.injection('active').requireCommandApproval, false)
+  assert.equal((await saveMode('active', 'inherit')).status, 200)
+  assert.equal((await request('/injections/new', undefined, 'DELETE')).status, 204)
+  assert.equal(store.sessionAccess('new').mountMode, 'independent')
+  memberships.set('active', 'elsewhere')
+  assert.equal((await saveMode('active', 'independent')).status, 409)
+  memberships.delete('active')
+  assert.equal((await saveMode('active', 'independent', null)).status, 200)
+  assert.deepEqual(store.injection('active').profileIds, [])
 })

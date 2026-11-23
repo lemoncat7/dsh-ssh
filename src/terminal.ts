@@ -6,6 +6,7 @@ import type {
   TerminalSessionStatus, TerminalSignal, TerminalSignalResult,
 } from '@deepseek-ai/dsh-terminal'
 import { SshConnector, type ManagedSshConnection } from './connector.js'
+import type { SshCredentialPayload, SshProfile } from './domain.js'
 import { SshStore } from './store.js'
 import { directoryPrelude } from './exec.js'
 import { detectPromptShell, directoryPromptHook } from './terminal-shell-integration.js'
@@ -215,17 +216,25 @@ export class BrowserTerminalManager {
   private closing = false
   constructor(private readonly connector: SshConnector) {}
 
-  async create(profileId: string, cols: number, rows: number, signal?: AbortSignal, cwd?: string): Promise<{ id: string; profileId: string }> {
+  create(profileId: string, cols: number, rows: number, signal?: AbortSignal, cwd?: string): Promise<{ id: string; profileId: string }> {
+    return this.open(profileId, () => this.connector.connectTerminal(profileId, 'browser', signal), cols, rows, signal, cwd)
+  }
+
+  createTemporary(profile: SshProfile, secrets: SshCredentialPayload, cols: number, rows: number, signal?: AbortSignal): Promise<{ id: string; profileId: string }> {
+    return this.open(profile.id, () => this.connector.connectDraft(profile, secrets, signal), cols, rows, signal, undefined, true)
+  }
+
+  private async open(profileId: string, connect: () => Promise<ManagedSshConnection>, cols: number, rows: number, signal?: AbortSignal, cwd?: string, temporary = false): Promise<{ id: string; profileId: string }> {
     if (this.closing) throw new Error('SSH terminal service is shutting down')
     if (this.sessions.size + this.pending >= 32) throw Object.assign(new Error('终端连接已达 32 个，请先关闭不再使用的标签'), { status: 429 })
     this.pending++
     let connection: ManagedSshConnection | undefined
     try {
-      connection = await this.connector.connectTerminal(profileId, 'browser', signal)
-      const promptShell = await detectPromptShell(connection.client)
+      connection = await connect()
+      const promptShell = temporary ? undefined : await detectPromptShell(connection.client)
       const channel = await openShell(connection, clamp(cols, 20, 400), clamp(rows, 5, 200), signal)
       if (this.closing || signal?.aborted) { channel.destroy(); throw new Error('SSH terminal opening was cancelled') }
-      const terminal = new BrowserTerminal(randomUUID(), profileId, connection, channel, () => this.sessions.delete(terminal.id))
+      const terminal = new BrowserTerminal(randomUUID(), profileId, connection, channel, () => this.sessions.delete(terminal.id), temporary ? 5 * 60_000 : undefined)
       this.sessions.set(terminal.id, terminal)
       if (promptShell) terminal.initializeDirectoryHook()
       if (cwd !== undefined && cwd !== '~') channel.write(`${directoryPrelude(cwd)}\n`)
@@ -257,10 +266,12 @@ export class AiTerminalManager {
   constructor(
     private readonly connector: SshConnector,
     private readonly onTerminalOpened?: (event: TerminalOpenedEvent) => void,
+    private readonly isAuthorized: (ownerId: string, profileId: string) => boolean = () => true,
   ) {}
 
   async create(ownerId: string, profileId: string, cwd: string, name?: string, signal?: AbortSignal): Promise<AiTerminalOpenResult> {
     if (this.closing) throw new Error('SSH terminal manager is closing')
+    this.assertAuthorized(ownerId, profileId)
     const key = terminalIdentity(ownerId, profileId, cwd)
     const pending = this.pendingOpens.get(key)
     if (pending !== undefined) {
@@ -287,11 +298,13 @@ export class AiTerminalManager {
     const reusable = matching.find(record => record.session.status().kind === 'running')
     const obsolete = matching.filter(record => record !== reusable)
     await this.removeRecords(ownerId, obsolete)
+    this.assertAuthorized(ownerId, profileId)
     if (reusable !== undefined) return terminalOpenResult(reusable, true)
 
     const connection = await this.connector.connectTerminal(profileId, `session:${ownerId}`, signal)
     try {
       const channel = await openShell(connection, 120, 32, signal)
+      this.assertAuthorized(ownerId, profileId)
       const terminalId = randomUUID()
       const session = new SshTerminalSession(connection, channel, `Connected to ${connection.profile.name} (${connection.profile.username}@${connection.profile.host})`)
       const record: AiTerminalRecord = {
@@ -317,16 +330,18 @@ export class AiTerminalManager {
   get(ownerId: string, terminalId: string): SshTerminalSession {
     const record = this.sessions.get(ownerId)?.get(terminalId)
     if (record === undefined) throw new Error('SSH terminal was not found in the current DSH session')
+    this.assertAuthorized(ownerId, record.profileId)
     return record.session
   }
 
   list(ownerId: string): Array<{ terminalId: string; status: TerminalSessionStatus }> {
-    return [...(this.sessions.get(ownerId) ?? new Map()).values()].map(record => ({ terminalId: record.terminalId, status: record.session.status() }))
+    return [...(this.sessions.get(ownerId) ?? new Map()).values()].filter(record => this.isAuthorized(ownerId, record.profileId)).map(record => ({ terminalId: record.terminalId, status: record.session.status() }))
   }
 
   async send(ownerId: string, terminalId: string, request: TerminalSendRequest): Promise<TerminalSendResult> {
     const record = this.sessions.get(ownerId)?.get(terminalId)
     if (record === undefined) throw new Error('SSH terminal was not found in the current DSH session')
+    this.assertAuthorized(ownerId, record.profileId)
     const startedAt = Date.now()
     const result = await record.session.startSend(request).done
     record.commands.push({
@@ -360,7 +375,7 @@ export class AiTerminalManager {
   }
 
   activity(ownerId: string, detail = false): AiTerminalActivity[] {
-    return [...(this.sessions.get(ownerId) ?? new Map()).values()].map(record => {
+    return [...(this.sessions.get(ownerId) ?? new Map()).values()].filter(record => this.isAuthorized(ownerId, record.profileId)).map(record => {
       return {
         terminalId: record.terminalId,
         profileId: record.profileId,
@@ -391,6 +406,15 @@ export class AiTerminalManager {
   async closeOwner(ownerId: string): Promise<void> {
     const records = [...(this.sessions.get(ownerId) ?? new Map()).values()]
     await this.removeRecords(ownerId, records, 'SSH terminal access revoked')
+  }
+
+  async revokeUnauthorized(): Promise<void> {
+    await Promise.all([...this.sessions].map(([ownerId, records]) =>
+      this.removeRecords(ownerId, [...records.values()].filter(record => !this.isAuthorized(ownerId, record.profileId)), 'SSH profile access revoked')))
+  }
+
+  private assertAuthorized(ownerId: string, profileId: string): void {
+    if (!this.isAuthorized(ownerId, profileId)) throw Object.assign(new Error('SSH terminal access was revoked'), { status: 403 })
   }
 
   async closeAll(): Promise<void> {
@@ -492,8 +516,9 @@ export class BrowserTerminal {
     private readonly connection: ManagedSshConnection,
     private readonly channel: ClientChannel,
     private readonly onClose: () => void,
+    private readonly idleTimeoutMs = 30 * 60_000,
   ) {
-    this.idleTimer = setTimeout(() => { if (this.subscribers > 0) this.touch(); else void this.close() }, 30 * 60_000)
+    this.idleTimer = setTimeout(() => { if (this.subscribers > 0) this.touch(); else void this.close() }, this.idleTimeoutMs)
     channel.setEncoding('utf8')
     channel.on('data', (chunk: string | Buffer) => this.append(String(chunk)))
     channel.stderr?.setEncoding('utf8')
@@ -575,7 +600,7 @@ export class BrowserTerminal {
   private touch(): void {
     if (this.closed) return
     clearTimeout(this.idleTimer)
-    this.idleTimer = setTimeout(() => { if (this.subscribers > 0) this.touch(); else void this.close() }, 30 * 60_000)
+    this.idleTimer = setTimeout(() => { if (this.subscribers > 0) this.touch(); else void this.close() }, this.idleTimeoutMs)
   }
 }
 

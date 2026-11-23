@@ -1010,3 +1010,10 @@
 .dsh-ssh-file-download-dialog > .dsh-ssh-dialog-actions { padding: 16px 18px max(18px, env(safe-area-inset-bottom)); }
 .dsh-ssh-file-download-dialog .dsh-ssh-dialog-actions > a { flex: none; white-space: nowrap; text-decoration: none; min-height: 44px; padding-inline: 14px; }
 .dsh-ssh-file-download-dialog .dsh-ssh-dialog-actions > a > svg { flex: 0 0 16px; width: 16px; height: 16px; }
+
+.dsh-ssh-file-access-dialog .dsh-ssh-transfer-concurrency-select {
+  min-width: 66px;
+  padding: 4px 8px;
+  border: 1px solid var(--ssh-access-divider);
+  border-radius: 6px;
+}

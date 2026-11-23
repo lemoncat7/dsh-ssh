@@ -22,11 +22,55 @@
 .dsh-ssh-workspace-v2 .dsh-ssh-host-catalogue {
   margin: 0; padding: 16px; height: 100%; gap: 12px;
 }
-.dsh-ssh-catalogue-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
-.dsh-ssh-host-catalogue .dsh-ssh-catalogue-tools .dsh-ssh-search { flex: 1; max-width: 450px; margin: 0; }
-.dsh-ssh-catalogue-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dsh-ssh-catalogue-tools {
+  flex: none; display: grid; align-items: center; gap: 4px 12px;
+  grid-template-columns: minmax(0,1fr) auto;
+  grid-template-areas: "search actions" "purpose purpose" "scope scope";
+}
+.dsh-ssh-host-catalogue .dsh-ssh-catalogue-tools .dsh-ssh-search { grid-area: search; max-width: 450px; margin: 0; }
+.dsh-ssh-workspace-v2 .dsh-ssh-catalogue-purpose { grid-area: purpose; margin: 0; color: var(--ssh-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.dsh-ssh-catalogue-actions { grid-area: actions; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dsh-ssh-catalogue-actions > button { min-height: 34px; padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
 .dsh-ssh-catalogue-actions > button[aria-pressed="true"] { background: var(--ssh-selected); box-shadow: inset 0 -2px var(--ssh-accent); }
+.dsh-ssh-catalogue-mount-scope {
+  grid-area: scope; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0;
+}
+.dsh-ssh-workspace-v2 .dsh-ssh-catalogue-mount-scope fieldset {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  min-width: 0; margin: 0; padding: 0; border: 0; background: transparent; font-size: 13px;
+}
+.dsh-ssh-catalogue-mount-scope fieldset > span { font-weight: 600; }
+.dsh-ssh-mount-scope-options {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--ssh-hover);
+}
+.dsh-ssh-mount-scope-choice {
+  position: relative; display: inline-flex; align-items: center; min-height: 26px; padding: 2px 8px;
+  border: 0; border-radius: 5px; color: var(--ssh-text-muted); cursor: pointer; white-space: nowrap;
+}
+.dsh-ssh-mount-scope-choice input {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: inherit;
+}
+.dsh-ssh-mount-scope-choice:hover:not(:has(:checked, :disabled)) { background: var(--ssh-selected); color: var(--ssh-text); }
+.dsh-ssh-mount-scope-choice:has(:checked) {
+  background: color-mix(in srgb, var(--ssh-accent) 16%, var(--ssh-panel));
+  color: var(--ssh-text); font-weight: 600;
+}
+.dsh-ssh-mount-scope-choice:has(:focus-visible) { outline: 2px solid var(--ssh-accent); outline-offset: 2px; }
+.dsh-ssh-mount-scope-choice:has(:disabled) { cursor: default; }
+.dsh-ssh-mount-scope-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.dsh-ssh-mount-scope-status p { margin: 0; min-width: 0; color: var(--ssh-text); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.dsh-ssh-mount-scope-status[data-editing="false"] p { color: var(--ssh-text-muted); font-size: 13px; }
+.dsh-ssh-mount-scope-status[data-editing="true"] {
+  flex-basis: 100%; justify-content: space-between; padding: 8px 10px; border-inline-start: 3px solid var(--ssh-accent);
+  border-radius: 6px; background: var(--ssh-selected);
+}
+.dsh-ssh-mount-scope-status strong { display: block; font-size: 15px; font-weight: 650; }
+.dsh-ssh-mount-scope-status p > span { display: block; margin-top: 2px; }
+.dsh-ssh-mount-scope-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dsh-ssh-catalogue-mount-scope > .dsh-ssh-inline-error { flex-basis: 100%; }
+.dsh-ssh-workspace-v2 .dsh-ssh-mount-scope-actions > button {
+  min-height: 28px; padding: 3px 8px; border-radius: 6px; font-size: 12px; line-height: 1.4;
+}
 .dsh-ssh-host-catalogue .dsh-ssh-tree-scroll { flex: 1; min-height: 0; padding: 0 4px 8px 0; overflow: auto; }
 .dsh-ssh-host-catalogue .dsh-ssh-tree-group { margin: 0 0 14px; }
 .dsh-ssh-host-catalogue .dsh-ssh-tree-group > h3 { margin: 0 0 8px; }
@@ -119,9 +163,9 @@
   .dsh-ssh-terminal-desk > .dsh-ssh-workbench-split { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr); overflow: hidden; }
   .dsh-ssh-terminal-desk > .dsh-ssh-workbench-split:not(.is-secondary-hidden) > .dsh-ssh-workbench-terminal { display: none; }
   .dsh-ssh-terminal-desk .dsh-ssh-workbench-resizer { display: none; }
-  .dsh-ssh-catalogue-tools { flex-wrap: wrap; }
-  .dsh-ssh-host-catalogue .dsh-ssh-catalogue-tools .dsh-ssh-search { max-width: none; flex-basis: 100%; }
-  .dsh-ssh-catalogue-actions { justify-content: flex-end; width: 100%; }
+  .dsh-ssh-catalogue-tools { grid-template-columns: minmax(0,1fr); grid-template-areas: "search" "purpose" "scope" "actions"; }
+  .dsh-ssh-host-catalogue .dsh-ssh-catalogue-tools .dsh-ssh-search { max-width: none; }
+  .dsh-ssh-catalogue-actions { justify-content: flex-end; }
 }
 @container dsh-ssh-workspace (max-width: 520px) {
   .dsh-ssh-workspace-v2 .dsh-ssh-host-catalogue { padding: 12px 10px; }
@@ -217,8 +261,6 @@
 
 .dsh-ssh-desk-tabbar > .dsh-ssh-icon-button { flex: none; }
 
-.dsh-ssh-workspace-v2 .dsh-ssh-catalogue-purpose { flex: none; margin: -4px 0 0; color: var(--ssh-text-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-
 .dsh-ssh-workspace-v2 .dsh-ssh-vault-row { grid-template-columns: 34px minmax(0,1fr) auto auto auto; }
 .dsh-ssh-vault-actions { display: flex; gap: 6px; align-items: center; }
 .dsh-ssh-vault-actions > .dsh-ssh-secondary-button { min-height: 30px; padding: 4px 8px; font-size: 12px; }
@@ -230,3 +272,7 @@
   .dsh-ssh-vault-row > small { grid-column: 2; grid-row: 3; }
   .dsh-ssh-vault-row > .dsh-ssh-vault-actions { grid-column: 3; grid-row: 1 / 4; }
 }
+
+.dsh-ssh-new-terminal-modes { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; }
+.dsh-ssh-new-terminal-modes > button[aria-pressed="true"] { background: var(--ssh-selected); box-shadow: inset 0 -2px var(--ssh-accent); }
+.dsh-ssh-temporary-fingerprint { overflow-wrap: anywhere; }

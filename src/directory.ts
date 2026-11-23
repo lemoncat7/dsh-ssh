@@ -2,6 +2,7 @@ import { executeSshCommand, type ExecResult } from './exec.js'
 import { SshConnector } from './connector.js'
 import type { SessionInjection } from './domain.js'
 import { SshStore } from './store.js'
+import { newSessionAccess } from './session-defaults.js'
 import { mountedProjects } from './project-mounts.js'
 
 const DIRECTORY_PROBE_TIMEOUT_MS = 10_000
@@ -45,10 +46,25 @@ export async function setSessionDirectory(
   if (injection === undefined || !injection.profileIds.includes(profileId)) {
     throw Object.assign(new Error('SSH profile is not injected into this DSH session'), { status: 403 })
   }
+  const initialWorkspace = injection.mountMode === 'inherit' ? store.workspaceMounts(sessionId) : undefined
   const cwd = await resolveRemoteDirectory(connector, profileId, requested, signal)
   await store.update(state => {
+    const effective = store.injection(sessionId, state)
+    if (!effective?.profileIds.includes(profileId) || effective.mountMode !== injection.mountMode) throw new Error('SSH session injection changed while resolving the directory')
     const current = state.injections.find(item => item.sessionId === sessionId)
-    if (current === undefined || !current.profileIds.includes(profileId)) throw new Error('SSH session injection changed while resolving the directory')
+    if (effective.mountMode === 'inherit') {
+      const workspace = store.workspaceMounts(sessionId, state)
+      if (!workspace || initialWorkspace?.workspaceId !== workspace.workspaceId || initialWorkspace.revision !== workspace.revision) {
+        throw new Error('SSH project changed while resolving the directory')
+      }
+      const stored = current ?? { ...newSessionAccess(sessionId, state.settings), mountMode: 'inherit' as const }
+      const previous = stored.inheritedDirectory
+      const paths = previous?.workspaceId === workspace.workspaceId && previous.revision === workspace.revision ? previous.paths : {}
+      stored.inheritedDirectory = { workspaceId: workspace.workspaceId, revision: workspace.revision, paths: { ...paths, [profileId]: cwd } }
+      if (!current) state.injections.push(stored)
+      return
+    }
+    if (!current) throw new Error('SSH session injection changed while resolving the directory')
     current.workingDirectories[profileId] = cwd
     const mounted = mountedProjects(current, profileId)
     current.mountedProjectIds = { ...current.mountedProjectIds, [profileId]: mounted }

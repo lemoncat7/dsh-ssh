@@ -1,4 +1,4 @@
-import { readUploadConcurrency, saveUploadConcurrency, uploadConcurrencyChoices } from './upload-concurrency.js'
+import { readDownloadConcurrency, readUploadConcurrency, saveDownloadConcurrency, saveUploadConcurrency, transferConcurrencyChoices } from './transfer-concurrency.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { trackDownloadClick } from './browser-transfers.js'
 import { BrowserTransferTask, TransferTaskList, isBrowserTransferActive, useBrowserTransferTasks } from './transfer-task-list.js'
@@ -21,6 +21,7 @@ import { executeRemoteFileDrop } from './remote-file-drop.js'
 import { FileEntryDeleteDialog } from './file-entry-delete-dialog.js'
 import { sortFileEntries, type FileEntrySortDirection, type FileEntrySortKey } from './file-entry-sort.js'
 import { useBorderGlowSurface } from './border-glow.js'
+import { nextTransferTabName, normalizeTransferTabNames } from './file-transfer-tab-names.js'
 
 interface PaneState { id: string; endpointId: string; path: string }
 interface TransferTab { id: string; name: string; panes: PaneState[] }
@@ -31,7 +32,8 @@ const transferClockFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-dig
 
 export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries, access, onProfilesChanged }: { ftpProfiles: FtpProfileView[]; vaultEntries: VaultEntryView[]; proxyEntries: ProxyEntryView[]; access: SessionAccessState; onProfilesChanged(): void }): JSX.Element {
   useSshLocale()
-  const [concurrency, setConcurrency] = useState(readUploadConcurrency)
+  const [uploadConcurrency, setUploadConcurrency] = useState(readUploadConcurrency)
+  const [downloadConcurrency, setDownloadConcurrency] = useState(readDownloadConcurrency)
   const stageGlow = useBorderGlowSurface<HTMLElement>()
   const [endpoints, setEndpoints] = useState<FileEndpointView[]>([])
   const [jobs, setJobs] = useState<TransferJobView[]>([])
@@ -81,8 +83,8 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   const active = tabs.find(tab => tab.id === activeTabId) ?? tabs[0]
   const updateActive = (mutator: (tab: TransferTab) => TransferTab): void => setTabs(current => current.map(tab => tab.id === active?.id ? mutator(tab) : tab))
   const addTab = (): void => {
-    const id = `transfer-${Date.now().toString(36)}`
-    const tab = createTab(id, tabs.length + 1)
+    const id = `transfer-${Date.now().toString(36)}-${crypto.getRandomValues(new Uint32Array(1))[0]!.toString(36)}`
+    const tab = createTab(id, nextTransferTabName(new Set(tabs.map(item => item.name))))
     setTabs(current => [...current, tab]); setActiveTabId(id)
   }
   const closeTab = (id: string): void => {
@@ -142,26 +144,24 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     <section ref={stageGlow.ref} onPointerMove={stageGlow.onPointerMove} onPointerLeave={stageGlow.onPointerLeave} className="dsh-ssh-transfer-stage dsh-ssh-border-surface">
       <div className="dsh-ssh-transfer-tabbar" role="tablist" aria-label={t("file-transfer-workspace.fileTransferTasksPage")}>
         <div className="dsh-ssh-transfer-tabs">{tabs.map(tab => <span data-ssh-interactive="choice" className={`dsh-ssh-transfer-tab${tab.id === active?.id ? ' is-active' : ''}`} key={tab.id}><button type="button" role="tab" aria-selected={tab.id === active?.id} onClick={() => setActiveTabId(tab.id)}>{transferTabLabel(tab)}</button>{tabs.length > 1 && <button type="button" className="is-close" aria-label={t("file-transfer-workspace.close", [transferTabLabel(tab)])} onClick={() => closeTab(tab.id)}><IconCloseOutline16 size={13} /></button>}</span>)}<button type="button" data-ssh-interactive="control" className="is-add" aria-label={t("file-transfer-workspace.newTransferTasksPage")} onClick={addTab}><IconPlusOutline16 size={15} /></button></div>
-        <label>{t('browser-transfer.concurrency')} <select value={concurrency} onChange={event => {
-          const value = Number(event.target.value)
-          saveUploadConcurrency(value)
-          setConcurrency(value)
-        }}>{uploadConcurrencyChoices.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <div className="dsh-ssh-pane-layout" aria-label={t("file-transfer-workspace.panes")}>{[1, 2, 3, 4].map(count => <button key={count} type="button" data-ssh-interactive="choice" aria-pressed={active?.panes.length === count} className={active?.panes.length === count ? 'is-active' : ''} onClick={() => setPaneCount(count)}>{count}  {t("file-transfer-workspace.panes2")}</button>)}</div>
       </div>
       {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>{t("file-transfer-workspace.noFileConnectionsAvailableYet")}</strong><p>{t("file-transfer-workspace.createAnFtpFtpsConnectionOrAddAnSsh")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>{t("file-transfer-workspace.newFtpConnection")}</button></div>
-        : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map(pane => <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} onManageConnections={() => setConnectionsOpen(true)} onSessionAccess={() => setAccessOpen(true)} accessCount={access.value?.fileEndpointIds.filter(id => id.startsWith('ftp:')).length ?? 0} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />)}</div>}
+        : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map(pane => <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} downloadConcurrency={downloadConcurrency} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} onManageConnections={() => setConnectionsOpen(true)} onSessionAccess={() => setAccessOpen(true)} accessCount={access.value?.fileEndpointIds.filter(id => id.startsWith('ftp:')).length ?? 0} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />)}</div>}
       <div className="dsh-ssh-transfer-queues">
       <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={openConflict} />
       </div>
     </section>
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
-    {accessOpen && <FileAccessDialog endpoints={endpoints} access={access} onClose={() => setAccessOpen(false)} />}
+    {accessOpen && <FileAccessDialog endpoints={endpoints} access={access} onClose={() => setAccessOpen(false)}
+      uploadConcurrency={uploadConcurrency} downloadConcurrency={downloadConcurrency}
+      onUploadConcurrency={value => { saveUploadConcurrency(value); setUploadConcurrency(value) }}
+      onDownloadConcurrency={value => { saveDownloadConcurrency(value); setDownloadConcurrency(value) }} />}
     {conflictJob && <ConflictDialog job={conflictJob} onClose={() => setConflictJob(undefined)} onRetry={retryConflict} />}
   </div>
 }
 
-function FileTransferPane({ pane, endpoints, dragSource, refreshRevision, onChange, onExternalDrop, onDragSourceChange, onManageConnections, onSessionAccess, accessCount }: { pane: PaneState; endpoints: FileEndpointView[]; dragSource?: TransferDragSource | undefined; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onExternalDrop(source: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void; onManageConnections(): void; onSessionAccess(): void; accessCount: number }): JSX.Element {
+function FileTransferPane({ pane, endpoints, downloadConcurrency, dragSource, refreshRevision, onChange, onExternalDrop, onDragSourceChange, onManageConnections, onSessionAccess, accessCount }: { pane: PaneState; endpoints: FileEndpointView[]; downloadConcurrency: number; dragSource?: TransferDragSource | undefined; refreshRevision: number; onChange(patch: Partial<PaneState>): void; onExternalDrop(source: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void; onManageConnections(): void; onSessionAccess(): void; accessCount: number }): JSX.Element {
   const sshLocale = useSshLocale()
   const [openedFile, setOpenedFile] = useState<SftpEntryView>()
   const uploadInput = useRef<HTMLInputElement>(null)
@@ -264,11 +264,11 @@ function FileTransferPane({ pane, endpoints, dragSource, refreshRevision, onChan
         <SortColumn label={t("file-transfer-workspace.modified")} sortKey="modifiedAt" current={sort} onSort={changeSort} />
         <span role="columnheader" aria-label={t("file-transfer-workspace.actions")} />
       </div>
-      <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">{t("file-transfer-workspace.readingDirectory")}</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>{t("commands-panel.retry")}</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">{t("file-transfer-workspace.thisDirectoryIsEmpty")}</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * FILE_ROW_HEIGHT}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} paneId={pane.id} endpointId={endpoint.id} sourceDirectory={view?.path ?? pane.path} dragSource={dragSource} dropTarget={directoryDropTarget === entry.path} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * FILE_ROW_HEIGHT}px)` } } : {}} onDelete={() => setDeleteTarget([entry])} onDirectoryTarget={target => { setDragOver(false); setDirectoryDropTarget(target) }} onDropIntoDirectory={(payload, target) => { setDirectoryDropTarget(undefined); onDragSourceChange(undefined); onExternalDrop(payload, target) }} onDragSourceChange={onDragSourceChange} onSelect={additive => select(entry, additive)} onOpen={() => { void openEntry(entry.path) }} />)}</div>}</div>
+      <div ref={bodyRef} className="dsh-ssh-file-table-body" onScroll={event => { if (virtualized) setScrollTop(event.currentTarget.scrollTop) }}>{loading && !view ? <div className="dsh-ssh-file-loading">{t("file-transfer-workspace.readingDirectory")}</div> : error ? <div className="dsh-ssh-file-error"><span>{error}</span><button type="button" onClick={() => { void load() }}>{t("commands-panel.retry")}</button></div> : entries.length === 0 ? <div className="dsh-ssh-table-empty">{t("file-transfer-workspace.thisDirectoryIsEmpty")}</div> : <div className={virtualized ? 'dsh-ssh-file-virtual-list' : undefined} style={virtualized ? { height: `${entries.length * FILE_ROW_HEIGHT}px` } : undefined}>{visibleEntries.map((entry, offset) => <FileEntryRow key={entry.path} entry={entry} paneId={pane.id} endpointId={endpoint.id} downloadConcurrency={downloadConcurrency} sourceDirectory={view?.path ?? pane.path} dragSource={dragSource} dropTarget={directoryDropTarget === entry.path} selected={selected.includes(entry.path)} selectedPaths={selected} {...virtualized ? { style: { position: 'absolute', insetInline: 0, transform: `translateY(${(virtualStart + offset) * FILE_ROW_HEIGHT}px)` } } : {}} onDelete={() => setDeleteTarget([entry])} onDirectoryTarget={target => { setDragOver(false); setDirectoryDropTarget(target) }} onDropIntoDirectory={(payload, target) => { setDirectoryDropTarget(undefined); onDragSourceChange(undefined); onExternalDrop(payload, target) }} onDragSourceChange={onDragSourceChange} onSelect={additive => select(entry, additive)} onOpen={() => { void openEntry(entry.path) }} />)}</div>}</div>
     </div>
     <footer><span>{selected.length > 0 ? t("file-transfer-workspace.selectedItems", [selected.length]) : t("file-transfer-workspace.items", [view?.entries.length ?? 0])}</span></footer>
     {dragOver && <div className="dsh-ssh-file-drop-overlay"><strong>{dragSource?.endpointId === pane.endpointId ? t("file-transfer-workspace.moveToThisDirectory") : t("file-transfer-workspace.copyToThisDirectory")}</strong><span>{view?.path ?? pane.path}</span></div>}
-    {openedFile !== undefined && <Dialog variant="confirmation" className="dsh-ssh-file-download-dialog" title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><div className="dsh-ssh-dialog-actions"><a onClick={trackDownloadClick} className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path)} download><DownloadGlyph /><span>{t("file-transfer-workspace.download")}</span></a></div></Dialog>}
+    {openedFile !== undefined && <Dialog variant="confirmation" className="dsh-ssh-file-download-dialog" title={openedFile.name} subtitle={openedFile.path} onClose={() => setOpenedFile(undefined)}><div className="dsh-ssh-dialog-actions"><a onClick={trackDownloadClick} className="dsh-ssh-secondary-button" href={fileEndpointDownloadUrl(endpoint.id, openedFile.path, downloadConcurrency)} download><DownloadGlyph /><span>{t("file-transfer-workspace.download")}</span></a></div></Dialog>}
     {deleteTarget !== undefined && <FileEntryDeleteDialog locationName={endpoint.name} locationKind="remote" entries={deleteTarget} onClose={() => setDeleteTarget(undefined)} onDelete={removeSelected} />}
   </section>
 }
@@ -287,7 +287,7 @@ function DownloadGlyph(): JSX.Element {
   return <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M8 2v7m0 0 2.6-2.6M8 9 5.4 6.4M3 11.5v1.25h10V11.5" /></svg>
 }
 
-function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, dropTarget, selected, selectedPaths, style, onSelect, onOpen, onDelete, onDirectoryTarget, onDropIntoDirectory, onDragSourceChange }: { entry: SftpEntryView; paneId: string; endpointId: string; sourceDirectory: string; dragSource?: TransferDragSource | undefined; dropTarget: boolean; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void; onDelete(): void; onDirectoryTarget(path?: string): void; onDropIntoDirectory(payload: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void }): JSX.Element {
+function FileEntryRow({ entry, paneId, endpointId, downloadConcurrency, sourceDirectory, dragSource, dropTarget, selected, selectedPaths, style, onSelect, onOpen, onDelete, onDirectoryTarget, onDropIntoDirectory, onDragSourceChange }: { entry: SftpEntryView; paneId: string; endpointId: string; downloadConcurrency: number; sourceDirectory: string; dragSource?: TransferDragSource | undefined; dropTarget: boolean; selected: boolean; selectedPaths: string[]; style?: CSSProperties | undefined; onSelect(additive: boolean): void; onOpen(): void; onDelete(): void; onDirectoryTarget(path?: string): void; onDropIntoDirectory(payload: TransferDragSource, destinationDirectory: string): void; onDragSourceChange(source?: TransferDragSource): void }): JSX.Element {
   useSshLocale()
   const directory = isNavigableRemoteEntry(entry)
   // FTP defers unknown/link resolution until navigation; unverified entries
@@ -318,7 +318,7 @@ function FileEntryRow({ entry, paneId, endpointId, sourceDirectory, dragSource, 
     onDragOver={event => { if (event.dataTransfer.types.includes(REMOTE_FILES_DRAG_TYPE) && acceptsDrop) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = dragSource?.endpointId === endpointId ? 'move' : 'copy'; onDirectoryTarget(entry.path) } }}
     onDragLeave={event => { if (dropTarget && !event.currentTarget.contains(event.relatedTarget as Node)) onDirectoryTarget(undefined) }}
     onDrop={dropIntoDirectory}
-  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span title={entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText}>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText || '—'}</span><span className="dsh-ssh-file-row-actions dsh-ssh-context-action">{<a className="dsh-ssh-file-row-download" href={fileEndpointDownloadUrl(endpointId, entry.path)} download={directory ? `${entry.name}.tar` : entry.name} draggable={false} aria-label={t("file-transfer-workspace.downloadLocally", [entry.name])} title={entry.kind === 'directory' ? t("file-transfer-workspace.packageAndDownloadLocally", [entry.name]) : t("file-transfer-workspace.downloadLocally", [entry.name])} onClick={trackDownloadClick}><DownloadGlyph /></a>}<button type="button" className="dsh-ssh-file-row-delete" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></span></div>
+  ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span title={entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText}>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText || '—'}</span><span className="dsh-ssh-file-row-actions dsh-ssh-context-action">{<a className="dsh-ssh-file-row-download" href={fileEndpointDownloadUrl(endpointId, entry.path, downloadConcurrency)} download={directory ? `${entry.name}.tar` : entry.name} draggable={false} aria-label={t("file-transfer-workspace.downloadLocally", [entry.name])} title={entry.kind === 'directory' ? t("file-transfer-workspace.packageAndDownloadLocally", [entry.name]) : t("file-transfer-workspace.downloadLocally", [entry.name])} onClick={trackDownloadClick}><DownloadGlyph /></a>}<button type="button" className="dsh-ssh-file-row-delete" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></span></div>
 }
 
 function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; onCancel(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {
@@ -346,7 +346,15 @@ function ConflictDialog({ job, onClose, onRetry }: { job: TransferJobView; onClo
   return <Dialog variant="confirmation" className="dsh-ssh-transfer-conflict-dialog" title={t("file-transfer-workspace.aFileWithTheSameNameExistsAtThe")} subtitle={t("file-transfer-workspace.chooseHowToHandleThisBatchOfTransfers")} onClose={onClose}><div className="dsh-ssh-transfer-conflict-copy"><strong>{remoteLabel(job.request.sourcePaths)}</strong><span>{job.request.destinationDirectory}</span></div><div className="dsh-ssh-conflict-options">{([['rename', t("file-transfer-workspace.autoRename"), t("file-transfer-workspace.keepBothFilesAppendANumberToTheName")], ['skip', t("file-transfer-workspace.skipFilesWithTheSameName"), t("file-transfer-workspace.continueTransferringTheRemainingItems")], ['overwrite', t("file-transfer-workspace.overwriteTheTargetFiles"), t("file-transfer-workspace.replaceTheDestinationContentWithTheSourceContent")]] as const).map(option => <button type="button" data-ssh-interactive="choice" aria-pressed={policy === option[0]} key={option[0]} className={policy === option[0] ? 'is-active' : ''} onClick={() => setPolicy(option[0])}><i aria-hidden="true" /><span><strong>{option[1]}</strong><small>{option[2]}</small></span></button>)}</div><div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>{t("client.cancel")}</button><button type="button" className="dsh-ssh-primary-button" disabled={saving} onClick={() => { setSaving(true); void onRetry(policy).finally(() => setSaving(false)) }}>{saving ? t("file-transfer-workspace.reQueuing") : t("file-transfer-workspace.continueTransfer")}</button></div></Dialog>
 }
 
-function FileAccessDialog({ endpoints: allEndpoints, access, onClose }: { endpoints: FileEndpointView[]; access: SessionAccessState; onClose(): void }): JSX.Element {
+function FileAccessDialog({ endpoints: allEndpoints, access, onClose, uploadConcurrency, downloadConcurrency, onUploadConcurrency, onDownloadConcurrency }: {
+  endpoints: FileEndpointView[]
+  access: SessionAccessState
+  onClose(): void
+  uploadConcurrency: number
+  downloadConcurrency: number
+  onUploadConcurrency(value: number): void
+  onDownloadConcurrency(value: number): void
+}): JSX.Element {
   useSshLocale()
   const value = access.value
   const endpoints = allEndpoints.filter(endpoint => endpoint.kind === 'ftp'); const mounted = endpoints.filter(endpoint => value?.fileEndpointIds.includes(endpoint.id)).length
@@ -365,9 +373,28 @@ function FileAccessDialog({ endpoints: allEndpoints, access, onClose }: { endpoi
           <div className="dsh-ssh-file-access-policy-row"><span><strong>{t("file-transfer-workspace.confirmBeforeTransfer")}</strong><small>{t("file-transfer-workspace.requireDshApprovalWhenTheAiStartsATransfer")}</small></span><FileApprovalSwitch checked={value?.requireFileApproval ?? true} onChange={access.setRequireFileApproval} /></div>
         </div>
       </section>
+      <section className="dsh-ssh-file-access-section is-options" aria-labelledby="dsh-ssh-transfer-concurrency">
+        <header><span>
+          <strong id="dsh-ssh-transfer-concurrency">{t('file-transfer-workspace.sftpConcurrency')}</strong>
+          <small>{t('file-transfer-workspace.sftpConcurrencyHint')}</small>
+        </span></header>
+        <div className="dsh-ssh-file-access-options">
+          <TransferConcurrencyPicker label={t('browser-transfer.concurrency')} value={uploadConcurrency} onChange={onUploadConcurrency} />
+          <TransferConcurrencyPicker label={t('browser-transfer.downloadConcurrency')} value={downloadConcurrency} onChange={onDownloadConcurrency} />
+        </div>
+      </section>
     </div>
     <footer className="dsh-ssh-file-access-footer"><span className={access.saving ? 'is-saving' : 'is-saved'}><i aria-hidden="true" />{access.saving ? t("file-transfer-workspace.savingChanges") : t("file-transfer-workspace.autosaves", [mounted > 0 ? t("file-transfer-workspace.authorizedConnections", [mounted]) : t("file-transfer-workspace.noAuthorizedConnections")])}</span><button type="button" className="dsh-ssh-primary-button" data-ssh-dialog-close disabled={access.saving} onClick={onClose}>{access.saving ? t("client.saving2") : t("file-transfer-workspace.done")}</button></footer>
   </Dialog>
+}
+
+function TransferConcurrencyPicker({ label, value, onChange }: { label: string; value: number; onChange(value: number): void }): JSX.Element {
+  return <label className="dsh-ssh-file-access-policy-row">
+    <span><strong>{label}</strong></span>
+    <select className="dsh-ssh-transfer-concurrency-select" value={value} onChange={event => onChange(Number(event.target.value))}>
+      {transferConcurrencyChoices.map(count => <option value={count} key={count}>{count}</option>)}
+    </select>
+  </label>
 }
 
 function FileAccessEndpoint({ endpoint, enabled, onToggle }: { endpoint: FileEndpointView; enabled: boolean; onToggle(): void }): JSX.Element {
@@ -398,7 +425,7 @@ function restoreTabs(): TransferTab[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     const value = JSON.parse(stored ?? localStorage.getItem('dsh-ssh:file-transfer:tabs:v2') ?? '[]') as unknown
-    if (!Array.isArray(value)) return [createTab('transfer-1', 1)]
+    if (!Array.isArray(value)) return [createTab('transfer-1')]
     const tabs = value.slice(0, 8).flatMap((candidate): TransferTab[] => {
       if (typeof candidate !== 'object' || candidate === null) return []
       const tab = candidate as Partial<TransferTab>
@@ -412,11 +439,11 @@ function restoreTabs(): TransferTab[] {
       })
       return panes.length >= 1 ? [{ id: tab.id, name: tab.name.slice(0, 40), panes: stored === null ? panes.slice(0, 1) : panes }] : []
     })
-    if (tabs.length > 0) return tabs
+    if (tabs.length > 0) return normalizeTransferTabNames(tabs)
   } catch {}
-  return [createTab('transfer-1', 1)]
+  return [createTab('transfer-1')]
 }
-function createTab(id: string, index: number): TransferTab { return { id, name: `任务 ${index}`, panes: [createPane(`${id}-a`)] } }
+function createTab(id: string, name = '任务 1'): TransferTab { return { id, name, panes: [createPane(`${id}-a`)] } }
 function transferTabLabel(tab: TransferTab): string {
   // Keep the existing persisted representation; only translate generated display labels.
   const number = /^任务 (\d+)$/.exec(tab.name)?.[1]

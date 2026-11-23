@@ -7,7 +7,7 @@ import {
   IconEllipsisOutlineRegular as IconEllipsisOutline16, IconFolderOpenOutlineRegular as IconFolderOpenOutline16, IconPlusOutlineRegular as IconPlusOutline16, IconTrashOutlineRegular as IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
-  createRemoteProject, deleteRemoteProject, loadRemoteProjects, updateRemoteProject,
+  createRemoteProject, deleteRemoteProject, loadRemoteProjects, loadWorkspaceMounts, saveWorkspaceMounts, updateRemoteProject,
   type InjectionView, type ProfileView, type RemoteProjectView,
 } from './client-api.js'
 import { ProjectSessionDialog } from './project-session-dialog.js'
@@ -16,7 +16,7 @@ import { useBorderGlowSurface } from './border-glow.js'
 import { Dialog } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
 import { mountedProjects } from './project-mounts.js'
-import type { GroupProxy } from './domain.js'
+import type { GroupProxy, MountMode, WorkspaceMountConfiguration } from './domain.js'
 import { HostActionMenu, TerminalActionIcon } from './host-action-menu.js'
 import { SessionDefaults } from './session-defaults-ui.js'
 
@@ -45,6 +45,7 @@ interface RemoteWorkspaceTreeProps {
   selected: RemoteTarget | null
   onSelect(target: RemoteTarget): void
   onProfiles(profileIds: string[]): void
+  onMountMode(workspaceId: string | null, mode: MountMode): Promise<InjectionView>
   onDirectory(profileId: string, path?: string, projectId?: string): void
   onToggleProject(profileId: string, projectId: string, path: string): void
   onPermission(permission: InjectionView['permission']): void
@@ -84,7 +85,25 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   const [error, setError] = useState<string>()
   const normalized = query.trim().toLocaleLowerCase()
   const groups = useMemo(() => groupProfiles(props.profiles, props.groupConfigs, normalized, projects), [normalized, props.groupConfigs, props.profiles, projects])
-  const mountedGroups = JSON.stringify([...new Set(props.profiles.filter(profile => props.access?.profileIds.includes(profile.id)).map(profile => profile.group?.trim() || ''))].sort())
+  const workspace = props.workspaces.find(item => item.workspaceId === props.currentWorkspaceId)
+  const sessionId = props.access?.sessionId
+  const workspaceId = workspace?.workspaceId
+  const scopeKey = JSON.stringify([sessionId, workspaceId])
+  const scopeRef = useRef(scopeKey)
+  scopeRef.current = scopeKey
+  const [draft, setDraft] = useState<{ key: string; mounts: WorkspaceMountConfiguration }>()
+  const [mountRequest, setMountRequest] = useState<'edit' | 'confirm' | MountMode>()
+  const [mountError, setMountError] = useState<{ key: string; message: string }>()
+  const projectMounts = draft?.key === scopeKey ? draft.mounts : undefined
+  const mountBusy = mountRequest !== undefined
+  useEffect(() => { setDraft(current => current?.key === scopeKey ? current : undefined) }, [scopeKey])
+  const inherited = props.access?.mountMode === 'inherit'
+  const pendingMode = mountRequest === 'inherit' || mountRequest === 'independent' ? mountRequest : undefined
+  const selectedMode = pendingMode ?? (inherited ? 'inherit' : 'independent')
+  const mounts = projectMounts ?? props.access
+  const mountedHostCount = mounts?.profileIds.length
+  const cannotChangeMounts = mountBusy || props.accessLoading || props.accessSaving || (!projectMounts && (!props.access || inherited))
+  const mountedGroups = JSON.stringify([...new Set(props.profiles.filter(profile => mounts?.profileIds.includes(profile.id)).map(profile => profile.group?.trim() || ''))].sort())
   useEffect(() => {
     const names: string[] = JSON.parse(mountedGroups)
     if (names.length) setExpandedGroups(current => new Set([...current, ...names.filter(name => !groupChoices.current.has(name))]))
@@ -132,11 +151,57 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     if (projects[profileId] === undefined) void refreshProjects(profileId)
     props.onSelect({ profileId, path: '~' })
   }
+  const changeMountScope = async (action: 'edit' | 'confirm' | MountMode): Promise<void> => {
+    if (sessionId === undefined || mountBusy) return
+    setMountRequest(action)
+    setMountError(undefined)
+    try {
+      if (action === 'edit') {
+        const project = await loadWorkspaceMounts(sessionId)
+        if (project.workspaceId !== workspaceId) throw new Error(t('desk.mountScopeChanged'))
+        if (scopeRef.current === scopeKey) setDraft({ key: scopeKey, mounts: project })
+      } else if (action === 'confirm') {
+        if (!projectMounts) return
+        await saveWorkspaceMounts(sessionId, projectMounts)
+        setDraft(undefined)
+        await props.onProjectsChanged()
+      } else {
+        await props.onMountMode(workspaceId ?? null, action)
+      }
+    } catch (reason) { setMountError({ key: scopeKey, message: message(reason) }) }
+    finally { setMountRequest(undefined) }
+  }
   const toggleProfile = (profileId: string): void => {
-    const current = props.access?.profileIds ?? []
+    const current = mounts?.profileIds ?? []
     const enabled = current.includes(profileId)
-    props.onProfiles(enabled ? current.filter(id => id !== profileId) : [...current, profileId])
-    if (enabled) props.onDirectory(profileId, undefined)
+    const profileIds = enabled ? current.filter(id => id !== profileId) : [...current, profileId]
+    if (projectMounts) {
+      const mountedProjectIds = { ...projectMounts.mountedProjectIds }
+      const workingProjectIds = { ...projectMounts.workingProjectIds }
+      if (enabled) { delete mountedProjectIds[profileId]; delete workingProjectIds[profileId] }
+      setDraft({ key: scopeKey, mounts: { ...projectMounts, profileIds, mountedProjectIds, workingProjectIds } })
+    } else {
+      props.onProfiles(profileIds)
+      if (enabled) props.onDirectory(profileId, undefined)
+    }
+  }
+  const toggleDirectory = (profileId: string, project: RemoteProjectView): void => {
+    if (!projectMounts) { props.onToggleProject(profileId, project.id, project.path); return }
+    const current = projectMounts.mountedProjectIds[profileId] ?? []
+    const ids = current.includes(project.id) ? current.filter(id => id !== project.id) : [...current, project.id]
+    const workingProjectIds = { ...projectMounts.workingProjectIds }
+    if (!ids.includes(workingProjectIds[profileId] ?? '')) {
+      if (ids[0] !== undefined) workingProjectIds[profileId] = ids[0]
+      else delete workingProjectIds[profileId]
+    }
+    setDraft({ key: scopeKey, mounts: {
+      ...projectMounts, workingProjectIds, mountedProjectIds: { ...projectMounts.mountedProjectIds, [profileId]: ids },
+    } })
+  }
+  const setDefaultDirectory = (profileId: string, project: RemoteProjectView): void => {
+    if (projectMounts) {
+      setDraft({ key: scopeKey, mounts: { ...projectMounts, workingProjectIds: { ...projectMounts.workingProjectIds, [profileId]: project.id } } })
+    } else props.onDirectory(profileId, project.path, project.id)
   }
   const toggleGroup = (name: string): void => setExpandedGroups(current => {
     groupChoices.current.add(name)
@@ -155,8 +220,50 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   return <aside ref={panelGlow.ref} onPointerMove={panelGlow.onPointerMove} onPointerLeave={panelGlow.onPointerLeave} className={`dsh-ssh-remote-tree dsh-ssh-border-surface${props.catalogue ? ` dsh-ssh-host-catalogue is-${display}` : ''}`}>
     {props.catalogue ? <>
 
-      <div className="dsh-ssh-catalogue-tools"><label className="dsh-ssh-search"><span className="sr-only">{t('remote-workspace-tree.searchHosts')}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('desk.searchCatalogue')} /></label><div className="dsh-ssh-catalogue-actions"><button type="button" className="dsh-ssh-secondary-button" aria-haspopup="dialog" onClick={() => setAccessOpen(true)}>{t('remote-workspace-tree.currentSessionPermissions')}{props.accessSaving ? ` · ${t('remote-workspace-tree.saving')}` : props.accessError ? ' !' : ''}</button><button type="button" aria-pressed={display === 'list'} onClick={() => chooseDisplay('list')}>{t('desk.list')}</button><button type="button" aria-pressed={display === 'cards'} onClick={() => chooseDisplay('cards')}>{t('desk.cards')}</button><button type="button" className="dsh-ssh-secondary-button" onClick={props.onNewGroup}>{t('remote-workspace-tree.addGroup')}</button><button type="button" className="dsh-ssh-primary-button" onClick={props.onNewProfile}>{t('remote-workspace-tree.addHost')}</button></div></div>
-      <p className="dsh-ssh-catalogue-purpose">{t('desk.mountPurpose')}</p>
+      <div className="dsh-ssh-catalogue-tools">
+        <label className="dsh-ssh-search"><span className="sr-only">{t('remote-workspace-tree.searchHosts')}</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t('desk.searchCatalogue')} /></label>
+        <p className="dsh-ssh-catalogue-purpose">{t('desk.mountPurpose')}</p>
+        <div className="dsh-ssh-catalogue-actions">
+          <button type="button" className="dsh-ssh-secondary-button" aria-haspopup="dialog" disabled={!!projectMounts || mountBusy} onClick={() => setAccessOpen(true)}>{t('remote-workspace-tree.currentSessionPermissions')}{props.accessSaving ? ` · ${t('remote-workspace-tree.saving')}` : props.accessError ? ' !' : ''}</button>
+          <button type="button" aria-pressed={display === 'list'} onClick={() => chooseDisplay('list')}>{t('desk.list')}</button>
+          <button type="button" aria-pressed={display === 'cards'} onClick={() => chooseDisplay('cards')}>{t('desk.cards')}</button>
+          <button type="button" className="dsh-ssh-secondary-button" onClick={props.onNewGroup}>{t('remote-workspace-tree.addGroup')}</button>
+          <button type="button" className="dsh-ssh-primary-button" onClick={props.onNewProfile}>{t('remote-workspace-tree.addHost')}</button>
+        </div>
+        <div className="dsh-ssh-catalogue-mount-scope">
+          <fieldset disabled={!sessionId || props.accessLoading || props.accessSaving || mountBusy || !!projectMounts} aria-label={t('desk.mountScopeCurrentSession')}>
+            <span>{t('desk.mountScopeCurrentSession')}</span>
+            <div className="dsh-ssh-mount-scope-options">
+              <label className="dsh-ssh-mount-scope-choice">
+                <input type="radio" name="dsh-ssh-mount-scope" disabled={!workspace} checked={selectedMode === 'inherit'} onChange={() => void changeMountScope('inherit')} />
+                {t('desk.mountScopeInheritProject')}
+              </label>
+              <label className="dsh-ssh-mount-scope-choice">
+                <input type="radio" name="dsh-ssh-mount-scope" checked={!!props.access && selectedMode === 'independent'} onChange={() => void changeMountScope('independent')} />
+                {t('desk.mountScopeIndependent')}
+              </label>
+            </div>
+          </fieldset>
+          {!!props.access && !props.accessLoading && <div className="dsh-ssh-mount-scope-status" data-editing={!!projectMounts}>
+            <p role="status">
+              {projectMounts && workspace ? <>
+                <strong>{t('desk.mountScopeEditing', [workspace.title || workspace.path])}</strong>
+                <span>{t('desk.mountScopeEditingHint')} · {t('desk.mountScopeDraftCount', [mountedHostCount ?? 0])}</span>
+              </> : pendingMode ? t('desk.mountScopeSaving') : <>
+                {workspace && inherited && <>{t('desk.mountScopeInheritedFrom', [workspace.title || workspace.path])} · </>}
+                {t('desk.mountScopeHostCount', [mountedHostCount ?? 0])}
+              </>}
+            </p>
+            {workspace && sessionId && <div className="dsh-ssh-mount-scope-actions" aria-busy={mountBusy}>
+              <button type="button" className={projectMounts ? 'dsh-ssh-primary-button' : 'dsh-ssh-secondary-button'} disabled={mountBusy || props.accessSaving} onClick={() => void changeMountScope(projectMounts ? 'confirm' : 'edit')}>
+                {projectMounts ? t('desk.mountScopeConfirm') : t('desk.mountScopeEdit')}
+              </button>
+              {projectMounts && <button type="button" className="dsh-ssh-secondary-button" disabled={mountBusy} onClick={() => { setDraft(undefined); setMountError(undefined) }}>{t('client.cancel')}</button>}
+            </div>}
+          </div>}
+          {mountError?.key === scopeKey && <p className="dsh-ssh-inline-error" role="alert">{mountError.message}</p>}
+        </div>
+      </div>
       {(error || props.accessError) && <p className="dsh-ssh-inline-error" role="alert">{error || props.accessError}</p>}
     </> : <>
     <header className="dsh-ssh-tree-header">
@@ -183,7 +290,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
         <h3><button type="button" aria-expanded={!collapsed} onClick={() => toggleGroup(group.name)}>{collapsed ? <IconChevronRightOutline14 size={14} /> : <IconChevronDownOutline14 size={14} />}<span>{group.name || t("remote-workspace-tree.ungrouped")}</span><small>{group.profiles.length}</small></button>{group.name && props.onGroupProxy && <button type="button" className="dsh-ssh-group-proxy-button" aria-label={t('group-proxy.editTitle', [group.name])} title={t('group-proxy.editTitle', [group.name])} onClick={() => props.onGroupProxy?.(group.name)}><IconEditOutline16 size={14} /></button>}</h3>
         {!collapsed && <div className="dsh-ssh-catalogue-group-items">{group.profiles.map(profile => {
           const open = !collapsedHosts.has(profile.id) && (expanded.has(profile.id) || (!!query.trim() && (projects[profile.id] ?? []).some(project => `${project.name} ${project.path}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))))
-          const enabled = props.access?.profileIds.includes(profile.id) === true
+          const enabled = mounts?.profileIds.includes(profile.id) === true
           const children = projects[profile.id] ?? []
           const active = props.selected?.profileId === profile.id && props.selected.projectId === undefined
           return <div className="dsh-ssh-tree-host" key={profile.id} data-open={open}>
@@ -209,8 +316,8 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                 className={`dsh-ssh-tree-mount dsh-ssh-context-action${enabled ? ' is-mounted' : ''}`}
                 aria-label={`${enabled ? t("remote-workspace-tree.unmount") : t("remote-workspace-tree.mount")} ${profile.name}`}
                 aria-pressed={enabled}
-                title={props.access === null ? t("remote-workspace-tree.openADshSessionBeforeMountingHosts") : enabled ? t("remote-workspace-tree.unmountFromCurrentSession") : t("remote-workspace-tree.mountToCurrentSession")}
-                disabled={props.access === null || props.accessLoading || props.accessSaving}
+                title={projectMounts ? t('desk.mountScopeProjectTarget') : inherited ? t('desk.mountScopeInheritedHint') : !props.access ? t('remote-workspace-tree.openADshSessionBeforeMountingHosts') : enabled ? t('remote-workspace-tree.unmountFromCurrentSession') : t('remote-workspace-tree.mountToCurrentSession')}
+                disabled={cannotChangeMounts}
                 onClick={() => toggleProfile(profile.id)}
               >{enabled ? t("remote-workspace-tree.unmount") : t("remote-workspace-tree.mount")}</button>
               <div className="dsh-ssh-tree-menu-wrap is-host dsh-ssh-context-action">
@@ -228,18 +335,18 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
                 : children.length === 0 ? <button type="button" className="dsh-ssh-tree-empty" onClick={() => setEditing({ profile })}><IconPlusOutline16 size={13} />{t("remote-workspace-tree.addPinnedDirectory")}</button>
                   : children.map(project => {
                     const projectActive = props.selected?.projectId === project.id
-                    const bound = props.access !== null && mountedProjects(props.access, profile.id).includes(project.id)
-                    const isDefault = props.access?.workingProjectIds[profile.id] === project.id
+                    const bound = mounts !== null && mountedProjects(mounts, profile.id).includes(project.id)
+                    const isDefault = mounts?.workingProjectIds[profile.id] === project.id
                     return <div className="dsh-ssh-tree-project" key={project.id}>
                       <div data-ssh-interactive="row" data-ssh-context-row className={`dsh-ssh-tree-project-row${projectActive ? ' is-active' : ''}${bound ? ' is-bound' : ''}${projectMenu === project.id ? ' is-menu-open' : ''}`}>
                         <button type="button" className="dsh-ssh-tree-project-main" aria-pressed={projectActive} title={`${project.name} · ${project.path}\n${t('desk.openProjectHint')}${bound ? ` · ${isDefault ? t('remote-workspace-tree.mountedDefaultWorkingDirectory') : t('client.mounted')}` : ''}`} onClick={() => props.onSelect({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name })} onDoubleClick={() => props.onOpen?.({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name })} onKeyDown={event => { if (event.key === 'Enter' && props.onOpen) { event.preventDefault(); props.onOpen({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name }) } }}><span>{bound ? <IconFolderOpenOutline16 size={15} /> : <IconFolderClose16 size={15} />}</span><span><strong>{project.name}</strong><small>{project.path}</small></span></button>
                         <div className="dsh-ssh-tree-project-actions dsh-ssh-context-action">
-                          <button type="button" className="dsh-ssh-tree-mount" aria-pressed={bound} aria-label={`${bound ? t('remote-workspace-tree.unmount') : t('remote-workspace-tree.mount')} ${project.name}`} disabled={!enabled || props.accessLoading || props.accessSaving} title={!enabled ? t('remote-workspace-tree.mountThisHostFirst') : t('desk.manualHint')} onClick={() => props.onToggleProject(profile.id, project.id, project.path)}>{bound ? t('remote-workspace-tree.unmount') : t('remote-workspace-tree.mount')}</button>
+                          <button type="button" className="dsh-ssh-tree-mount" aria-pressed={bound} aria-label={`${bound ? t('remote-workspace-tree.unmount') : t('remote-workspace-tree.mount')} ${project.name}`} disabled={!enabled || cannotChangeMounts} title={!enabled ? t('remote-workspace-tree.mountThisHostFirst') : projectMounts ? t('desk.mountScopeProjectTarget') : inherited ? t('desk.mountScopeInheritedHint') : t('desk.manualHint')} onClick={() => toggleDirectory(profile.id, project)}>{bound ? t('remote-workspace-tree.unmount') : t('remote-workspace-tree.mount')}</button>
                           <div className="dsh-ssh-tree-menu-wrap is-project">
                             <button type="button" className="dsh-ssh-tree-more" aria-haspopup="menu" aria-expanded={projectMenu === project.id} aria-label={t('desk.projectActions', [project.name])} onClick={event => { menuAnchor.current = event.currentTarget; setHostMenu(undefined); setProjectMenu(current => current === project.id ? undefined : project.id) }}><IconEllipsisOutline16 size={15} /></button>
                             {projectMenu === project.id && <HostActionMenu anchor={menuAnchor.current} label={t('desk.projectActions', [project.name])} onKeyDown={navigateMenu}>
                               <button type="button" role="menuitem" onClick={() => { setProjectMenu(undefined); props.onOpen?.({ profileId: profile.id, path: project.path, projectId: project.id, label: project.name }) }}><TerminalActionIcon />{t('desk.openTerminal')}</button>
-                              {bound && !isDefault && <button type="button" role="menuitem" disabled={props.accessSaving} onClick={() => { setProjectMenu(undefined); props.onDirectory(profile.id, project.path, project.id) }}><IconFolderOpenOutline16 size={14} />{t('remote-workspace-tree.setAsDefaultWorkingDirectory')}</button>}
+                              {bound && !isDefault && <button type="button" role="menuitem" disabled={cannotChangeMounts} onClick={() => { setProjectMenu(undefined); setDefaultDirectory(profile.id, project) }}><IconFolderOpenOutline16 size={14} />{t('remote-workspace-tree.setAsDefaultWorkingDirectory')}</button>}
                               <button type="button" role="menuitem" onClick={event => { setError(undefined); setCreatingSession({ profile, project, returnFocus: menuAnchor.current ?? event.currentTarget }); setProjectMenu(undefined) }}><IconPlusOutline16 size={14} />{t('remote-workspace-tree.newSession')}</button>
                               <button type="button" role="menuitem" onClick={() => { setProjectMenu(undefined); setEditing({ profile, project }) }}><IconEditOutline16 size={14} />{t('remote-workspace-tree.editPinnedDirectory')}</button>
                             </HostActionMenu>}
@@ -308,7 +415,7 @@ function RemoteProjectDialog({ profile, project, onClose, onSaved }: { profile: 
 
 function groupProfiles(profiles: ProfileView[], groupConfigs: GroupProxy[], query: string, projects: Record<string, RemoteProjectView[]> = {}): Array<{ name: string; profiles: ProfileView[] }> {
   const result = new Map<string, ProfileView[]>()
-  if (profiles.length > 0) result.set('', [])
+  if (profiles.some(profile => !profile.group?.trim())) result.set('', [])
   for (const profile of profiles) {
     const name = profile.group?.trim() || ''
     const current = result.get(name)

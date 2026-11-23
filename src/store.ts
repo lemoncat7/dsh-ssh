@@ -1,10 +1,13 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState } from './domain.js'
+import type { CredentialEntry, ForwardRule, FtpProfile, ProxyEntry, RemoteProject, SessionInjection, SshProfile, SshSettings, SshState, WorkspaceMountConfiguration } from './domain.js'
 import { mountedProjects } from './project-mounts.js'
 import { parseGroupProxy } from './group-proxy.js'
 import { fileEndpointIds } from './file-access-policy.js'
+import { newSessionAccess } from './session-defaults.js'
+
+export type SessionWorkspaceResolver = (sessionId: string) => string | undefined
 
 export class SshStore {
   private revision = randomBytes(16).toString('hex')
@@ -14,11 +17,11 @@ export class SshStore {
   private queue: Promise<unknown> = Promise.resolve()
   private readonly listeners = new Set<(previous: SshState, next: SshState) => void>()
 
-  private constructor(private readonly path: string, initial: SshState) {
+  private constructor(private readonly path: string, initial: SshState, private readonly resolveWorkspace: SessionWorkspaceResolver) {
     this.state = initial
   }
 
-  static async open(path: string, defaults: SshSettings): Promise<SshStore> {
+  static async open(path: string, defaults: SshSettings, resolveWorkspace: SessionWorkspaceResolver = () => undefined): Promise<SshStore> {
     await mkdir(dirname(path), { recursive: true })
     let initial: SshState = { schemaVersion: 5, profiles: [], ftpProfiles: [], remoteProjects: [], credentialEntries: [], proxyEntries: [], forwardRules: [], injections: [], settings: defaults }
     try {
@@ -27,7 +30,7 @@ export class SshStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const store = new SshStore(path, initial)
+    const store = new SshStore(path, initial, resolveWorkspace)
     if (!(await fileExists(path))) await store.persist(initial)
     return store
   }
@@ -45,12 +48,57 @@ export class SshStore {
   proxyEntry(id: string): ProxyEntry | undefined { return structuredClone(this.state.proxyEntries.find(entry => entry.id === id)) }
   forwards(): ForwardRule[] { return structuredClone(this.state.forwardRules) }
   forward(id: string): ForwardRule | undefined { return structuredClone(this.state.forwardRules.find(rule => rule.id === id)) }
-  injection(sessionId: string): SessionInjection | undefined {
-    const access = structuredClone(this.state.injections.find(item => item.sessionId === sessionId))
-    if (access) {
-      access.profileIds = access.profileIds.filter(id => this.state.profiles.some(profile => profile.id === id))
-      access.fileEndpointIds = fileEndpointIds(access).filter(id => !id.startsWith('ftp:') || this.state.ftpProfiles.some(profile => id === `ftp:${profile.id}`))
+  workspaceId(sessionId: string): string | undefined { return this.resolveWorkspace(sessionId) }
+
+  workspaceMounts(sessionId: string, state = this.state): WorkspaceMountConfiguration | undefined {
+    const workspaceId = this.workspaceId(sessionId)
+    if (workspaceId === undefined) return undefined
+    const stored = state.workspaceMounts?.find(item => item.workspaceId === workspaceId)
+    return stored
+      ? { ...structuredClone(stored), ...availableWorkspaceMounts(stored, state) }
+      : { workspaceId, revision: '', profileIds: [], mountedProjectIds: {}, workingProjectIds: {} }
+  }
+
+  injection(sessionId: string, state = this.state): SessionInjection | undefined {
+    const stored = state.injections.find(item => item.sessionId === sessionId)
+    const workspace = this.workspaceMounts(sessionId, state)
+    if (!stored && !workspace?.profileIds.length) return undefined
+    return this.effectiveAccess(sessionId, stored, workspace, state)
+  }
+
+  sessionAccess(sessionId: string): SessionInjection {
+    return this.injection(sessionId) ?? this.effectiveAccess(sessionId, undefined, this.workspaceMounts(sessionId), this.state)
+  }
+
+  private effectiveAccess(sessionId: string, stored: SessionInjection | undefined, workspace: WorkspaceMountConfiguration | undefined, state: SshState): SessionInjection {
+    const access = stored ? structuredClone(stored) : newSessionAccess(sessionId, state.settings)
+    const mode = stored?.mountMode ?? (stored || !workspace ? 'independent' : 'inherit')
+    if (workspace || stored?.mountMode === 'inherit') access.mountMode = mode
+    else delete access.mountMode
+    if (mode === 'inherit') {
+      access.profileIds = workspace?.profileIds ?? []
+      access.mountedProjectIds = workspace?.mountedProjectIds ?? {}
+      access.workingProjectIds = workspace?.workingProjectIds ?? {}
+      access.workingDirectories = Object.fromEntries(Object.entries(access.workingProjectIds).flatMap(([profileId, projectId]) => {
+        const project = state.remoteProjects.find(item => item.id === projectId && item.profileId === profileId)
+        return project ? [[profileId, project.path]] : []
+      }))
+      const directory = stored?.inheritedDirectory
+      if (workspace && directory?.workspaceId === workspace.workspaceId && directory.revision === workspace.revision) {
+        for (const id of access.profileIds) {
+          const path = directory.paths[id]
+          if (path === undefined) continue
+          access.workingDirectories[id] = path
+          const project = state.remoteProjects.find(item => item.profileId === id && item.path === path && access.mountedProjectIds?.[id]?.includes(item.id))
+          if (project) access.workingProjectIds[id] = project.id
+          else delete access.workingProjectIds[id]
+        }
+      }
     }
+    delete access.independentMountsSaved
+    delete access.inheritedDirectory
+    access.profileIds = access.profileIds.filter(id => state.profiles.some(profile => profile.id === id))
+    access.fileEndpointIds = fileEndpointIds(access).filter(id => !id.startsWith('ftp:') || state.ftpProfiles.some(profile => id === `ftp:${profile.id}`))
     return access
   }
   settings(): SshSettings { return structuredClone(this.state.settings) }
@@ -59,12 +107,12 @@ export class SshStore {
 
   /** Copy durable access from a parent conversation into a newly forked conversation. */
   async inheritInjection(parentSessionId: string, childSessionId: string): Promise<boolean> {
-    if (parentSessionId === childSessionId || this.injection(childSessionId) !== undefined || this.injection(parentSessionId) === undefined) return false
+    if (parentSessionId === childSessionId || this.state.injections.some(item => item.sessionId === childSessionId) || !this.state.injections.some(item => item.sessionId === parentSessionId)) return false
     let inherited = false
     await this.update(state => {
       if (state.injections.some(item => item.sessionId === childSessionId)) return
       const parent = state.injections.find(item => item.sessionId === parentSessionId)
-      if (parent === undefined) return
+      if (parent === undefined || parent.mountMode === 'inherit') return
       state.injections.push({ ...structuredClone(parent), sessionId: childSessionId, updatedAt: Date.now() })
       inherited = true
     })
@@ -135,6 +183,7 @@ function parseState(value: unknown, defaults: SshSettings): SshState {
     forwardRules: Array.isArray(state.forwardRules) ? state.forwardRules : [],
     commands: Array.isArray(state.commands) ? state.commands : [],
     groupProxies: Array.isArray(state.groupProxies) ? state.groupProxies.map(parseGroupProxy) : [],
+    workspaceMounts: Array.isArray(state.workspaceMounts) ? state.workspaceMounts : [],
     injections: Array.isArray(state.injections) ? state.injections.map(injection => ({
       ...injection,
       fileEndpointIds: normalizeFileEndpointIds(injection),
@@ -180,6 +229,13 @@ function validateReferences(state: SshState): void {
   const projects = new Map(state.remoteProjects.map(project => [project.id, project]))
   if (projectIds.size !== state.remoteProjects.length) throw new Error('duplicate remote project id')
   for (const project of state.remoteProjects) if (!ids.has(project.profileId)) throw new Error(`remote project references missing profile ${project.profileId}`)
+  state.workspaceMounts = (state.workspaceMounts ?? []).map(item => {
+    const mounts = availableWorkspaceMounts(item, state)
+    const changed = JSON.stringify(mounts) !== JSON.stringify({
+      profileIds: item.profileIds, mountedProjectIds: item.mountedProjectIds, workingProjectIds: item.workingProjectIds,
+    })
+    return { ...item, ...mounts, revision: changed ? randomBytes(16).toString('hex') : item.revision }
+  })
   for (const injection of state.injections) {
     injection.profileIds = [...new Set(injection.profileIds.filter(id => ids.has(id)))]
     injection.mountedProjectIds = Object.fromEntries(injection.profileIds.map(profileId => [profileId, mountedProjects(injection, profileId).filter(projectId => projects.get(projectId)?.profileId === profileId)]))
@@ -273,4 +329,18 @@ function normalizeRequireFileApproval(injection: unknown): boolean {
 
 async function fileExists(path: string): Promise<boolean> {
   try { await readFile(path); return true } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false; throw error }
+}
+
+function availableWorkspaceMounts(config: WorkspaceMountConfiguration, state: SshState): Omit<WorkspaceMountConfiguration, 'revision' | 'workspaceId'> {
+  const profileIds = config.profileIds.filter(id => state.profiles.some(profile => profile.id === id))
+  const mountedProjectIds = Object.fromEntries(profileIds.map(id => [
+    id, (config.mountedProjectIds[id] ?? []).filter(projectId => state.remoteProjects.some(project => project.id === projectId && project.profileId === id)),
+  ]))
+  const workingProjectIds = Object.fromEntries(profileIds.flatMap(id => {
+    const mounted = mountedProjectIds[id] ?? []
+    const desired = config.workingProjectIds[id]
+    const projectId = desired && mounted.includes(desired) ? desired : mounted[0]
+    return projectId === undefined ? [] : [[id, projectId]]
+  }))
+  return { profileIds, mountedProjectIds, workingProjectIds }
 }

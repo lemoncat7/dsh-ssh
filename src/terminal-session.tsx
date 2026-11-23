@@ -11,7 +11,7 @@ import { CommandsPanel } from './commands-panel.js'
 import type { BrowserTerminalHandle } from './terminal-workspace-state.js'
 import { terminalDirectory } from './terminal-directory.js'
 
-export function TerminalSession({ handle, profile, path, label, takeAutoConnect, onPhase, onControls, onConnected, onDirectory }: { takeAutoConnect?(): boolean; onPhase?(phase: 'idle' | 'connecting' | 'connected' | 'error'): void; handle: BrowserTerminalHandle; profile: ProfileView; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
+export function TerminalSession({ handle, profile, path, label, temporary = false, takeAutoConnect, onPhase, onControls, onConnected, onDirectory }: { takeAutoConnect?(): boolean; onPhase?(phase: 'idle' | 'connecting' | 'connected' | 'error'): void; handle: BrowserTerminalHandle; profile: Pick<ProfileView, 'id' | 'name' | 'host' | 'username' | 'port'>; temporary?: boolean; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
   const sshLocale = useSshLocale()
   const hostRef = useRef<HTMLDivElement>(null)
   const directoryCallback = useRef(onDirectory)
@@ -88,7 +88,7 @@ export function TerminalSession({ handle, profile, path, label, takeAutoConnect,
   }, [id])
 
   const connect = async (): Promise<void> => {
-    if (connecting.current || idRef.current) return
+    if (connecting.current || idRef.current || temporary && !handle.id) return
     terminalRef.current?.reset()
     connecting.current = true
     const current = generation.current
@@ -128,9 +128,9 @@ export function TerminalSession({ handle, profile, path, label, takeAutoConnect,
   actions.current = { connect, disconnect }
   useEffect(() => {
     if (!onControls) return
-    onControls(<><button type="button" className="dsh-ssh-secondary-button" aria-label={t("client.savedCommands")} title={t("terminal-session.savedCommands", [label])} onClick={() => setPicking(true)}>{t("commands-panel.command")}</button>{id ? <button type="button" className="dsh-ssh-danger-button dsh-ssh-disconnect" title={t("terminal-session.disconnect", [label])} onClick={() => { void actions.current.disconnect() }}>{t("client.disconnect")}</button> : <button type="button" className="dsh-ssh-primary-button" title={t("terminal-session.connect", [label])} disabled={phase === 'connecting'} onClick={() => { void actions.current.connect() }}>{phase === 'connecting' ? t("client.connecting") : t("terminal-session.connect2")}</button>}</>)
+    onControls(<><button type="button" className="dsh-ssh-secondary-button" aria-label={t("client.savedCommands")} title={t("terminal-session.savedCommands", [label])} onClick={() => setPicking(true)}>{t("commands-panel.command")}</button>{id ? <button type="button" className="dsh-ssh-danger-button dsh-ssh-disconnect" title={t("terminal-session.disconnect", [label])} onClick={() => { void actions.current.disconnect() }}>{t("client.disconnect")}</button> : !temporary && <button type="button" className="dsh-ssh-primary-button" title={t("terminal-session.connect", [label])} disabled={phase === 'connecting'} onClick={() => { void actions.current.connect() }}>{phase === 'connecting' ? t("client.connecting") : t("terminal-session.connect2")}</button>}</>)
     return () => onControls(null)
-  }, [onControls, label, id, phase, sshLocale])
+  }, [onControls, label, id, phase, sshLocale, temporary])
   return <div className="dsh-ssh-terminal-pane is-embedded">
     {error && <p className="dsh-ssh-inline-error" role="alert">{error}</p>}
     <div className="dsh-ssh-terminal-frame"><div className="dsh-ssh-xterm"><div ref={hostRef} className="dsh-ssh-terminal-viewport" /></div><div className="dsh-ssh-terminal-status"><span title={t("terminal-session.retentionHint")}>{label} · {id ? t("terminal-session.connected") : phase === 'connecting' ? t("client.connecting") : t("terminal-session.disconnected")}</span><span title={t("terminal-session.initialDirectory", [path, profileAddress(profile)])}>{path}</span></div></div>

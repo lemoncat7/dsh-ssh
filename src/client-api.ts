@@ -1,7 +1,8 @@
 export const SSH_API = '/ssh-local/v1'
 import { createBrowserTransfer, updateBrowserTransfer } from './browser-transfers.js'
-import { readUploadConcurrency } from './upload-concurrency.js'
+import { readUploadConcurrency } from './transfer-concurrency.js'
 import { createSharedRead } from './shared-read.js'
+import type { MountMode, WorkspaceMountConfiguration } from './domain.js'
 export function loadNativeDirectorySupport(): Promise<{ available: boolean }> { return api('/activity/native-directory') }
 export function openNativeDirectory(sessionId: string, path: string): Promise<{ opened: boolean }> {
   return api('/activity/native-directory', { method: 'POST', body: JSON.stringify({ sessionId, path }) })
@@ -34,6 +35,7 @@ export interface ForwardView {
 }
 export interface ForwardStatus { ruleId: string; state: 'stopped' | 'starting' | 'running' | 'error'; bindHost: string; bindPort: number; connections: number; error?: string }
 export interface InjectionView {
+  mountMode?: MountMode
   sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean
   fileEndpointIds: string[]; filePermission: 'browse' | 'transfer'; requireFileApproval: boolean
   allowLocalUpload?: boolean; allowLocalDownload?: boolean
@@ -138,8 +140,8 @@ export function loadFileEndpointDirectory(paneId: string, endpointId: string, pa
   const query = new URLSearchParams({ paneId, endpointId }); if (path !== undefined) query.set('path', path)
   return api(`/file-transfer/directory?${query.toString()}`)
 }
-export function fileEndpointDownloadUrl(endpointId: string, path: string): string {
-  return `${SSH_API}/file-transfer/download?${new URLSearchParams({ endpointId, path }).toString()}`
+export function fileEndpointDownloadUrl(endpointId: string, path: string, concurrency: number): string {
+  return `${SSH_API}/file-transfer/download?${new URLSearchParams({ endpointId, path, concurrency: String(concurrency) }).toString()}`
 }
 export function deleteFileEndpointEntries(request: { paneId: string; endpointId: string; directory: string; paths: string[] }): Promise<void> {
   return api('/file-transfer/delete', { method: 'POST', body: JSON.stringify(request) })
@@ -155,6 +157,15 @@ export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vau
 export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
 export function loadForwards(): Promise<{ rules: ForwardView[]; statuses: ForwardStatus[] }> { return api('/forwards') }
 export function loadInjection(sessionId: string): Promise<InjectionView | null> { return api(`/injections?sessionId=${encodeURIComponent(sessionId)}&defaults=1`) }
+export function loadWorkspaceMounts(sessionId: string): Promise<WorkspaceMountConfiguration> {
+  return api(`/project-mounts?sessionId=${encodeURIComponent(sessionId)}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
+}
+export function saveWorkspaceMounts(sessionId: string, mounts: WorkspaceMountConfiguration): Promise<WorkspaceMountConfiguration> {
+  return api(`/project-mounts?sessionId=${encodeURIComponent(sessionId)}`, { method: 'PUT', body: JSON.stringify(mounts) })
+}
+export function saveMountMode(sessionId: string, workspaceId: string | null, mode: MountMode): Promise<InjectionView> {
+  return api(`/injections/${encodeURIComponent(sessionId)}/mount-mode`, { method: 'PUT', body: JSON.stringify({ workspaceId, mode }) })
+}
 export function loadRemoteProjects(profileId: string): Promise<RemoteProjectView[]> { return api(`/profiles/${encodeURIComponent(profileId)}/projects`) }
 export function createRemoteProject(profileId: string, project: { name: string; path: string }): Promise<RemoteProjectView> {
   return api(`/profiles/${encodeURIComponent(profileId)}/projects`, { method: 'POST', body: JSON.stringify({ project }) })
@@ -290,6 +301,17 @@ export function activityTerminalStreamUrl(sessionId: string, terminalId: string,
   const query = new URLSearchParams({ sessionId, cursor: String(cursor) })
   return `${SSH_API}/activity/terminals/${encodeURIComponent(terminalId)}/stream?${query.toString()}`
 }
+export interface TemporaryTerminalView {
+  id: string
+  profileId: string
+  username: string
+  host: string
+  port: number
+}
+
+export function createTemporaryTerminal(command: string, password: string, fingerprint: string | undefined, signal: AbortSignal): Promise<TemporaryTerminalView> {
+  return api('/terminals/temporary', { method: 'POST', body: JSON.stringify({ command, password, fingerprint }), signal })
+}
 export function browserTerminalStreamUrl(terminalId: string, cursor = 0): string {
   const query = new URLSearchParams({ cursor: String(cursor) })
   return `${SSH_API}/terminals/${encodeURIComponent(terminalId)}/stream?${query.toString()}`
@@ -305,4 +327,4 @@ export function updateActivityDirectory(sessionId: string, profileId: string, cw
   return api('/activity/directory', { method: 'PUT', body: JSON.stringify({ sessionId, profileId, cwd }) })
 }
 
-export function profileAddress(profile: ProfileView): string { return `${profile.username}@${profile.host}:${profile.port}` }
+export function profileAddress(profile: Pick<ProfileView, 'username' | 'host' | 'port'>): string { return `${profile.username}@${profile.host}:${profile.port}` }

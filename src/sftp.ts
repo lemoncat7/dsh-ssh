@@ -1,3 +1,4 @@
+import { readSftpDownload } from './sftp-download-reader.js'
 import { writeSftpUpload, type UploadOptions } from './sftp-upload-writer.js'
 import path from 'node:path'
 import { previewWithoutReading, textPreview } from './text-preview.js'
@@ -104,10 +105,13 @@ class ReusableSftpSession implements RemoteFileSystemSession {
     }, signal)
   }
 
-  download(requestedPath: string, destination: Writable, signal?: AbortSignal): Promise<void> {
+  download(requestedPath: string, destination: Writable, signal?: AbortSignal, options?: { size: number; concurrency: number }): Promise<void> {
     return this.run(async () => {
       const resolved = await realpath(this.sftp, expandHome(requestedPath, this.home))
-      await pipeline(createSftpReadStream(this.sftp, resolved), destination, { signal })
+      const source = options && options.concurrency > 1 && options.size > 32 * 1024
+        ? readSftpDownload(this.sftp, resolved, options.size, options.concurrency, signal)
+        : createSftpReadStream(this.sftp, resolved)
+      await pipeline(source, destination, { signal })
     }, signal)
   }
 

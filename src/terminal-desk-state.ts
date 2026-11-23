@@ -1,6 +1,13 @@
 import { BrowserTerminalHandle, readTerminalStorage, writeTerminalStorage, readWorkbenchState } from './terminal-workspace-state.js'
 
-export interface DeskTarget { profileId: string; path: string; label?: string | undefined }
+import type { TemporaryTerminalView } from './client-api.js'
+
+export interface DeskTarget {
+  profileId: string
+  path: string
+  label?: string | undefined
+  temporary?: Pick<TemporaryTerminalView, 'username' | 'host' | 'port'>
+}
 export interface DeskPane extends DeskTarget {
   id: number; directory?: string | undefined; handle: BrowserTerminalHandle
   autoConnect: boolean; phase: 'idle' | 'connecting' | 'connected' | 'error'
@@ -87,15 +94,15 @@ export class TerminalDeskState {
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener) }
   snapshot = (): number => this.revision
   save = (): void => {
-    writeTerminalStorage(this.key, { tabs: this.tabs.map(tab => ({ ...tab, panes: tab.panes.map(({ handle, phase, autoConnect, ...pane }) => ({ ...pane, terminalId: handle.id })) })), activeId: this.activeId })
+    writeTerminalStorage(this.key, { tabs: this.tabs.filter(tab => !tab.temporary).map(tab => ({ ...tab, panes: tab.panes.map(({ handle, phase, autoConnect, ...pane }) => ({ ...pane, terminalId: handle.id })) })), activeId: this.activeId })
     this.revision++; for (const listener of this.listeners) listener()
   }
-  private makePane(target: DeskTarget, connect: boolean): DeskPane { return { ...target, id: ++this.serial, handle: new BrowserTerminalHandle(undefined, this.save), autoConnect: connect, phase: 'idle' } }
-  open(target: DeskTarget, fresh = false, connect = true): DeskTab {
+  private makePane(target: DeskTarget, connect: boolean, terminalId?: string): DeskPane { return { ...target, id: ++this.serial, handle: new BrowserTerminalHandle(terminalId, this.save), autoConnect: connect, phase: 'idle' } }
+  open(target: DeskTarget, fresh = false, connect = true, terminalId?: string): DeskTab {
     let tab = !fresh ? [...this.tabs].reverse().find(tab => tab.profileId === target.profileId && tab.path === target.path) : undefined
     if (!tab) {
       if (this.tabs.length >= 32) throw new Error('最多保留 32 个终端标签，请先关闭不再使用的标签。')
-      const pane = this.makePane(target, connect)
+      const pane = this.makePane(target, connect, terminalId)
       tab = { ...target, id: pane.id, panes: [pane], layout: pane.id, focused: pane.id, filesOnly: !connect }
       this.tabs.push(tab)
     }
@@ -114,6 +121,7 @@ export class TerminalDeskState {
     if (!tab || !['single', 'horizontal', 'vertical', 'grid'].includes(mode)) throw new Error('Terminal layout is unavailable')
     if (this.changing.has(tabId)) throw new Error('Terminal layout is changing')
     const count = deskLayoutSize(mode), ids = tab.panes.map(pane => pane.id)
+    if (tab.temporary && count !== 1) throw new Error('Temporary SSH connections support a single pane')
     if (count < ids.length && (!expectedIds || expectedIds.length !== ids.length || expectedIds.some((id, index) => id !== ids[index]) || !keepIds || keepIds.length !== count || new Set(keepIds).size !== count || keepIds.some(id => !ids.includes(id)))) throw new Error('Terminal selection changed; select the panes to keep again')
     this.changing.add(tabId)
     try {

@@ -402,7 +402,10 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     return props.controller.subscribe(sync)
   }, [props.controller])
   useEffect(() => { void refresh() }, [refresh, refreshKey])
-  useWorkspaceRefresh(refresh)
+  useWorkspaceRefresh(async () => {
+    const [result] = await Promise.all([refresh(), access.refresh()])
+    return result
+  })
   useEffect(() => {
     if (openedSessionRef.current !== sessionId) props.controller.close()
   }, [props.controller, sessionId])
@@ -443,6 +446,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         selected={target}
         onSelect={next => { initialHostChosen.current = true; setTarget(next) }}
         onProfiles={access.setProfiles}
+        onMountMode={access.setMountMode}
         onToggleProject={access.toggleProject}
         onProjectsChanged={access.refresh}
         onDirectory={(profileId, path, projectId) => {

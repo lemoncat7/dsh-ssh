@@ -79,7 +79,23 @@ export interface ForwardRule {
   updatedAt: number
 }
 
+export type MountMode = 'inherit' | 'independent'
+
+export interface WorkspaceMounts {
+  profileIds: string[]
+  mountedProjectIds: Record<string, string[]>
+  workingProjectIds: Record<string, string>
+}
+
+export interface WorkspaceMountConfiguration extends WorkspaceMounts {
+  workspaceId: string
+  revision: string
+}
+
 export interface SessionInjection {
+  mountMode?: MountMode
+  independentMountsSaved?: boolean
+  inheritedDirectory?: { workspaceId: string; revision: string; paths: Record<string, string> }
   sessionId: string
   profileIds: string[]
   fileEndpointIds: string[]
@@ -163,6 +179,7 @@ export interface SshState {
   proxyEntries: ProxyEntry[]
   forwardRules: ForwardRule[]
   injections: SessionInjection[]
+  workspaceMounts?: WorkspaceMountConfiguration[]
   commands?: SavedCommand[]
   groupProxies?: GroupProxy[]
   settings: SshSettings

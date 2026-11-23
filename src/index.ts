@@ -26,6 +26,10 @@ export * from './domain.js'
 export const name = 'dsh-ssh'
 export const inject = ['credentials', 'tools', 'agents', 'systemPrompt']
 
+interface WorkspaceRegistry {
+  list(): readonly { id: string; sessionIds: readonly string[] }[]
+}
+
 type RuntimeContext = Context & {
   credentials: CredentialProvider
   webServer?: WebServerLike
@@ -36,13 +40,14 @@ export function apply(context: Context, config: SshConfig): void {
   const ctx = context as RuntimeContext
   const resolved = resolveConfig(config)
   ctx.effect(async () => {
+    let workspaceRegistry: WorkspaceRegistry | undefined
     const store = await SshStore.open(resolved.statePath, {
       allowPublicBind: resolved.allowPublicBind,
       defaultCommandTimeoutMs: resolved.defaultCommandTimeoutMs,
       defaultConnectTimeoutMs: resolved.defaultConnectTimeoutMs ?? 15_000,
       reuseTerminalConnections: resolved.reuseTerminalConnections ?? false,
       maxOutputChars: resolved.maxOutputChars,
-    })
+    }, sessionId => workspaceRegistry?.list().find(workspace => workspace.sessionIds.includes(sessionId))?.id)
     const credentials = new SshCredentialVault(ctx.credentials)
     const gistSync = await GistSyncService.open(store, credentials, new GistTokenVault(ctx.credentials), `${resolved.statePath}.gist-sync.json`)
     const connector = new SshConnector(store, credentials)
@@ -56,7 +61,17 @@ export function apply(context: Context, config: SshConfig): void {
     const forwards = new ForwardManager(connector, store)
     const terminals = new BrowserTerminalManager(connector)
     const activityEvents = new ActivityEventBus()
-    const aiTerminals = new AiTerminalManager(connector, event => { activityEvents.publish(event) })
+    const aiTerminals = new AiTerminalManager(connector, event => { activityEvents.publish(event) }, (sessionId, profileId) => {
+      const access = store.injection(sessionId)
+      return access?.permission === 'terminal' && access.profileIds.includes(profileId)
+    })
+    const revokeTerminals = (): void => { void aiTerminals.revokeUnauthorized().catch(error => ctx.logger.warn(error)) }
+    const unsubscribe = store.subscribe(revokeTerminals)
+    const workspaceScope = ctx.inject?.(['workspaceRegistry'], runtime => {
+      workspaceRegistry = runtime.get('workspaceRegistry') as WorkspaceRegistry
+      store.markWorkspaceChanged()
+      runtime.effect(() => () => { workspaceRegistry = undefined; store.markWorkspaceChanged(); revokeTerminals() })
+    }) as { dispose(): unknown } | undefined
     const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals, files, transfers)
     const forkScope = ctx.inject?.(['sessionController'], runtime => {
       const controller = runtime.get('sessionController') as SessionForkController
@@ -79,6 +94,8 @@ export function apply(context: Context, config: SshConfig): void {
     await forwards.startAuto()
     ctx.logger.info(`dsh-ssh: ready with ${store.profiles().length} profiles`)
     return async () => {
+      unsubscribe()
+      await workspaceScope?.dispose()
       await forkScope?.dispose()
       disposeTools()
       disposeApi?.()

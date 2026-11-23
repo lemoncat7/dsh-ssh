@@ -2,7 +2,7 @@ import { normalizeSftpPathMappings } from './sftp-path-mapping.js'
 import { exportConfiguration, previewConfiguration, importConfiguration } from './config-backup.js'
 import { randomBytes } from 'node:crypto'
 import { uploadEndpointFile } from './endpoint-upload.js'
-import { defaultUploadConcurrency, uploadConcurrencyChoices } from './upload-concurrency.js'
+import { defaultDownloadConcurrency, defaultUploadConcurrency, transferConcurrencyChoices } from './transfer-concurrency.js'
 import type { UploadOptions } from './sftp-upload-writer.js'
 import { DownloadProgressStore } from './download-progress.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -11,13 +11,14 @@ import { HostKeyRequiredError, SshConnector } from './connector.js'
 import { SshCredentialVault } from './credentials.js'
 import {
   normalizeCredentialEntryDraft, normalizeForwardDraft, normalizeFtpProfileDraft, normalizeProfileDraft, normalizeProxyEntryDraft, normalizeRemoteProjectDraft, normalizeSecrets,
-  type CredentialEntry, type ForwardRule, type FtpProfile, type ProxyEntry, type RemoteProject, type SessionInjection, type SshProfile,
+  type CredentialEntry, type ForwardRule, type FtpProfile, type ProxyEntry, type RemoteProject, type SessionInjection, type SshProfile, type WorkspaceMountConfiguration,
 } from './domain.js'
 import { ForwardManager } from './forwards.js'
 import { SshStore } from './store.js'
 import { deleteGroup, moveProfileToGroup, saveGroupProxy } from './group-proxy.js'
 import { normalizeRemoteDirectory, setSessionDirectory } from './directory.js'
 import { AiTerminalManager, BrowserTerminalManager } from './terminal.js'
+import { parseTemporarySshCommand } from './temporary-terminal.js'
 import { streamTerminalOutput } from './terminal-stream.js'
 import { normalizeGitHubProxy } from './github-http.js'
 import { listSftpDirectory, openSftpFile, readSftpFilePreview, statSftpPath, uploadSftpFile } from './sftp.js'
@@ -213,7 +214,9 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'GET' && segments[1] === 'download' && segments.length === 2) {
       const endpointId = requireText(url.searchParams.get('endpointId'), 'endpointId', 110)
       const requestedPath = requireRawText(url.searchParams.get('path'), 'path', 4096)
-      return streamRemoteEndpointFile(req, res, runtime, endpointId, requestedPath)
+      const concurrency = Number(url.searchParams.get('concurrency') ?? defaultDownloadConcurrency)
+      if (!transferConcurrencyChoices.includes(concurrency)) throw httpError(400, 'Invalid download concurrency')
+      return streamRemoteEndpointFile(req, res, runtime, endpointId, requestedPath, concurrency)
     }
     if (method === 'POST' && segments[1] === 'delete' && segments.length === 2) {
       requireMutationHeader(req)
@@ -611,19 +614,69 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (id !== undefined && method === 'POST' && segments[2] === 'stop') { requireMutationHeader(req); return sendJson(res, 200, await runtime.forwards.stop(id)) }
   }
 
+  if (segments[0] === 'project-mounts' && segments.length === 1) {
+    const sessionId = requireText(url.searchParams.get('sessionId'), 'sessionId', 200)
+    const current = runtime.store.workspaceMounts(sessionId)
+    if (!current) throw httpError(404, '当前会话不属于任何项目')
+    if (method === 'GET') return sendJson(res, 200, current)
+    if (method === 'PUT') {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const profileIds = parseProfileIds(body.profileIds, runtime.store)
+      const mountedProjectIds = parseProjectMounts(body.mountedProjectIds, profileIds, runtime.store.remoteProjects())
+      const workingProjectIds = parseWorkingProjectIds(body.workingProjectIds, profileIds, runtime.store)
+      for (const [id, projectId] of Object.entries(workingProjectIds)) {
+        if (!mountedProjectIds[id]?.includes(projectId)) throw httpError(400, '默认目录必须先挂载到项目')
+      }
+      const next: WorkspaceMountConfiguration = {
+        workspaceId: current.workspaceId, revision: randomBytes(16).toString('hex'), profileIds, mountedProjectIds, workingProjectIds,
+      }
+      const saved = await runtime.store.update(state => {
+        assertCurrentProject(runtime.store.workspaceMounts(sessionId, state), body)
+        if (profileIds.some(id => !state.profiles.some(profile => profile.id === id))) throw httpError(409, '主机列表已变化，请重新编辑项目挂载')
+        parseProjectMounts(mountedProjectIds, profileIds, state.remoteProjects)
+        state.workspaceMounts = [...(state.workspaceMounts ?? []).filter(item => item.workspaceId !== next.workspaceId), next]
+      })
+      return sendJson(res, 200, saved.workspaceMounts?.find(item => item.workspaceId === next.workspaceId))
+    }
+  }
+
   if (segments[0] === 'injections') {
     if (method === 'GET' && segments.length === 1) {
       const sessionId = url.searchParams.get('sessionId')
       if (!sessionId) throw httpError(400, 'sessionId is required')
-      return sendJson(res, 200, runtime.store.injection(sessionId) ?? (url.searchParams.get('defaults') === '1' ? newSessionAccess(sessionId, runtime.store.settings()) : null))
+      return sendJson(res, 200, url.searchParams.get('defaults') === '1' ? runtime.store.sessionAccess(sessionId) : runtime.store.injection(sessionId))
     }
     const sessionId = segments[1]
+    if (sessionId !== undefined && method === 'PUT' && segments[2] === 'mount-mode' && segments.length === 3) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const mode = body.mode
+      if (mode !== 'inherit' && mode !== 'independent') throw httpError(400, 'Invalid mount mode')
+      await runtime.store.update(state => {
+        const workspace = runtime.store.workspaceMounts(sessionId, state)
+        if (body.workspaceId !== (workspace?.workspaceId ?? null) || !workspace && mode === 'inherit') throw httpError(409, '当前会话的项目已变化，请刷新后重试')
+        const previous = state.injections.find(item => item.sessionId === sessionId)
+        if (!workspace && previous?.mountMode !== 'inherit') throw httpError(404, '当前会话不属于任何项目')
+        const effective = runtime.store.injection(sessionId, state) ?? { ...newSessionAccess(sessionId, state.settings), mountMode: 'inherit' }
+        if (effective.mountMode === mode) return
+        const hasIndependent = previous !== undefined && (previous.mountMode !== 'inherit' || previous.independentMountsSaved === true)
+        const next: SessionInjection = { ...(hasIndependent && workspace ? previous : effective), mountMode: mode, updatedAt: Date.now() }
+        if (mode === 'inherit') next.independentMountsSaved = hasIndependent
+        else delete next.independentMountsSaved
+        delete next.inheritedDirectory
+        state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), next]
+      })
+      return sendJson(res, 200, runtime.store.sessionAccess(sessionId))
+    }
     if (sessionId !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const body = await readObject(req)
       const previous = runtime.store.injection(sessionId)
+      const inherited = body.mountMode === 'inherit'
+      if (inherited && runtime.store.sessionAccess(sessionId).mountMode !== 'inherit') throw httpError(409, '会话挂载模式已变化，请刷新后重试')
       for (const key of ['allowLocalUpload', 'allowLocalDownload']) if (body[key] !== undefined && typeof body[key] !== 'boolean') throw httpError(400, `${key} must be boolean`)
-      const profileIds = parseProfileIds(body.profileIds, runtime.store)
+      const profileIds = inherited ? [] : parseProfileIds(body.profileIds, runtime.store)
       const fileEndpointIds = body.fileEndpointIds === undefined ? previous?.fileEndpointIds ?? [] : parseFileEndpointIds(body.fileEndpointIds, runtime.files)
       const filePermission = body.filePermission === undefined ? previous?.filePermission ?? 'browse' : body.filePermission === 'browse' ? 'browse' : body.filePermission === 'transfer' ? 'transfer' : undefined
       if (filePermission === undefined) throw httpError(400, 'filePermission must be browse or transfer')
@@ -631,7 +684,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       if (permission === undefined) throw httpError(400, 'permission must be exec or terminal')
       const workingDirectories = parseWorkingDirectories(body.workingDirectories, profileIds)
       const workingProjectIds = parseWorkingProjectIds(body.workingProjectIds, profileIds, runtime.store)
-      const mountedProjectIds = body.mountedProjectIds === undefined
+      const mountedProjectIds = inherited ? {} : body.mountedProjectIds === undefined
         ? Object.fromEntries(profileIds.map(id => [id, [...new Set([...(previous?.mountedProjectIds?.[id] ?? []), ...(workingProjectIds[id] ? [workingProjectIds[id]!] : [])])]]))
         : parseProjectMounts(body.mountedProjectIds, profileIds, runtime.store.remoteProjects())
       for (const profileId of profileIds) {
@@ -647,15 +700,37 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         allowLocalDownload: filePermission === 'transfer',
         permission, requireCommandApproval: body.requireCommandApproval !== false, workingDirectories, workingProjectIds, mountedProjectIds, updatedAt: Date.now(),
       }
-      await runtime.store.update(state => { state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection] })
-      const revoked = previous?.profileIds.filter(profileId => !profileIds.includes(profileId)) ?? []
+      await runtime.store.update(state => {
+        const stored = state.injections.find(item => item.sessionId === sessionId)
+        const currentMode = stored?.mountMode ?? (stored || !runtime.store.workspaceId(sessionId) ? 'independent' : 'inherit')
+        if (inherited && currentMode !== 'inherit' || !inherited && currentMode === 'inherit' && (stored || body.mountMode === 'independent')) {
+          throw httpError(409, '会话挂载模式已变化，请刷新后重试')
+        }
+        if (inherited) {
+          injection.mountMode = 'inherit'
+          if (stored) {
+            injection.profileIds = stored.profileIds
+            injection.workingDirectories = stored.workingDirectories
+            injection.workingProjectIds = stored.workingProjectIds
+            if (stored.mountedProjectIds) injection.mountedProjectIds = stored.mountedProjectIds
+            if (stored.independentMountsSaved) injection.independentMountsSaved = true
+            if (stored.inheritedDirectory) injection.inheritedDirectory = stored.inheritedDirectory
+          }
+        }
+        state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), injection]
+      })
+      const effective = runtime.store.injection(sessionId)
+      const revoked = previous?.profileIds.filter(profileId => !effective?.profileIds.includes(profileId)) ?? []
       if (permission !== 'terminal') await runtime.aiTerminals.closeOwner(sessionId)
       else await Promise.all(revoked.map(profileId => runtime.aiTerminals.closeProfile(sessionId, profileId)))
       return sendJson(res, 200, runtime.store.injection(sessionId))
     }
     if (sessionId !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
-      await runtime.store.update(state => { state.injections = state.injections.filter(item => item.sessionId !== sessionId) })
+      await runtime.store.update(state => {
+        state.injections = state.injections.filter(item => item.sessionId !== sessionId)
+        if (runtime.store.workspaceId(sessionId)) state.injections.push(newSessionAccess(sessionId, state.settings))
+      })
       await runtime.aiTerminals.closeOwner(sessionId)
       return sendJson(res, 204, undefined)
     }
@@ -866,6 +941,31 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   }
 
   if (segments[0] === 'terminals') {
+    if (method === 'POST' && segments[1] === 'temporary' && segments.length === 2) {
+      requireMutationHeader(req)
+      const body = await readObject(req)
+      const target = parseTemporarySshCommand(requireRawText(body.command, 'ssh command', 1024))
+      const { password } = normalizeSecrets({ password: body.password })
+      if (body.fingerprint !== undefined && (typeof body.fingerprint !== 'string' || !/^SHA256:[0-9a-f]{64}$/.test(body.fingerprint))) {
+        throw httpError(400, 'Invalid SSH host fingerprint')
+      }
+      const profile: SshProfile = {
+        ...target, id: createId('temporary-terminal'), name: target.host, authType: password ? 'password' : 'agent',
+        proxy: { type: 'none' }, keepAliveIntervalMs: 15_000, connectTimeoutMs: 15_000, useDefaultConnectTimeout: true,
+        terminalType: 'xterm-256color', tags: [], createdAt: Date.now(), updatedAt: Date.now(),
+        ...(body.fingerprint === undefined ? {} : { hostFingerprint: body.fingerprint }),
+      }
+      const controller = new AbortController()
+      const abort = (): void => { if (!res.writableEnded) controller.abort() }
+      res.once('close', abort)
+      try {
+        const terminal = await runtime.terminals.createTemporary(profile, password ? { password } : {},
+          optionalInteger(body.cols, 20, 400) ?? 120, optionalInteger(body.rows, 5, 200) ?? 32, controller.signal)
+        if (controller.signal.aborted) await runtime.terminals.get(terminal.id).close()
+        else sendJson(res, 201, { ...terminal, ...target })
+      } finally { res.off('close', abort) }
+      return
+    }
     if (method === 'POST' && segments.length === 1) {
       requireMutationHeader(req)
       const body = await readObject(req)
@@ -1029,6 +1129,12 @@ function requireActivityTerminal(store: SshStore, sessionId: string): SessionInj
   const injection = store.injection(sessionId)
   if (injection === undefined || injection.permission !== 'terminal') throw httpError(403, 'Terminal control is not granted to this DSH session')
   return injection
+}
+
+function assertCurrentProject(current: WorkspaceMountConfiguration | undefined, body: Record<string, unknown>): void {
+  if (!current || current.workspaceId !== body.workspaceId || current.revision !== body.revision) {
+    throw httpError(409, '项目挂载已变化，请重新进入编辑后再试')
+  }
 }
 
 function parseProfileIds(value: unknown, store: SshStore): string[] {
@@ -1207,7 +1313,7 @@ async function streamLocalFile(res: ServerResponse, url: URL, file: Awaited<Retu
   await pipeline(file.stream, res)
 }
 
-async function streamRemoteEndpointFile(req: IncomingMessage, res: ServerResponse, runtime: SshApiRuntime, endpointId: string, requestedPath: string): Promise<void> {
+async function streamRemoteEndpointFile(req: IncomingMessage, res: ServerResponse, runtime: SshApiRuntime, endpointId: string, requestedPath: string, concurrency: number): Promise<void> {
   const controller = new AbortController()
   let session: Awaited<ReturnType<RemoteFileSystems['connect']>> | undefined
   const abortRequest = (): void => controller.abort()
@@ -1230,7 +1336,12 @@ async function streamRemoteEndpointFile(req: IncomingMessage, res: ServerRespons
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
     res.setHeader('X-Content-Type-Options', 'nosniff')
     if (tasks !== undefined) await streamRemoteTar(session, tasks, res, controller.signal)
-    else await session.download(entry.path, res, controller.signal)
+    else {
+      const options = session.endpoint.kind === 'sftp' && entry.kind === 'file' && Number.isSafeInteger(entry.size) && entry.size >= 0
+        ? { size: entry.size, concurrency }
+        : undefined
+      await session.download(entry.path, res, controller.signal, options)
+    }
     if (!res.writableEnded) res.end()
   } finally {
     req.off('aborted', abortRequest)
@@ -1263,7 +1374,7 @@ async function handleBrowserUpload(req: IncomingMessage, res: ServerResponse, ur
   const length = req.headers['content-length'] === undefined ? undefined : Number(req.headers['content-length'])
   if (length !== undefined && (!Number.isSafeInteger(length) || length < 0)) throw httpError(400, 'Invalid upload length')
   const concurrency = Number(url.searchParams.get('concurrency') ?? defaultUploadConcurrency)
-  if (!uploadConcurrencyChoices.includes(concurrency)) throw httpError(400, 'Invalid upload concurrency')
+  if (!transferConcurrencyChoices.includes(concurrency)) throw httpError(400, 'Invalid upload concurrency')
   const id = url.searchParams.get('transferId')
   if (id !== null && !/^[a-f0-9]{32}$/.test(id)) throw httpError(400, 'Invalid transfer id')
   if (id && uploads.has(id)) throw httpError(409, 'Transfer already active')
