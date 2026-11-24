@@ -359,7 +359,7 @@ function FileAccessDialog({ endpoints: allEndpoints, access, onClose, uploadConc
   const value = access.value
   const endpoints = allEndpoints.filter(endpoint => endpoint.kind === 'ftp'); const mounted = endpoints.filter(endpoint => value?.fileEndpointIds.includes(endpoint.id)).length
   const toggle = (id: string): void => access.setFileEndpoints(value?.fileEndpointIds.includes(id) ? value.fileEndpointIds.filter(item => item !== id) : [...(value?.fileEndpointIds ?? []), id])
-  return <Dialog className="dsh-ssh-file-access-dialog" title={t("file-transfer-workspace.sessionAccess2")} subtitle={t("file-transfer-workspace.manageTheRemoteFileConnectionsAvailableToThisSession")} onClose={onClose}>
+  return <Dialog scroll="custom" className="dsh-ssh-file-access-dialog" title={t("file-transfer-workspace.sessionAccess2")} subtitle={t("file-transfer-workspace.manageTheRemoteFileConnectionsAvailableToThisSession")} onClose={onClose}>
     <div className="dsh-ssh-file-access-body dsh-ssh-scroll-surface">
       {access.error && <p className="dsh-ssh-inline-error" role="alert">{access.error}</p>}
       <section className="dsh-ssh-file-access-section" aria-labelledby="dsh-ssh-file-access-connections">

@@ -12,12 +12,14 @@ interface DialogProps {
   subtitle?: string | undefined
   variant?: 'default' | 'confirmation'
   dismissible?: boolean
+  /** Custom sheets provide their own constrained scrolling panes. */
+  scroll?: 'body' | 'custom'
   className?: string | undefined
   onClose(): void
   children: ReactNode
 }
 
-export function Dialog({ title, subtitle, variant = 'default', dismissible = true, className, onClose, children }: DialogProps): JSX.Element {
+export function Dialog({ title, subtitle, variant = 'default', dismissible = true, scroll = 'body', className, onClose, children }: DialogProps): JSX.Element {
   useSshLocale()
   const titleId = useId()
   const descriptionId = useId()
@@ -33,10 +35,12 @@ export function Dialog({ title, subtitle, variant = 'default', dismissible = tru
 
   const confirmation = variant === 'confirmation'
   return <Modal backdropBlur={false} open onClose={closeWithMotion} title={title} headless className={`dsh-ssh-dialog-modal${confirmation ? ' dsh-ssh-confirmation-modal' : ''}${className === undefined ? '' : ` ${className}-modal`}`}>
-    <section ref={surfaceRef} className={`dsh-ssh-dialog dsh-ssh-scroll-surface${confirmation ? ' dsh-ssh-confirmation' : ''}${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>
+    <section ref={surfaceRef} className={`dsh-ssh-dialog${confirmation ? ' dsh-ssh-confirmation' : ''}${className === undefined ? '' : ` ${className}`}`} aria-labelledby={titleId} aria-describedby={subtitle === undefined ? undefined : descriptionId} onClickCapture={captureClose}>
       <header><span><h2 id={titleId}>{title}</h2>{!confirmation && subtitle && <p id={descriptionId}>{subtitle}</p>}</span><button type="button" className="dsh-ssh-icon-button" disabled={!dismissible} onClick={closeWithMotion} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></header>
-      {confirmation && subtitle && <p id={descriptionId} className="dsh-ssh-confirmation-description">{subtitle}</p>}
-      {children}
+      {scroll === 'custom' ? children : <div className="dsh-ssh-dialog-body dsh-ssh-scroll-surface">
+        {confirmation && subtitle && <p id={descriptionId} className="dsh-ssh-confirmation-description">{subtitle}</p>}
+        {children}
+      </div>}
     </section>
   </Modal>
 }

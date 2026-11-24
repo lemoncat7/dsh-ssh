@@ -44,7 +44,7 @@ export function ProjectSessionDialog({ profile, project, workspaces, currentWork
   return <Modal backdropBlur={false} open onClose={close} title={t("project-session-dialog.selectSessionWorkspace")} headless className="dsh-ssh-session-create-modal">
     <section className="dsh-ssh-session-create-shell" onKeyDown={trapDialogFocus}>
       <header><span><h2>{t("project-session-dialog.newRemoteSession")}</h2><p>{t("project-session-dialog.chooseTheLocalProjectThisSessionBelongsToIn")}</p></span><button ref={closeButtonRef} type="button" className="dsh-ssh-icon-button" disabled={creating} onClick={close} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></header>
-      <form onSubmit={event => { void submit(event) }}>
+      <form className="dsh-ssh-scroll-surface" onSubmit={event => { void submit(event) }}>
         <dl className="dsh-ssh-session-create-target"><div><dt>{t("project-session-dialog.remoteHost")}</dt><dd>{profile.name}<small>{profile.username}@{profile.host}:{profile.port}</small></dd></div><div><dt>{t("project-session-dialog.remoteWorkingDirectory")}</dt><dd>{project.name}<small title={project.path}>{project.path}</small></dd></div></dl>
         <fieldset className="dsh-ssh-workspace-picker"><legend>{t("project-session-dialog.sessionWorkspace")}</legend><p>{t("project-session-dialog.sessionRecordsAreStoredInTheSelectedDshProject")}</p>
           {workspaces.length === 0 ? <div className="dsh-ssh-workspace-picker-empty"><IconFolderClose16 size={18} /><span><strong>{t("project-session-dialog.noDshProjectsAvailableYet")}</strong><small>{t("project-session-dialog.closeThisWindowFirstThenCreateOrAddA")}</small></span></div>

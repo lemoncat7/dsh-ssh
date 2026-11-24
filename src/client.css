@@ -1687,7 +1687,6 @@ body[data-ds-dark-theme] :is(
   box-sizing: border-box;
   width: 100%;
   max-height: min(780px, calc(100dvh - 40px));
-  overflow: auto;
   border: 1px solid var(--ssh-glass-border);
   border-radius: 14px;
   color: var(--ssh-text);
@@ -1695,16 +1694,8 @@ body[data-ds-dark-theme] :is(
   -webkit-backdrop-filter: var(--ssh-glass-filter);
   backdrop-filter: var(--ssh-glass-filter);
   box-shadow: var(--ssh-glass-shadow), var(--ssh-shadow-lg);
-  scrollbar-width: none;
-}
-.dsh-ssh-dialog::-webkit-scrollbar {
-  width: 0;
-  height: 0;
 }
 .dsh-ssh-dialog > header {
-  position: sticky;
-  z-index: 1;
-  top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;

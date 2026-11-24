@@ -1,6 +1,6 @@
 {
   "name": "@lemoncat7/dsh-ssh",
-  "version": "1.18.7",
+  "version": "1.18.8",
   "description": "Secure SSH, FTP/FTPS/SFTP file transfer, browser terminals, proxies, port forwarding, and session-scoped AI access for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -85,7 +85,8 @@
     "test": "npm run build && node --test test/*.test.mjs",
     "pack:check": "npm pack --dry-run",
     "test:sidebar-browser": "node test/sidebar-anchor.browser.mjs",
-    "test:forward-browser": "node test/forward-pane.browser.mjs"
+    "test:forward-browser": "node test/forward-pane.browser.mjs",
+    "test:dialog-browser": "node test/dialog-scroll.browser.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",

@@ -24,7 +24,7 @@ export function FtpConnectionsDialog({ profiles, vaultEntries, proxyEntries, onC
     catch (reason) { setError(errorMessage(reason)) }
   }
   if (deleting !== undefined) return <DeleteConnection key={deleting.id} profile={deleting} error={error} onBack={() => setDeleting(undefined)} onDelete={() => remove(deleting)} />
-  return <Dialog className="dsh-ssh-ftp-manager-dialog" title={t("file-transfer-workspace.fileConnections")} subtitle={t("ftp-profile-editor.manageFtpAndFtpsSftpReusesExistingSshHosts")} onClose={onClose}>
+  return <Dialog scroll="custom" className="dsh-ssh-ftp-manager-dialog" title={t("file-transfer-workspace.fileConnections")} subtitle={t("ftp-profile-editor.manageFtpAndFtpsSftpReusesExistingSshHosts")} onClose={onClose}>
     <div className={`dsh-ssh-ftp-manager${detailOpen ? ' has-detail' : ''}`}>
       <aside className="dsh-ssh-ftp-manager-list">
         <header><span><strong>FTP / FTPS</strong><small>{profiles.length}  {t("client.connections")}</small></span><button type="button" className="dsh-ssh-primary-button" onClick={create}><IconPlusOutline16 size={15} />{t("ftp-profile-editor.new")}</button></header>

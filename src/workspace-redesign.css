@@ -224,7 +224,7 @@
 :is(#root,body) .dsh-ssh-layout-choice-modal::before,:is(#root,body) .dsh-ssh-layout-choice-modal::after { display: none !important; }
 .dsh-ssh-dialog.dsh-ssh-layout-choice { padding: 16px; border: 1px solid var(--ssh-glass-border); border-radius: var(--ssh-dialog-radius); box-shadow: var(--ssh-glass-shadow); }
 .dsh-ssh-layout-choice > header { position: static; padding: 0 0 12px; background: transparent; border-radius: 0; }
-.dsh-ssh-layout-choice > .dsh-ssh-dialog-actions { padding: 8px 0 0; }
+.dsh-ssh-layout-choice > .dsh-ssh-dialog-body > .dsh-ssh-dialog-actions { padding: 8px 0 0; }
 .dsh-ssh-layout-choice .dsh-ssh-keep-pane { border: 1px solid var(--ssh-glass-border); background: transparent; box-shadow: none; }
 .dsh-ssh-layout-choice .dsh-ssh-keep-pane[data-kept="true"] { background: var(--ssh-selected); border-color: var(--ssh-glass-border); }
 @container dsh-ssh-workspace (max-width: 520px) {
