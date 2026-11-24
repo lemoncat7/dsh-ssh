@@ -35,5 +35,5 @@ export function consentMatches(text: string | undefined, profile: SshProfile, re
 }
 
 export function confirmsPending(text: string | undefined): boolean {
-  return !!text && /^(?:确认|同意|允许)(?:本次|这次)?(?:SSH\s*)?临时(?:访问|授权)(?:[，, ](?:按上述范围|仅限本次任务))?[。.!！\s]*$/iu.test(text.trim())
+  return !!text && /^(?:(?:1|确认|同意|允许|可以|好的?|行|没问题|yes|ok)|(?:确认|同意|允许)(?:本次|这次)?(?:SSH\s*)?临时(?:访问|授权)(?:[，, ](?:按上述范围|仅限本次任务))?)[。.!！\s]*$/iu.test(text.trim())
 }

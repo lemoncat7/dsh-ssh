@@ -5,6 +5,8 @@ import { readWorkbenchState, writeWorkbenchState, readTerminalStorage, writeTerm
 import { useSshLocale } from './use-ssh-locale.js'
 import { canSubscribeActivity, currentSession } from './current-session.js'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type {} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import { createHostMentionSource } from './host-mention-source.js'
 import { t } from './i18n.js'
 import { bindHostLocale, type HostLocale } from './ssh-locale-binding.js'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type MouseEvent } from 'react'
@@ -93,6 +95,9 @@ export function apply(ctx: ClientContext): void {
   const docked = supportsDockedPanels(ctx)
   const activityController = createActivityController(ctx)
   const controller = createController(ctx, () => { if (!docked) activityController.close() })
+  ctx.inject(['inputTriggers'], child => {
+    child.effect(() => child.inputTriggers.registerSource(createHostMentionSource(id => controller.open(id))), 'dsh-ssh: @ saved hosts')
+  })
   ctx.effect(() => observePluginWorkspace(PLUGIN_ID, () => { controller.close(); if (!docked) activityController.close() }), 'dsh-ssh: exclusive workspace')
   ctx.effect(() => () => { controller.close(); activityController.dispose() }, 'dsh-ssh: workspace lifecycle')
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({

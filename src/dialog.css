@@ -20,7 +20,7 @@
 :is(#root, body) [role='dialog']:is(.dsh-ssh-preview-modal, .dsh-ssh-session-create-modal) {
   background: var(--ssh-modal-surface) !important;
   border: 1px solid var(--ssh-glass-border) !important;
-  box-shadow: var(--ssh-glass-shadow), var(--ssh-shadow-lg) !important;
+  box-shadow: var(--ssh-glass-shadow) !important;
   -webkit-backdrop-filter: var(--ssh-glass-filter) !important;
   backdrop-filter: var(--ssh-glass-filter) !important;
   overflow: hidden;
@@ -37,7 +37,7 @@
   padding: 14px var(--ssh-dialog-inset);
   gap: 12px;
   border-bottom: 1px solid var(--ssh-glass-border);
-  background: var(--ssh-modal-surface);
+  background: transparent;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }

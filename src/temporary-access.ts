@@ -72,14 +72,14 @@ export function registerTemporaryAccess(ctx: Context, store: SshStore, connector
       for (const [key, item] of pending) if (item.expiresAt <= Date.now()) pending.delete(key)
       const human = currentHumanText(exec.agent.session.snapshotEvents(), current.turn)
       const previous = pending.get(id)
-      const confirmation = confirmsPending(human) && previous && previous.expiresAt > Date.now() && previous.turn < current.turn
+      const confirmation = confirmsPending(human) && previous && previous.expiresAt > Date.now() && previous.turn + 1 === current.turn
         && previous.identity === identity && previous.taskId === target?.taskId && previous.scope === target?.scope && previous.text === args.task.trim()
       if (!confirmation && !consentMatches(human, profile, target?.companionName)) {
         if (pending.size >= 256 && !pending.has(id)) throw new Error('待确认申请过多，请稍后重试')
         pending.set(id, { identity, ...(target ? { taskId: target.taskId, scope: target.scope } : {}), text: args.task.trim(), turn: current.turn, expiresAt: Date.now() + 10 * 60_000 })
         return JSON.stringify({ granted: false, code: 'SSH_USER_CONSENT_REQUIRED', profileId: profile.id,
           scope: `临时 SSH：${profile.name}（${profile.username}@${profile.host}:${profile.port}）；${target ? `执行伙伴：${target.companionName}；看板任务：${target.title}（${target.taskId}）；` : '仅当前会话；'}任务：${args.task.trim()}。允许远程命令修改文件，不永久挂载。`,
-          instruction: '未授予权限。向用户完整展示上述范围；用户回复“确认临时访问”后，以完全相同的 target、task 和 taskId 重试。不需要弹窗，禁止自行伪造确认或改换目标。确认有效期 10 分钟。' })
+          instruction: '未授予权限。向用户完整展示上述范围，并提示“回复 1 或同意即可”。仅下一轮用户确认有效，以完全相同的 target、task 和 taskId 重试；不需要弹窗，禁止伪造确认或改换范围。确认最长有效期 10 分钟。' })
       }
       if (turns.get(id) !== current || current.signal.aborted || exec.signal.aborted) throw new Error('任务已结束，授权未生效。')
       const latest = store.profile(profile.id)

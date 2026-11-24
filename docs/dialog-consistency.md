@@ -2,8 +2,12 @@
 
 `Dialog` owns the shared accessible title/description and closing behavior.
 `dialog.css`, loaded after feature styles, owns common chrome: surface tokens,
-14px radius, title typography, header/content insets and action sizes. Feature
+24px radius (22px on phones), title typography, header/content insets and action sizes. Feature
 styles retain only content layout and purpose-specific dimensions.
+`interaction-theme.css` supplies the final shared glass surface: modal chrome
+reuses `--ssh-glass-regular` and `--ssh-glass-filter`, with a continuous content
+area instead of an inner gray frame. Reduced transparency restores an opaque
+surface. Preview and session modals share the same material.
 
 - Confirmation (440px): host, FTP connection, credential, proxy, pinned directory,
   saved command, file/directory deletion; terminal close, unsaved-draft decisions,

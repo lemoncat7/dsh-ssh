@@ -2960,7 +2960,10 @@ export const messages = {
   "sftp-client.previewTooLarge": {
     "zh": "文件超过预览上限，请下载查看（文本 1 MB，图片/PDF 16 MB）",
     "en": "File exceeds the preview limit; download to view (text 1 MB, images/PDF 16 MB)"
-  }
+  },
+  "mention.hosts": { "zh": "SSH 主机", "en": "SSH hosts" },
+  "mention.loadFailed": { "zh": "主机搜索失败，请重试。", "en": "Host search failed. Please try again." },
+  "mention.invalidReference": { "zh": "主机引用无效或已删除，请重新选择。", "en": "This host reference is invalid or deleted. Please select it again." }
 } as const
 
 export type MessageKey = keyof typeof messages

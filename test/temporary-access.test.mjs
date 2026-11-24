@@ -94,3 +94,18 @@ test('task lease is single-execution, recipient-bound, expires and reacts to can
   }
   bridge.clear()
 })
+
+test('short consent accepts 1 and simple semantic replies only for the next exact pending request',async()=>{
+  for(const text of ['1','同意','可以','好的','OK']){
+    const f=fixture();await f.start('检查一下');const ask=await f.request();assert.equal(ask.granted,false);assert.match(ask.instruction,/回复 1/);f.end()
+    await f.start(text);assert.equal((await f.request()).granted,true,text);f.dispose()
+  }
+  for(const text of ['不要','不同意','1？','可以吗','不是1','他说“1”','1 然后换另一台'])assert.equal(confirmsPending(text),false,text)
+})
+test('short replies cannot authorize absent, expired, intervened, forged or changed pending requests',async t=>{
+  const fresh=fixture();await fresh.start('1');assert.equal((await fresh.request()).granted,false);fresh.dispose()
+  const changed=fixture();await changed.start('检查一下');await changed.request();changed.end();await changed.start('1');assert.equal((await changed.request({task:'删除文件'})).granted,false);changed.dispose()
+  const intervened=fixture();await intervened.start('检查一下');await intervened.request();intervened.end();await intervened.start('先谈别的');intervened.end();await intervened.start('1');assert.equal((await intervened.request()).granted,false);intervened.dispose()
+  const forged=fixture();await forged.start('检查一下');await forged.request();forged.end();await forged.start('1','plugin:other');assert.equal((await forged.request()).granted,false);forged.dispose()
+  t.mock.timers.enable({apis:['Date'],now:1000});const expired=fixture();await expired.start('检查一下');await expired.request();expired.end();t.mock.timers.tick(600001);await expired.start('1');assert.equal((await expired.request()).granted,false);expired.dispose()
+})

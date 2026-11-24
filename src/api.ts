@@ -42,6 +42,7 @@ import { parseMarkdownSave } from './markdown-file.js'
 import { saveLocalMarkdown } from './local-markdown-file.js'
 import { saveSftpMarkdown } from './sftp-markdown-file.js'
 import { newSessionAccess } from './session-defaults.js'
+import { hostMention, hostMentionText, searchHostMentions } from './host-mentions.js'
 
 const MAX_BODY_BYTES = 1_048_576
 
@@ -103,6 +104,17 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
   const relative = url.pathname.slice(prefix.length).replace(/^\/+|\/+$/g, '')
   const segments = relative ? relative.split('/').map(decodeURIComponent) : []
   const method = req.method ?? 'GET'
+
+  if (method === 'GET' && segments[0] === 'host-mentions') {
+    res.setHeader('Cache-Control', 'no-store')
+    if (segments.length === 1) {
+      const query = url.searchParams.get('q') ?? ''
+      if (query.length > 255) throw httpError(400, 'Host search query is too long')
+      return sendJson(res, 200, { items: searchHostMentions(runtime.store.profiles(), query) })
+    }
+    if (segments.length === 2) return sendJson(res, 200, { text: hostMentionText(hostMention(requiredProfile(runtime.store, segments[1]!))) })
+    throw httpError(404, 'Host reference was not found')
+  }
 
   if (method === 'GET' && relative === 'upload-progress') {
     res.setHeader('Cache-Control', 'no-store')

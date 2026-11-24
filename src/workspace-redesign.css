@@ -222,7 +222,7 @@
 .dsh-ssh-desk-status .dsh-ssh-desk-controls .dsh-ssh-danger-button:hover:not(:disabled) { background: color-mix(in srgb, var(--ssh-danger) 16%, transparent) !important; }
 :is(#root,body) [role="dialog"].dsh-ssh-layout-choice-modal { padding: 0 !important; border: 0 !important; outline: 0 !important; background: transparent !important; box-shadow: none !important; }
 :is(#root,body) .dsh-ssh-layout-choice-modal::before,:is(#root,body) .dsh-ssh-layout-choice-modal::after { display: none !important; }
-.dsh-ssh-dialog.dsh-ssh-layout-choice { padding: 16px; border: 1px solid var(--ssh-glass-border); border-radius: 14px; box-shadow: var(--ssh-glass-shadow); }
+.dsh-ssh-dialog.dsh-ssh-layout-choice { padding: 16px; border: 1px solid var(--ssh-glass-border); border-radius: var(--ssh-dialog-radius); box-shadow: var(--ssh-glass-shadow); }
 .dsh-ssh-layout-choice > header { position: static; padding: 0 0 12px; background: transparent; border-radius: 0; }
 .dsh-ssh-layout-choice > .dsh-ssh-dialog-actions { padding: 8px 0 0; }
 .dsh-ssh-layout-choice .dsh-ssh-keep-pane { border: 1px solid var(--ssh-glass-border); background: transparent; box-shadow: none; }
