@@ -163,7 +163,7 @@ export const messages = {
   "sync.saved": {"zh": "配置已保存", "en": "Settings saved"},
   "sync.openCloud": {"zh": "查看云端配置", "en": "View cloud configuration"},
   "sync.scope": {"zh": "同步哪些内容？", "en": "What gets synced?"},
-  "sync.scopeHint": {"zh": "主机、FTP/FTPS、固定项目目录、密钥库、代理库、分组代理及常用命令。", "en": "Hosts, FTP/FTPS, pinned projects, credentials, proxies, group proxies, and saved commands."},
+  "sync.scopeHint": {"zh": "主机、FTP/FTPS、固定项目目录、密钥库、代理库、分组代理、常用命令和端口转发规则定义。", "en": "Hosts, FTP/FTPS, pinned projects, credentials, proxies, group proxies, saved commands, and port-forward definitions."},
   "sync.privacyHint": {"zh": "密码和私钥等凭据会加密后上传；主机地址等配置以明文保存在非公开 Gist 中。请妥善保管 Gist 链接与加密密码。", "en": "Passwords and private keys are encrypted before upload. Host addresses and other settings remain readable in the secret Gist. Keep its link and your encryption password safe."},
   "sync.network": {"zh": "GitHub 网络与代理", "en": "GitHub network and proxy"},
   "sync.saveNetwork": {"zh": "保存代理并测试网络", "en": "Save proxy and test network"},
@@ -973,8 +973,8 @@ export const messages = {
     "en": "Kept local only: "
   },
   "client.sessionGrantsPortForwardingPublicBindsAndCommandLimits": {
-    "zh": "当前会话授权、端口转发、公开绑定与命令限制。GitHub Token 和同步加密密码也始终只保存在本机 DSH 凭据服务。",
-    "en": "Session grants, port forwarding, public binds, and command limits. The GitHub Token and sync encryption passphrase are also always stored only in the local DSH credential service."
+    "zh": "当前会话授权、转发运行状态与自动启动、公开绑定与命令限制。GitHub Token 和同步加密密码也始终只保存在本机 DSH 凭据服务。",
+    "en": "Session grants, forward runtime state and auto-start, public binds, and command limits. The GitHub Token and sync encryption passphrase are also always stored only in the local DSH credential service."
   },
   "client.lastSyncFailed": {
     "zh": "上次同步失败：",
@@ -2961,6 +2961,7 @@ export const messages = {
     "zh": "文件超过预览上限，请下载查看（文本 1 MB，图片/PDF 16 MB）",
     "en": "File exceeds the preview limit; download to view (text 1 MB, images/PDF 16 MB)"
   },
+  "backup.forwardRules": { "zh": "端口转发规则", "en": "Port-forward rules" },
   "mention.hosts": { "zh": "SSH 主机", "en": "SSH hosts" },
   "mention.loadFailed": { "zh": "主机搜索失败，请重试。", "en": "Host search failed. Please try again." },
   "mention.invalidReference": { "zh": "主机引用无效或已删除，请重新选择。", "en": "This host reference is invalid or deleted. Please select it again." }

@@ -41,7 +41,7 @@ export function ProjectSessionDialog({ profile, project, workspaces, currentWork
     try { await onCreate(project, workspaceId) } catch (reason) { setError(message(reason)); setCreating(false) }
   }
 
-  return <Modal open onClose={close} title={t("project-session-dialog.selectSessionWorkspace")} headless className="dsh-ssh-session-create-modal">
+  return <Modal backdropBlur={false} open onClose={close} title={t("project-session-dialog.selectSessionWorkspace")} headless className="dsh-ssh-session-create-modal">
     <section className="dsh-ssh-session-create-shell" onKeyDown={trapDialogFocus}>
       <header><span><h2>{t("project-session-dialog.newRemoteSession")}</h2><p>{t("project-session-dialog.chooseTheLocalProjectThisSessionBelongsToIn")}</p></span><button ref={closeButtonRef} type="button" className="dsh-ssh-icon-button" disabled={creating} onClick={close} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></header>
       <form onSubmit={event => { void submit(event) }}>

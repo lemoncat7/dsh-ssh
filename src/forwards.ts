@@ -26,6 +26,7 @@ export class ForwardManager {
   private readonly running = new Map<string, RunningForward>()
   private readonly failures = new Map<string, string>()
   private readonly starting = new Map<string, Promise<ForwardStatus>>()
+  private readonly changing = new Set<string>()
 
   constructor(private readonly connector: SshConnector, private readonly store: SshStore) {}
 
@@ -46,6 +47,7 @@ export class ForwardManager {
   }
 
   start(ruleId: string): Promise<ForwardStatus> {
+    if (this.changing.has(ruleId)) return Promise.reject(Object.assign(new Error('转发规则正在同步，请稍后再启动'), { status: 409 }))
     const active = this.running.get(ruleId)
     if (active !== undefined) return Promise.resolve(this.status(ruleId))
     const pending = this.starting.get(ruleId)
@@ -72,6 +74,15 @@ export class ForwardManager {
     this.running.clear()
   }
 
+  async withRulesStopped(ids: string[], apply: () => Promise<void>): Promise<void> {
+    if (ids.some(id => this.changing.has(id))) throw Object.assign(new Error('转发规则正在更新'), { status: 409 })
+    for (const id of ids) this.changing.add(id)
+    try {
+      for (const id of ids) if (this.store.forward(id)) await this.stop(id)
+      await apply()
+    } finally { for (const id of ids) this.changing.delete(id) }
+  }
+
   private async startFresh(ruleId: string): Promise<ForwardStatus> {
     const rule = this.store.forward(ruleId)
     if (rule === undefined) throw Object.assign(new Error('forward rule was not found'), { status: 404 })
@@ -82,6 +93,7 @@ export class ForwardManager {
     let connection: ManagedSshConnection | undefined
     try {
       connection = await this.connector.connect(rule.profileId)
+      if (this.changing.has(ruleId)) throw Object.assign(new Error('转发规则已更改，请重新启动'), { status: 409 })
       const running = rule.kind === 'local'
         ? await startLocal(rule, connection)
         : rule.kind === 'dynamic'

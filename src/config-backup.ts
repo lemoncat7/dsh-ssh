@@ -9,8 +9,8 @@ const derive = promisify(scrypt)
 const FORMAT = 'dsh-ssh-backup'
 const invalid = (message: string): Error => Object.assign(new Error(message), { status: 400 })
 const LIMIT = 1_048_576
-const collections = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies'] as const
-const emptyTombstones = () => ({ profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {}, commands: {}, groupProxies: {} })
+const collections = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies', 'forwardRules'] as const
+const emptyTombstones = () => ({ profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {}, commands: {}, groupProxies: {}, forwardRules: {} })
 function password(value: unknown): string {
   if (typeof value !== 'string' || value.length < 8 || value.length > 256) throw invalid('备份密码需要 8–256 个字符')
   return value
@@ -78,6 +78,7 @@ export async function importConfiguration(store: SshStore, vault: SshCredentialV
     if (profile.group) profile.group = group(profile.group)
   }
   for (const project of items.remoteProjects) project.profileId = ref('profiles', project.profileId)
+  for (const rule of items.forwardRules ?? []) { rule.profileId = ref('profiles', rule.profileId); rule.autoStart = false }
   for (const entry of items.groupProxies ?? []) {
     entry.name = group(entry.name)
     maps.groupProxies.set(entry.id, groupProxyId(entry.name))
@@ -110,6 +111,7 @@ export async function importConfiguration(store: SshStore, vault: SshCredentialV
       state.proxyEntries.push(...items.proxyEntries)
       state.commands = [...(state.commands ?? []), ...(items.commands ?? [])]
       state.groupProxies = [...(state.groupProxies ?? []), ...(items.groupProxies ?? [])]
+      state.forwardRules.push(...(items.forwardRules ?? []))
     })
   } catch (error) {
     await Promise.allSettled(cleanup.map(remove => remove()))

@@ -8,6 +8,7 @@ import {
   normalizeProfileDraft,
   normalizeProxyEntryDraft,
   normalizeRemoteProjectDraft,
+  normalizeForwardDraft,
   type CredentialEntry,
   type FtpProfile,
   type ProxyEntry,
@@ -17,6 +18,7 @@ import {
   type SshState,
   type SavedCommand,
   type GroupProxy,
+  type ForwardRule,
 } from './domain.js'
 import { SshCredentialVault } from './credentials.js'
 import { GitHubDeviceAuthService, type GitHubDeviceFlowStart, type GitHubDeviceFlowStatus } from './github-device-auth.js'
@@ -24,6 +26,7 @@ import { createGitHubHttpTransport, type GitHubHttpTransport } from './github-ht
 import { SshStore } from './store.js'
 import { commandDraft } from './commands.js'
 import { parseGroupProxy } from './group-proxy.js'
+import { forwardHostEndpoint, forwardRoute, portableForward, restoreForwardPreferences } from './portable-forwards.js'
 
 const MAIN_FILE = 'dsh-ssh.config.json'
 const BACKUP_PREFIX = 'dsh-ssh.backup.'
@@ -31,11 +34,11 @@ const MAX_GIST_BYTES = 1_048_576
 const AUTO_SYNC_DELAY_MS = 3_000
 const AUTO_PULL_INTERVAL_MS = 5 * 60_000
 const GIST_CREDENTIAL_SCOPE = 'dsh-ssh-gist-sync'
-const COLLECTION_NAMES = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies'] as const
+const COLLECTION_NAMES = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies', 'forwardRules'] as const
 
 export type GistSyncStrategy = 'smart' | 'local-first' | 'cloud-first'
 type CollectionName = typeof COLLECTION_NAMES[number]
-type PortableItem = SshProfile | FtpProfile | RemoteProject | CredentialEntry | ProxyEntry | SavedCommand | GroupProxy
+type PortableItem = SshProfile | FtpProfile | RemoteProject | CredentialEntry | ProxyEntry | SavedCommand | GroupProxy | ForwardRule
 type SecretScope = 'ssh-profile' | 'ftp-profile' | 'vault-entry' | 'proxy-entry'
 
 export interface GistSyncSettings {
@@ -73,6 +76,7 @@ export interface PortableSshSnapshot {
     proxyEntries: ProxyEntry[]
     commands?: SavedCommand[]
     groupProxies?: GroupProxy[]
+    forwardRules?: ForwardRule[]
   }
   tombstones: Record<CollectionName, Record<string, number>>
   secrets: EncryptedSecretRecord[]
@@ -230,6 +234,8 @@ export class GitHubGistClient {
 }
 
 export class GistSyncService {
+  /** Installed by the runtime to stop changed routes without racing a local Start click. */
+  forwardUpdateGuard: ((ids: string[], apply: () => Promise<void>) => Promise<void>) | undefined
   private metadata: SyncMetadata
   private persistQueue: Promise<void> = Promise.resolve()
   private syncQueue: Promise<unknown> = Promise.resolve()
@@ -435,12 +441,16 @@ export class GistSyncService {
       }
 
       const remote = parsePortableSnapshot(content)
-      const missingCollections = (['commands', 'groupProxies'] as const).filter(name => remote.collections[name] === undefined)
+      const missingCollections = (['commands', 'groupProxies', 'forwardRules'] as const).filter(name => remote.collections[name] === undefined)
       const legacyRemote = missingCollections.length ? structuredClone(remote) : undefined
       for (const name of missingCollections) {
         // Missing means an old client/backup, not an explicit deletion.
         ;(remote.collections[name] as PortableItem[]) = structuredClone(local.collections[name] ?? [])
         remote.tombstones[name] = { ...local.tombstones[name] }
+      }
+      if (missingCollections.includes('forwardRules')) {
+        const hosts = new Set(remote.collections.profiles.map(profile => profile.id))
+        remote.collections.forwardRules = remote.collections.forwardRules?.filter(rule => hosts.has(rule.profileId)) ?? []
       }
       assertPortableReferences(remote.collections)
       const remoteDigest = snapshotDigest(remote)
@@ -549,18 +559,32 @@ export class GistSyncService {
   private async apply(snapshot: PortableSshSnapshot, passphrase: string): Promise<void> {
     const secrets = await decryptSecretRecords(snapshot.secrets, passphrase)
     const previous = this.store.snapshot()
+    const oldHosts = new Map(previous.profiles.map(host => [host.id, host]))
+    const newHosts = new Map(snapshot.collections.profiles.map(host => [host.id, host]))
+    const hostChanged = (id: string): boolean => forwardHostEndpoint(oldHosts.get(id)) !== forwardHostEndpoint(newHosts.get(id))
+    const forwards = restoreForwardPreferences(snapshot.collections.forwardRules ?? previous.forwardRules.filter(rule => newHosts.has(rule.profileId)), previous.forwardRules)
+      .map(rule => hostChanged(rule.profileId) ? { ...rule, autoStart: false } : rule)
+    const next = new Map(forwards.map(rule => [rule.id, rule]))
+    const oldIds = new Set(previous.forwardRules.map(rule => rule.id))
+    const changed = [...previous.forwardRules.filter(rule => !next.has(rule.id) || hostChanged(rule.profileId) || forwardRoute(rule) !== forwardRoute(next.get(rule.id)!)).map(rule => rule.id),
+      ...forwards.filter(rule => !oldIds.has(rule.id)).map(rule => rule.id)]
     this.applying = true
     try {
-      await this.store.update(state => {
-        state.profiles = structuredClone(snapshot.collections.profiles)
-        state.ftpProfiles = structuredClone(snapshot.collections.ftpProfiles)
-        state.remoteProjects = structuredClone(snapshot.collections.remoteProjects)
-        state.credentialEntries = structuredClone(snapshot.collections.credentialEntries)
-        state.proxyEntries = structuredClone(snapshot.collections.proxyEntries)
-        if (snapshot.collections.commands !== undefined) state.commands = structuredClone(snapshot.collections.commands)
-        if (snapshot.collections.groupProxies !== undefined) state.groupProxies = structuredClone(snapshot.collections.groupProxies)
-      })
-      await this.replaceSecrets(previous, snapshot, secrets)
+      const apply = async (): Promise<void> => {
+        await this.store.update(state => {
+          state.profiles = structuredClone(snapshot.collections.profiles)
+          state.ftpProfiles = structuredClone(snapshot.collections.ftpProfiles)
+          state.remoteProjects = structuredClone(snapshot.collections.remoteProjects)
+          state.credentialEntries = structuredClone(snapshot.collections.credentialEntries)
+          state.proxyEntries = structuredClone(snapshot.collections.proxyEntries)
+          if (snapshot.collections.commands !== undefined) state.commands = structuredClone(snapshot.collections.commands)
+          if (snapshot.collections.groupProxies !== undefined) state.groupProxies = structuredClone(snapshot.collections.groupProxies)
+          state.forwardRules = forwards
+        })
+        await this.replaceSecrets(previous, snapshot, secrets)
+      }
+      if (this.forwardUpdateGuard && changed.length) await this.forwardUpdateGuard(changed, apply)
+      else await apply()
     } finally {
       this.applying = false
       // Credential replacement may finish after a UI reader sees the durable collections.
@@ -613,7 +637,7 @@ export class GistSyncService {
         this.metadata.tombstones[name][id] = now
         changed = true
       }
-      if (!changed && snapshotCollectionDigest(previous[name] ?? []) !== snapshotCollectionDigest(next[name] ?? [])) changed = true
+      if (!changed && snapshotCollectionDigest(name === 'forwardRules' ? previous.forwardRules.map(portableForward) : previous[name] ?? []) !== snapshotCollectionDigest(name === 'forwardRules' ? next.forwardRules.map(portableForward) : next[name] ?? [])) changed = true
     }
     if (!changed) return
     void this.persist()
@@ -671,6 +695,7 @@ export function createPortableSnapshot(
       proxyEntries: sortItems(state.proxyEntries),
       commands: sortItems(state.commands ?? []),
       groupProxies: sortItems(state.groupProxies ?? []),
+      forwardRules: sortItems(state.forwardRules.map(portableForward)),
     },
     tombstones: cloneTombstones(tombstones),
     secrets: [],
@@ -719,6 +744,7 @@ export function parsePortableSnapshot(content: string): PortableSshSnapshot {
       proxyEntries: array(collections.proxyEntries, 'proxyEntries').map(parseProxyEntry),
       ...(collections.commands === undefined ? {} : { commands: array(collections.commands, 'commands').map(parseSavedCommand) }),
       ...(collections.groupProxies === undefined ? {} : { groupProxies: array(collections.groupProxies, 'groupProxies').map(parseGroupProxy) }),
+      ...(collections.forwardRules === undefined ? {} : { forwardRules: array(collections.forwardRules, 'forwardRules').map(parseForwardRule) }),
     },
     tombstones: parseTombstones(input.tombstones),
     secrets: input.secrets === undefined ? [] : array(input.secrets, 'secrets').map(parseEncryptedSecretRecord).sort((a, b) => secretKey(a.scope, a.id).localeCompare(secretKey(b.scope, b.id))),
@@ -796,7 +822,7 @@ function normalizeSettings(value: unknown): GistSyncSettings {
 
 function defaultSettings(): GistSyncSettings { return { autoSync: false, strategy: 'smart', backupRetention: 5 } }
 function emptyTombstones(): PortableSshSnapshot['tombstones'] {
-  return { profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {}, commands: {}, groupProxies: {} }
+  return { profiles: {}, ftpProfiles: {}, remoteProjects: {}, credentialEntries: {}, proxyEntries: {}, commands: {}, groupProxies: {}, forwardRules: {} }
 }
 function cloneTombstones(value: PortableSshSnapshot['tombstones']): PortableSshSnapshot['tombstones'] {
   return Object.fromEntries(COLLECTION_NAMES.map(name => [name, { ...value[name] }])) as PortableSshSnapshot['tombstones']
@@ -944,6 +970,12 @@ function parseSavedCommand(value: unknown): SavedCommand {
   return { ...commandDraft(input), id: text(input.id, 'command.id', 1, 100), createdAt: timestamp(input.createdAt, 'createdAt'), updatedAt: timestamp(input.updatedAt, 'updatedAt') }
 }
 
+function parseForwardRule(value: unknown): ForwardRule {
+  const input = asRecord(value, 'forward rule')
+  const draft = normalizeForwardDraft({ ...input, autoStart: false })
+  return { ...draft, bindHost: draft.bindHost ?? '127.0.0.1', bindPort: draft.bindPort, autoStart: false, id: text(input.id, 'forward.id', 1, 100), createdAt: timestamp(input.createdAt, 'createdAt'), updatedAt: timestamp(input.updatedAt, 'updatedAt') }
+}
+
 function parseEncryptedSecretRecord(value: unknown): EncryptedSecretRecord {
   const input = asRecord(value, 'encrypted secret')
   const scope = input.scope
@@ -1087,6 +1119,7 @@ function assertPortableReferences(collections: PortableSshSnapshot['collections'
     if (profile.proxy.type === 'saved' && !proxies.has(profile.proxy.proxyId)) throw new Error(`FTP ${profile.name} 引用了缺失的代理`)
   }
   for (const project of collections.remoteProjects) if (!profiles.has(project.profileId)) throw new Error(`远端项目 ${project.name} 引用了缺失的主机`)
+  for (const rule of collections.forwardRules ?? []) if (!profiles.has(rule.profileId)) throw new Error(`转发规则 ${rule.name} 引用了缺失的主机`)
 }
 
 function repairReferences(snapshot: PortableSshSnapshot, deletedAt: number): void {
@@ -1110,6 +1143,9 @@ function repairReferences(snapshot: PortableSshSnapshot, deletedAt: number): voi
   const invalidProjects = new Set(snapshot.collections.remoteProjects.filter(project => !survivingProfiles.has(project.profileId)).map(item => item.id))
   for (const id of invalidProjects) snapshot.tombstones.remoteProjects[id] = Math.max(snapshot.tombstones.remoteProjects[id] ?? 0, deletedAt)
   snapshot.collections.remoteProjects = snapshot.collections.remoteProjects.filter(item => !invalidProjects.has(item.id))
+  const invalidForwards = new Set((snapshot.collections.forwardRules ?? []).filter(rule => !survivingProfiles.has(rule.profileId)).map(rule => rule.id))
+  for (const id of invalidForwards) snapshot.tombstones.forwardRules[id] = Math.max(snapshot.tombstones.forwardRules[id] ?? 0, deletedAt)
+  if (snapshot.collections.forwardRules !== undefined) snapshot.collections.forwardRules = snapshot.collections.forwardRules.filter(rule => !invalidForwards.has(rule.id))
 }
 
 function selectNewest<T extends PortableItem>(left: T | undefined, right: T | undefined): T | undefined {

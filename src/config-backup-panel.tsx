@@ -5,7 +5,7 @@ import { t } from './i18n.js'
 import { useSshLocale } from './use-ssh-locale.js'
 import { refreshWorkspace } from './use-workspace-refresh.js'
 
-const countKeys = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies'] as const
+const countKeys = ['profiles', 'ftpProfiles', 'remoteProjects', 'credentialEntries', 'proxyEntries', 'commands', 'groupProxies', 'forwardRules'] as const
 export function ConfigBackupPanel(): JSX.Element {
   useSshLocale()
   const [mode, setMode] = useState<'import' | 'export'>()
@@ -27,7 +27,7 @@ function BackupDialog({ mode, onClose, onDone }: { mode: 'import' | 'export'; on
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const exporting = mode === 'export'
-  const labels = { profiles: t('backup.profiles'), ftpProfiles: t('backup.ftpProfiles'), remoteProjects: t('backup.remoteProjects'), credentialEntries: t('backup.credentialEntries'), proxyEntries: t('backup.proxyEntries'), commands: t('backup.commands'), groupProxies: t('backup.groupProxies') }
+  const labels = { profiles: t('backup.profiles'), ftpProfiles: t('backup.ftpProfiles'), remoteProjects: t('backup.remoteProjects'), credentialEntries: t('backup.credentialEntries'), proxyEntries: t('backup.proxyEntries'), commands: t('backup.commands'), groupProxies: t('backup.groupProxies'), forwardRules: t('backup.forwardRules') }
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
     if (busy) return

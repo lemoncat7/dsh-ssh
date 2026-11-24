@@ -148,3 +148,10 @@
   .dsh-ssh-dialog { max-height: calc(100dvh - 32px); border: 1px solid var(--ssh-glass-border); }
   :is(.dsh-ssh-dialog, .dsh-ssh-session-create-shell) .dsh-ssh-dialog-actions > :is(button, a) { min-height: 44px; }
 }
+
+/* Keep the Host focus trap and click interception, without dimming the canvas.
+   Scope the inherited mask aliases to the exact SSH modal layer. */
+body > [role="presentation"]:has(> [role="dialog"]:is(.dsh-ssh-dialog-modal, .dsh-ssh-preview-modal, .dsh-ssh-session-create-modal)) {
+  --dsw-alias-bg-mask-1: transparent;
+  --dsw-mask-blur: none;
+}

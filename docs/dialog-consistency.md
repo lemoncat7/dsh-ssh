@@ -28,3 +28,7 @@ and desktop widths, landscape scrolling, long names, cancellation and retries.
 `scripts/verify-preview-refresh.mjs` covers preview/edit/refresh state retention.
 Browser fixtures stub host primitives; icons and host focus/portal behavior
 must also be checked in the installed DSH application.
+
+SSH modal layers override the Host mask aliases locally and disable backdrop
+blur. The canvas does not darken; focus trapping, Escape and outside-click
+dismissal remain owned by the Host. Other plugins keep their own masks.

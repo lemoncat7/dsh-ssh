@@ -33,7 +33,8 @@ test('encrypts portable SSH, FTP, proxy and vault configuration without leaking 
   assert.equal(snapshot.collections.credentialEntries.length, 2)
   assert.equal(snapshot.collections.remoteProjects.length, 1)
   assert.equal('injections' in snapshot.collections, false)
-  assert.equal('forwardRules' in snapshot.collections, false)
+  assert.equal(snapshot.collections.forwardRules.length, 1)
+  assert.equal(snapshot.collections.forwardRules[0].autoStart, false)
   assert.equal('settings' in snapshot.collections, false)
   assert.doesNotMatch(serialized, /vault-password|PRIVATE KEY MATERIAL|proxy-password/)
 
@@ -110,7 +111,8 @@ test('creates a private Gist, rotates explicit backups, and restores encrypted c
   assert.equal((await target.credentials.readEntry('credential-key')).privateKey, 'PRIVATE KEY MATERIAL')
   assert.equal((await target.credentials.readProxyEntry('proxy-one')).proxyPassword, 'proxy-password')
   assert.equal(target.store.snapshot().injections.length, 0)
-  assert.equal(target.store.snapshot().forwardRules.length, 0)
+  assert.equal(target.store.snapshot().forwardRules.length, 1)
+  assert.equal(target.store.snapshot().forwardRules[0].autoStart, false)
 
   const persisted = JSON.parse(await readFile(join(target.directory, 'gist.json'), 'utf8'))
   assert.equal('token' in persisted, false)
@@ -445,7 +447,7 @@ test('encrypted file backup previews, imports independent copies and preserves l
   const before = fixture.store.snapshot()
   const content = await exportConfiguration(fixture.store, fixture.credentials, 'backup-password')
   assert.doesNotMatch(content, /vault-password|PRIVATE KEY|host-one|proxy.internal|direct-password/)
-  assert.deepEqual(await previewConfiguration(content, 'backup-password'), { profiles: 2, ftpProfiles: 1, remoteProjects: 1, credentialEntries: 2, proxyEntries: 1, commands: 1, groupProxies: 1 })
+  assert.deepEqual(await previewConfiguration(content, 'backup-password'), { profiles: 2, ftpProfiles: 1, remoteProjects: 1, credentialEntries: 2, proxyEntries: 1, commands: 1, groupProxies: 1, forwardRules: 1 })
   await assert.rejects(importConfiguration(fixture.store, fixture.credentials, content, 'wrong-password'), /密码/)
   const damaged = JSON.parse(content); damaged.ciphertext = 'AAAA' + damaged.ciphertext.slice(4)
   await assert.rejects(importConfiguration(fixture.store, fixture.credentials, JSON.stringify(damaged), 'backup-password'), /损坏/)
@@ -456,7 +458,10 @@ test('encrypted file backup previews, imports independent copies and preserves l
   assert.deepEqual(after.profiles.slice(0, 2), before.profiles)
   assert.deepEqual(after.settings, before.settings)
   assert.deepEqual(after.injections, before.injections)
-  assert.deepEqual(after.forwardRules, before.forwardRules)
+  assert.equal(after.forwardRules.length, before.forwardRules.length + 1)
+  assert.deepEqual(after.forwardRules.slice(0, before.forwardRules.length), before.forwardRules)
+  assert.equal(after.forwardRules.at(-1).profileId, host.id)
+  assert.equal(after.forwardRules.at(-1).autoStart, false)
   assert.equal((await fixture.credentials.readEntry(host.credentialId)).password, 'vault-password')
   assert.equal((await fixture.credentials.readProxyEntry(host.proxy.proxyId)).proxyPassword, 'proxy-password')
   const jump = after.profiles.find(p => p.id !== 'jump-host' && p.name === 'Jump')
@@ -533,4 +538,47 @@ test('backup HTTP routes require management header and round-trip without a GitH
   assert.equal((await service.view()).tokenConfigured, false)
   // Drain background metadata writes before the fixture's earlier cleanup hook.
   await service.close()
+})
+
+test('forward definitions travel between devices, preserve local startup only for the same route, and propagate deletion',async t=>{
+  const source=await createFixture(t,'forward-source'),target=await createFixture(t,'forward-target'),github=new MemoryGistApi()
+  await seedPortableConfiguration(source.store,source.credentials)
+  await source.store.update(s=>{s.forwardRules[0].autoStart=true})
+  const open=async(f,strategy)=>{
+    const service=await GistSyncService.open(f.store,f.credentials,new GistTokenVault(f.provider),join(f.directory,'gist.json'),token=>new GitHubGistClient(token,github.fetch));t.after(()=>service.close())
+    await service.configure({settings:{autoSync:false,strategy,backupRetention:2,gistId:github.id},token:'github-token-value-for-tests',encryptionPassphrase:'123456'});return service
+  }
+  const a=await open(source,'smart');await a.sync()
+  assert.equal(JSON.parse(github.files['dsh-ssh.config.json']).collections.forwardRules[0].autoStart,false)
+  const b=await open(target,'cloud-first');await b.sync();assert.equal(target.store.forwards()[0].autoStart,false)
+  await target.store.update(s=>{s.forwardRules[0].autoStart=true})
+  const revision=github.revision();await b.sync();assert.equal(github.revision(),revision,'local auto-start does not change the portable snapshot')
+  await source.store.update(s=>{s.forwardRules[0].name='Renamed';s.forwardRules[0].updatedAt=2000});await a.sync();await b.sync();assert.equal(target.store.forwards()[0].autoStart,true)
+  const stopped=[];b.forwardUpdateGuard=async(ids,apply)=>{assert.equal(target.store.forwards().length,1);stopped.push(...ids);await apply()}
+  await source.store.update(s=>{s.profiles[0].name='Cosmetic host name';s.profiles[0].updatedAt=2500});await a.sync();await b.sync();assert.equal(stopped.length,0);assert.equal(target.store.forwards()[0].autoStart,true)
+  await source.store.update(s=>{s.forwardRules[0].bindPort=8181;s.forwardRules[0].updatedAt=3000});await a.sync();await b.sync()
+  assert.equal(target.store.forwards()[0].autoStart,false);assert.equal(target.store.forwards()[0].bindPort,8181);assert.deepEqual(stopped,['forward-local'])
+  await target.store.update(s=>{s.forwardRules[0].autoStart=true})
+  await source.store.update(s=>{s.profiles[0].host='192.0.2.123';s.profiles[0].updatedAt=4000});await a.sync();await b.sync();assert.equal(target.store.forwards()[0].autoStart,false);assert.equal(stopped.length,2)
+  await source.store.update(s=>{s.forwardRules=[]});await a.sync();await b.sync();assert.deepEqual(target.store.forwards(),[]);assert.equal(stopped.length,3)
+})
+test('legacy snapshots omit forward definitions without deleting local rules, including cloud-first',async t=>{
+  const f=await createFixture(t,'legacy-forwards');await seedPortableConfiguration(f.store,f.credentials)
+  const snapshot=await createEncryptedPortableSnapshot(f.store.snapshot(),'old-device',emptyTombstones(),f.credentials,'123456')
+  delete snapshot.collections.forwardRules;delete snapshot.tombstones.forwardRules
+  const github=new MemoryGistApi();github.files['dsh-ssh.config.json']=JSON.stringify(snapshot)
+  const service=await GistSyncService.open(f.store,f.credentials,new GistTokenVault(f.provider),join(f.directory,'gist.json'),token=>new GitHubGistClient(token,github.fetch));t.after(()=>service.close())
+  await service.configure({settings:{autoSync:false,strategy:'cloud-first',backupRetention:2,gistId:github.id},token:'github-token-value-for-tests',encryptionPassphrase:'123456'})
+  await service.sync();assert.equal(f.store.forwards().length,1);assert.equal(JSON.parse(github.files['dsh-ssh.config.json']).collections.forwardRules.length,1)
+})
+test('forward snapshots validate owners and duplicate IDs and never accept remote auto-start',()=>{
+  const state=emptyState();state.profiles=[profile('host','Host',1)];state.forwardRules=[{id:'f',profileId:'host',name:'Forward',kind:'local',bindHost:'127.0.0.1',bindPort:1234,targetHost:'127.0.0.1',targetPort:80,autoStart:true,createdAt:1,updatedAt:1}]
+  const socks=structuredClone(state);socks.forwardRules[0].kind='dynamic'
+  const canonical=createPortableSnapshot(socks,'test-device');assert.equal('targetHost' in canonical.collections.forwardRules[0],false);assert.equal(snapshotDigest(canonical),snapshotDigest(parsePortableSnapshot(JSON.stringify(canonical))))
+  const snapshot=createPortableSnapshot(state,'test-device');snapshot.collections.forwardRules[0].autoStart=true
+  assert.equal(parsePortableSnapshot(JSON.stringify(snapshot)).collections.forwardRules[0].autoStart,false)
+  const invalid=structuredClone(snapshot);invalid.collections.forwardRules[0].profileId='missing';assert.throws(()=>parsePortableSnapshot(JSON.stringify(invalid)),/缺失的主机/)
+  const duplicate=structuredClone(snapshot);duplicate.collections.forwardRules.push(duplicate.collections.forwardRules[0]);assert.throws(()=>parsePortableSnapshot(JSON.stringify(duplicate)),/重复/)
+  const deleted=structuredClone(snapshot);deleted.collections.profiles=[];deleted.tombstones.profiles.host=2
+  const merged=mergePortableSnapshots(snapshot,deleted,'test-device',3);assert.deepEqual(merged.collections.forwardRules,[]);assert.equal(merged.tombstones.forwardRules.f,3)
 })

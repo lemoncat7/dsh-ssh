@@ -50,3 +50,31 @@ test('pending forward status is nonblocking and authentication failure becomes a
   assert.equal(manager.status(rule.id).error, 'authentication failed')
   assert.equal((await manager.stop(rule.id)).state, 'stopped')
 })
+
+test('synchronized route changes stop live listeners and block Start until the definition is committed', async t => {
+  let connections=0,closed=0
+  const manager=new ForwardManager({async connect(){connections++;const c=connection();c.close=()=>{closed++};return c}},store)
+  t.after(()=>manager.closeAll())
+  await manager.start(rule.id)
+  await manager.withRulesStopped([rule.id],async()=>{
+    assert.equal(manager.status(rule.id).state,'stopped')
+    await assert.rejects(manager.start(rule.id),e=>e.status===409)
+    assert.equal(connections,1)
+  })
+  assert.equal(closed,1)
+  await manager.start(rule.id);assert.equal(connections,2)
+  await assert.rejects(manager.withRulesStopped([rule.id],async()=>{throw Error('apply failed')}),/apply failed/)
+  await manager.start(rule.id);assert.equal(connections,3)
+  await manager.withRulesStopped(['not-yet-published'],async()=>{await assert.rejects(manager.start('not-yet-published'),e=>e.status===409)})
+  await assert.rejects(manager.start('not-yet-published'),e=>e.status===404)
+})
+test('a route synchronization cannot publish an in-flight SSH connection under an obsolete definition',async()=>{
+  let resolve,closed=0,applied=false
+  const manager=new ForwardManager({connect:()=>new Promise(r=>{resolve=r})},store)
+  const starting=manager.start(rule.id)
+  const rejected=assert.rejects(starting,/规则已更改/)
+  const syncing=manager.withRulesStopped([rule.id],async()=>{applied=true})
+  resolve({close(){closed++}})
+  await rejected;await syncing
+  assert.equal(applied,true);assert.equal(closed,1);assert.equal(manager.status(rule.id).state,'stopped')
+})

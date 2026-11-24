@@ -59,6 +59,7 @@ export function apply(context: Context, config: SshConfig): void {
     const transfers = new FileTransferManager(files)
     const fileSessions = new EndpointSessionManager(files)
     const forwards = new ForwardManager(connector, store)
+    gistSync.forwardUpdateGuard = (ids, apply) => forwards.withRulesStopped(ids, apply)
     const terminals = new BrowserTerminalManager(connector)
     const activityEvents = new ActivityEventBus()
     const aiTerminals = new AiTerminalManager(connector, event => { activityEvents.publish(event) }, (sessionId, profileId) => {
