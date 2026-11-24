@@ -20,7 +20,7 @@ const terminalSourceUrl = new URL('../src/terminal-view.ts', import.meta.url)
 test('workbench separates host management from the global terminal desk', async () => {
   const source = await readFile(clientSourceUrl, 'utf8')
   const workspace = source.slice(source.indexOf('function RemoteWorkspace'), source.indexOf('function ForwardPane'))
-  assert.match(workspace, /RemoteWorkspaceTree catalogue onOpen=/)
+  assert.match(workspace, /RemoteWorkspaceTree catalogue active=\{view === 'hosts'\} onOpen=/)
   assert.match(workspace, /TerminalDesk key=\{scope\}/)
   assert.doesNotMatch(workspace, /<AdaptiveWorkspace|function HostWorkbench/)
   assert.match(workspace, /view === 'forwards' && <ForwardPane profiles=\{profiles\}/)

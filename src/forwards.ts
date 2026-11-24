@@ -79,8 +79,9 @@ export class ForwardManager {
     if (!settings.allowPublicBind && !isLoopbackHost(rule.bindHost)) {
       throw Object.assign(new Error('Public port binding is disabled. Use a loopback bind address or enable it in SSH settings.'), { status: 403 })
     }
-    const connection = await this.connector.connect(rule.profileId)
+    let connection: ManagedSshConnection | undefined
     try {
+      connection = await this.connector.connect(rule.profileId)
       const running = rule.kind === 'local'
         ? await startLocal(rule, connection)
         : rule.kind === 'dynamic'
@@ -90,7 +91,7 @@ export class ForwardManager {
       this.running.set(ruleId, running)
       return this.status(ruleId)
     } catch (error) {
-      connection.close()
+      connection?.close()
       const message = error instanceof Error ? error.message : String(error)
       this.failures.set(ruleId, message)
       throw error

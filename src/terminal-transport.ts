@@ -46,10 +46,10 @@ export class TerminalTransport {
     })
   }
 
-  observe(observer: TerminalOutputObserver, initiallyVisible = true): TerminalObservation {
+  observe(observer: TerminalOutputObserver, initiallyVisible = true, initialCursor = 0): TerminalObservation {
     let stopped = false
     let visible = initiallyVisible
-    let cursor = 0
+    let cursor = initialCursor
     let generation = 0
     let source: EventSource | undefined
     let streamWatchdog: number | undefined

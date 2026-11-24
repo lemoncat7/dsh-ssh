@@ -1,4 +1,5 @@
 import { TerminalDesk, type OpenTerminalRequest } from './terminal-desk.js'
+import { disposeTerminalViews } from './terminal-session.js'
 import workspaceRedesignCss from './workspace-redesign.css'
 import { readWorkbenchState, writeWorkbenchState, readTerminalStorage, writeTerminalStorage } from './terminal-workspace-state.js'
 import { useSshLocale } from './use-ssh-locale.js'
@@ -88,6 +89,7 @@ export function apply(ctx: ClientContext): void {
     child.effect(() => bindHostLocale(child.get('locale') as HostLocale), 'dsh-ssh: display language')
   })
   ctx.effect(installStyles, 'dsh-ssh: styles')
+  ctx.effect(() => disposeTerminalViews, 'dsh-ssh: retained terminal views')
   const docked = supportsDockedPanels(ctx)
   const activityController = createActivityController(ctx)
   const controller = createController(ctx, () => { if (!docked) activityController.close() })
@@ -367,6 +369,12 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const openTerminal = (next: RemoteTarget): void => { setTarget(next); setOpenRequest({ serial: ++openSerial.current, target: next }); setView('workspace') }
   const [syncMounted, setSyncMounted] = useState(view === 'sync')
   const [transferMounted, setTransferMounted] = useState(view === 'transfer')
+  const [deskMounted, setDeskMounted] = useState(view === 'workspace')
+  const [catalogueMounted, setCatalogueMounted] = useState(view === 'hosts')
+  useEffect(() => {
+    if (view === 'workspace') setDeskMounted(true)
+    if (view === 'hosts') setCatalogueMounted(true)
+  }, [view])
   const [editing, setEditing] = useState<ProfileView | 'new'>()
   const [deleting, setDeleting] = useState<ProfileView>()
   const [refreshKey, setRefreshKey] = useState(0)
@@ -375,23 +383,31 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   const openedSessionRef = useRef(sessionId)
   const initialHostChosen = useRef(props.controller.selected() !== undefined || remembered.target !== null)
   const refreshGeneration = useRef(0)
-  const refresh = useCallback(async () => {
+  const refreshing = useRef<Promise<boolean | void>>()
+  const refresh = useCallback((fresh = false): Promise<boolean | void> => {
+    if (!fresh && refreshing.current) return refreshing.current
     const generation = ++refreshGeneration.current
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8000)
-    try {
+    const operation = (async (): Promise<boolean | void> => { try {
       const options = { signal: controller.signal, cache: 'no-store' as const }
-      const [next, ftp, credentials, proxies, groups] = await Promise.all([api<ProfileView[]>('/profiles', options), api<FtpProfileView[]>('/ftp-profiles', options), api<VaultEntryView[]>('/vault', options), api<ProxyEntryView[]>('/proxies', options), api<GroupProxy[]>('/group-proxies', options)])
+      const profilesReady = api<ProfileView[]>('/profiles', options).then(next => {
+        if (generation !== refreshGeneration.current) return
+        setProfiles(next)
+        setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : null)
+      })
+      const [, ftp, credentials, proxies, groups] = await Promise.all([profilesReady, api<FtpProfileView[]>('/ftp-profiles', options), api<VaultEntryView[]>('/vault', options), api<ProxyEntryView[]>('/proxies', options), api<GroupProxy[]>('/group-proxies', options)])
       if (generation !== refreshGeneration.current) return false
-      setProfiles(next)
       setFtpProfiles(ftp)
       setVaultEntries(credentials)
       setProxyEntries(proxies)
       setGroupProxies(groups)
-      setTarget(current => current !== null && next.some(item => item.id === current.profileId) ? current : null)
       setError(undefined)
     } catch (reason) { if (generation === refreshGeneration.current) setError(message(reason)); return false }
-    finally { clearTimeout(timeout) }
+    finally { clearTimeout(timeout) } })()
+    refreshing.current = operation
+    void operation.finally(() => { if (refreshing.current === operation) refreshing.current = undefined })
+    return operation
   }, [])
   useEffect(() => {
     const sync = (): void => {
@@ -401,7 +417,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
     sync()
     return props.controller.subscribe(sync)
   }, [props.controller])
-  useEffect(() => { void refresh() }, [refresh, refreshKey])
+  useEffect(() => { void refresh(true) }, [refresh, refreshKey])
   useWorkspaceRefresh(async () => {
     const [result] = await Promise.all([refresh(), access.refresh()])
     return result
@@ -432,7 +448,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       </nav>
     </header>
   const notice = error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button onClick={() => setError(undefined)} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></div>
-  const catalogue = <RemoteWorkspaceTree catalogue onOpen={openTerminal} onDeleteProfile={setDeleting}
+  const catalogue = <RemoteWorkspaceTree catalogue active={view === 'hosts'} onOpen={openTerminal} onDeleteProfile={setDeleting}
         profiles={profiles}
         groupConfigs={groupProxies}
         onGroupProxy={setEditingGroup}
@@ -463,13 +479,13 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
         onNewProfile={() => setEditing('new')}
         onNewGroup={() => setEditingGroup('')}
         onEditProfile={setEditing}
-        onMoveProfile={async (profile, group) => { await moveProfileToGroup(profile.id, group); await refresh() }}
+        onMoveProfile={async (profile, group) => { await moveProfileToGroup(profile.id, group); await refresh(true) }}
       />
   return <main className="dsh-ssh-workspace dsh-ssh-workspace-v2">
     {toolbar}{notice}
     <section className="dsh-ssh-page-body">
-      <div hidden={view !== 'hosts'} className="dsh-ssh-catalogue-page">{catalogue}</div>
-      <div hidden={view !== 'workspace'} className="dsh-ssh-desk-page"><TerminalDesk key={scope} scope={scope} profiles={profiles} active={view === 'workspace'} request={openRequest} onManage={() => setView('hosts')} /></div>
+      <div hidden={view !== 'hosts'} className="dsh-ssh-catalogue-page">{(view === 'hosts' || catalogueMounted) && catalogue}</div>
+      <div hidden={view !== 'workspace'} className="dsh-ssh-desk-page">{(view === 'workspace' || deskMounted) && <TerminalDesk key={scope} scope={scope} profiles={profiles} active={view === 'workspace'} request={openRequest} onManage={() => setView('hosts')} />}</div>
       <div className="dsh-ssh-tool-page" hidden={view === 'hosts' || view === 'workspace' || view === 'transfer'}><div className="dsh-ssh-tool-card dsh-ssh-scroll-surface">
       {view === 'commands' && <CommandsPanel />}
       {view === 'vault' && <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />}

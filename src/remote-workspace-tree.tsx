@@ -31,6 +31,7 @@ export interface RemoteTarget {
 
 interface RemoteWorkspaceTreeProps {
   catalogue?: boolean
+  active?: boolean
   onOpen?(target: RemoteTarget): void
   onDeleteProfile?(profile: ProfileView): void
   profiles: ProfileView[]
@@ -134,7 +135,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     } catch (reason) { setError(message(reason)) } finally { setLoadingProfile(current => current === profileId ? undefined : current) }
   }
   useEffect(() => {
-    if (!props.catalogue) return
+    if (!props.catalogue || props.active === false) return
     let live = true
     void Promise.allSettled(props.profiles.map(async profile => ({ id: profile.id, projects: await loadRemoteProjects(profile.id) }))).then(results => {
       if (!live) return
@@ -142,7 +143,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
       const failed = results.find(result => result.status === 'rejected'); if (failed?.status === 'rejected') setError(message(failed.reason))
     })
     return () => { live = false }
-  }, [props.catalogue, props.profiles])
+  }, [props.catalogue, props.active, props.profiles])
   const selectProfile = (profileId: string, open: boolean): void => {
     setHostMenu(undefined); setProjectMenu(undefined)
     hostClick.current = { id: profileId, expanded: open }

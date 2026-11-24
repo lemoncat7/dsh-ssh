@@ -16,7 +16,7 @@ try {
     stdin: {
       contents: `import { createRoot } from 'react-dom/client';
         import { useState } from 'react';
-        import { ForwardPane, installStyles } from './src/client.tsx';
+        import { ForwardPane, RemoteWorkspace, installStyles } from './src/client.tsx';
         import { sshLocale } from './src/i18n.ts';
         import { ICON_SYMBOLS } from '@deepseek-ai/dsh-client-ui-primitives';
         const sprite = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -36,6 +36,29 @@ try {
           {id:'host', name:'Test SSH', host:'host.test', port:22, username:'user', tags:[]},
           {id:'other', name:'Other SSH', host:'other.test', port:22, username:'user', tags:[]}
         ];
+        if (new URLSearchParams(location.search).has('workspace')) {
+          sessionStorage.setItem('dsh-ssh:page:v2:performance', JSON.stringify('forwards'));
+          sessionStorage.setItem('dsh-ssh:terminal-desk:v2:performance', JSON.stringify({activeId:1, tabs:
+            Array.from({length:8}, (_, index) => ({id:index+1, profileId:'host', path:'~', layout:index+1, focused:index+1,
+              panes:[{id:index+1, path:'~', terminalId:'existing-'+index}]}))}));
+          const controller = {selected:()=>undefined, subscribe:()=>()=>{}, close(){}};
+          window.terminalCursors = [];
+          window.EventSource = class {
+            constructor(url) {
+              const cursor = Number(new URL(url).searchParams.get('cursor'));
+              window.terminalCursors.push(cursor);
+              this.timer = setTimeout(()=>this.onmessage?.({data:JSON.stringify({data:cursor ? 'new output\\r\\n' : 'saved history line\\r\\n'.repeat(2000),cursor:cursor+40000,truncated:false,closed:false})}), 0);
+            }
+            close() { clearTimeout(this.timer); }
+          };
+          function WorkspaceApp() {
+            const [open, setOpen] = useState(true);
+            window.showWorkspace = setOpen;
+            return open && <RemoteWorkspace controller={controller}
+              useSessions={read=>read({current:'performance', byId:{}})} useWorkspaces={read=>read({items:[]})} />;
+          }
+          createRoot(document.getElementById('root')).render(<WorkspaceApp />);
+        } else {
         function App() {
           const [open, setOpen] = useState(true);
           window.showForwards = setOpen;
@@ -44,7 +67,8 @@ try {
             <div className="dsh-ssh-tool-card">{open && <ForwardPane profiles={profiles} />}</div>
           </div>);
         }
-        createRoot(document.getElementById('root')).render(<App />);`,
+        createRoot(document.getElementById('root')).render(<App />);
+        }`,
       resolveDir: repo, loader: 'tsx',
     },
     outfile: path.join(temp, 'fixture.js'), bundle: true, platform: 'browser', jsx: 'automatic',
@@ -53,7 +77,7 @@ try {
     alias: { react: path.join(repo, 'node_modules/react'), 'react-dom': path.join(repo, 'node_modules/react-dom') },
     plugins: [{ name: 'expose-pane-for-test', setup(builder) {
       builder.onLoad({ filter: /\/src\/client\.tsx$/ }, async ({ path: filename }) => ({
-        contents: await fs.readFile(filename, 'utf8') + '\nexport { ForwardPane, installStyles };', loader: 'tsx',
+        contents: await fs.readFile(filename, 'utf8') + '\nexport { ForwardPane, RemoteWorkspace, installStyles };', loader: 'tsx',
       }))
     } }],
   })
@@ -66,6 +90,63 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   browser = await chromium.launch({ args: ['--no-sandbox', '--no-proxy-server'] })
   watchdog = setTimeout(() => { void browser.close() }, 90000)
+  {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+    const errors = [], requests = []
+    page.on('pageerror', error => errors.push(error.message))
+    let releaseMetadata
+    const metadata = new Promise(resolve => { releaseMetadata = resolve })
+    const profiles = [{ id: 'host', name: 'Test SSH', host: 'host.test', username: 'user', port: 22, tags: [], proxy: { type: 'none' }, credential: { configured: true, fields: [], source: 'profile' } }]
+    await page.route('**/ssh-local/v1/**', async route => {
+      const req = route.request(), pathname = new URL(req.url()).pathname.replace('/ssh-local/v1', '')
+      requests.push([req.method(), pathname])
+      let json = [], status = 200
+      if (pathname === '/profiles') json = profiles
+      else if (pathname === '/workspace-revision') json = { revision: 'fixture' }
+      else if (pathname === '/injections') json = { sessionId: 'performance', profileIds: [], permission: 'exec', mountMode: 'independent', workingDirectories: {}, mountedProjectIds: {} }
+      else if (pathname === '/forwards') json = { rules: [{ id: 'running', profileId: 'host', name: 'Already running', kind: 'local', bindHost: '127.0.0.1', bindPort: 12345, targetHost: '127.0.0.1', targetPort: 80 }], statuses: [{ ruleId: 'running', state: 'running', bindPort: 12345, connections: 0 }] }
+      else if (pathname === '/vault') await metadata
+      else if (pathname.endsWith('/attach')) json = { inputEpoch: 'fixture' }
+      else if (pathname.endsWith('/sftp/directory')) json = { path: '~', parent: null, entries: [] }
+      await route.fulfill({ status, json })
+    })
+    await page.goto(`http://127.0.0.1:${server.address().port}/?workspace`)
+    try { await page.getByText('Already running', { exact: true }).waitFor({ timeout: 5000 }) }
+    catch (error) { console.error('Full workspace diagnostics:', { errors, requests, body: await page.locator('body').innerText() }); throw error }
+    await page.waitForFunction(() => document.querySelector('.dsh-ssh-page-tools button')?.disabled === false)
+    assert.equal(await page.locator('.xterm').count(), 0, 'Saved terminals stay uninitialized on forwarding entry')
+    assert.equal(await page.locator('.dsh-ssh-terminal-desk').count(), 0)
+    assert.equal(requests.some(([method, url]) => method !== 'GET' || url.endsWith('/projects') || url.startsWith('/terminals')), false, 'Entry only reads configuration and forward status')
+    assert.equal(requests.filter(([, url]) => url === '/profiles').length, 1, 'Initial refresh and revision check share requests')
+    releaseMetadata()
+    await page.getByRole('tab', { name: '终端与文件', exact: true }).click()
+    await page.locator('.xterm').first().waitFor()
+    await page.waitForFunction(() => document.querySelector('.dsh-ssh-terminal-desk') !== null)
+    const terminals = await page.locator('.xterm').count()
+    assert.equal(terminals, 8, 'Saved terminals initialize only when the terminal page is selected')
+    await page.waitForFunction(() => window.terminalCursors.length === 8)
+    await page.getByRole('tab', { name: '端口转发', exact: true }).click()
+    await page.getByText('Already running', { exact: true }).waitFor()
+    const attaches = requests.filter(([, url]) => url.endsWith('/attach')).length
+    await page.getByRole('tab', { name: '终端与文件', exact: true }).click()
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    assert.equal(requests.filter(([, url]) => url.endsWith('/attach')).length, attaches, 'Page switches keep terminal instances without reattachment')
+    await page.evaluate(() => { window.firstTerminal = document.querySelector('.xterm') })
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await page.evaluate(() => window.showWorkspace(false))
+      await page.locator('.dsh-ssh-workspace').waitFor({ state: 'detached' })
+      await page.evaluate(() => window.showWorkspace(true))
+      await page.locator('.xterm').first().waitFor()
+      await page.waitForFunction(count => window.terminalCursors.length >= count, (attempt + 2) * 8)
+      assert.equal(await page.evaluate(() => document.querySelector('.xterm') === window.firstTerminal), true, 'Reopening the whole panel reuses xterm DOM')
+    }
+    assert.equal(await page.evaluate(() => window.terminalCursors.slice(8).every(cursor => cursor > 0)), true, 'Warm panel opens resume output without replaying history')
+    assert.equal(requests.some(([method, url]) => method === 'POST' && url === '/terminals'), false, 'Panel reopen never creates a new SSH terminal')
+    assert.equal(requests.some(([, url]) => /^\/forwards\/.*\/start$/.test(url)), false, 'Running forwards are never restarted by navigation')
+    assert.deepEqual(errors, [])
+    await page.close()
+    console.log('PASS full workspace: fast forwarding entry, shared reads, no hidden initialization; 8 running terminals, 2000 history lines each, 5 full panel reopens retain xterm DOM and resume cursors; no SSH terminal creation or forward restart')
+  }
   for (const lang of ['zh', 'en']) for (const initialWidth of [375, 1024]) {
     const page = await browser.newPage({ viewport: { width: initialWidth, height: 900 }, hasTouch: initialWidth === 375 })
     const errors = []

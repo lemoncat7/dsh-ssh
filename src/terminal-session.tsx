@@ -10,6 +10,23 @@ import { Dialog, errorMessage } from './ui-components.js'
 import { CommandsPanel } from './commands-panel.js'
 import type { BrowserTerminalHandle } from './terminal-workspace-state.js'
 import { terminalDirectory } from './terminal-directory.js'
+import { TerminalViewCache } from './terminal-view-cache.js'
+
+interface CachedTerminalView {
+  terminal: Terminal
+  fit: FitAddon
+  element: HTMLDivElement
+  terminalId: string | undefined
+  cursor: number
+  directory: string | undefined
+  host: string
+  disposed: boolean
+  disposeViewport: (() => void) | undefined
+  onDirectory: ((path: string | undefined) => void) | undefined
+  dispose(): void
+}
+const terminalViews = new TerminalViewCache<CachedTerminalView>()
+export function disposeTerminalViews(): void { terminalViews.clear() }
 
 export function TerminalSession({ handle, profile, path, label, temporary = false, takeAutoConnect, onPhase, onControls, onConnected, onDirectory }: { takeAutoConnect?(): boolean; onPhase?(phase: 'idle' | 'connecting' | 'connected' | 'error'): void; handle: BrowserTerminalHandle; profile: Pick<ProfileView, 'id' | 'name' | 'host' | 'username' | 'port'>; temporary?: boolean; path: string; label: string; onControls: ((controls: ReactNode) => void) | undefined; onConnected(): void; onDirectory?(path: string | undefined): void }): JSX.Element {
   const sshLocale = useSshLocale()
@@ -17,6 +34,8 @@ export function TerminalSession({ handle, profile, path, label, temporary = fals
   const directoryCallback = useRef(onDirectory)
   directoryCallback.current = onDirectory
   const terminalRef = useRef<Terminal>()
+  const viewRef = useRef<CachedTerminalView>()
+  const releaseViewRef = useRef<() => void>()
   const idRef = useRef<string>()
   const transportRef = useRef<TerminalTransport>()
   const fitRef = useRef<FitAddon>()
@@ -37,33 +56,54 @@ export function TerminalSession({ handle, profile, path, label, temporary = fals
   }
 
   const initialize = (): Terminal | undefined => {
+    if (viewRef.current?.disposed) return
     if (terminalRef.current) return terminalRef.current
     const host = hostRef.current
     if (!host) return
-    const terminal = createSshTerminal({ scrollback: 3000 })
-    for (const osc of [7, 1337] as const) terminal.parser.registerOscHandler(osc, value => {
-      const directory = terminalDirectory(value, osc, profile.host)
-      if (directory !== undefined) directoryCallback.current?.(directory)
-      return true
+    const retained = terminalViews.acquire(handle, () => {
+      const element = document.createElement('div')
+      element.style.width = element.style.height = '100%'
+      host.append(element)
+      const terminal = createSshTerminal({ scrollback: 3000 })
+      const fit = new FitAddon()
+      terminal.loadAddon(fit); terminal.open(element)
+      const view: CachedTerminalView = { terminal, fit, element, terminalId: undefined, cursor: 0, directory: undefined, host: profile.host, disposed: false, disposeViewport: undefined, onDirectory: undefined,
+        dispose() { if (view.disposed) return; view.disposed = true; view.disposeViewport?.(); terminal.dispose(); element.remove() } }
+      for (const osc of [7, 1337] as const) terminal.parser.registerOscHandler(osc, value => {
+        const directory = terminalDirectory(value, osc, view.host)
+        if (directory !== undefined) { view.directory = directory; view.onDirectory?.(directory) }
+        return true
+      })
+      return view
     })
-    const fit = new FitAddon()
-    terminal.loadAddon(fit); terminal.open(host)
+    const view = retained.view
+    view.host = profile.host
+    viewRef.current = view; releaseViewRef.current = retained.release
+    view.onDirectory = path => directoryCallback.current?.(path)
+    host.append(view.element)
+    if (view.directory !== undefined) directoryCallback.current?.(view.directory)
+    const { terminal, fit } = view
     terminalRef.current = terminal; fitRef.current = fit
     const viewport = attachTerminalViewport(host, terminal, fit, (cols, rows) => {
       if (idRef.current) void api(`/terminals/${idRef.current}/resize`, { method: 'POST', body: JSON.stringify({ cols, rows }) }).catch(() => {})
-    })
+    }, { preserveScroll: true })
     disposeViewportRef.current = () => viewport.dispose()
+    view.disposeViewport = disposeViewportRef.current
     return terminal
   }
   useEffect(() => () => {
       generation.current++
       connecting.current = false
       transportRef.current?.dispose()
-      disposeViewportRef.current?.(); terminalRef.current?.dispose(); terminalRef.current = undefined
+      disposeViewportRef.current?.()
+      const view = viewRef.current
+      if (view) { view.onDirectory = undefined; view.disposeViewport = undefined; if (!view.disposed) view.terminal.blur(); view.element.remove() }
+      releaseViewRef.current?.()
+      terminalRef.current = undefined; viewRef.current = undefined
   }, [])
 
   useEffect(() => {
-    if (!id || !terminalRef.current) return
+    if (!id || !terminalRef.current || viewRef.current?.disposed) return
     const terminal = terminalRef.current
     const transport = new TerminalTransport({
       streamUrl: browserTerminalStreamUrl(id),
@@ -80,16 +120,17 @@ export function TerminalSession({ handle, profile, path, label, temporary = fals
     transportRef.current = transport
     const input = terminal.onData(text => transport.sendInput(text, reason => setError(errorMessage(reason))))
     const stop = transport.observe({ output: value => {
+      if (viewRef.current?.disposed) return
+      if (viewRef.current) viewRef.current.cursor = value.cursor
       if (value.truncated) terminal.write(t("terminal-session.earlierOutputTruncated"))
       if (value.data) terminal.write(value.data)
       if (value.closed) { handle.clear(id); idRef.current = undefined; setId(undefined); setPhase('idle'); directoryCallback.current?.(undefined) }
-    }, error: reason => setError(errorMessage(reason)) })
+    }, error: reason => setError(errorMessage(reason)) }, true, viewRef.current?.cursor ?? 0)
     return () => { stop(); input.dispose(); transport.dispose(); transportRef.current = undefined }
   }, [id])
 
   const connect = async (): Promise<void> => {
     if (connecting.current || idRef.current || temporary && !handle.id) return
-    terminalRef.current?.reset()
     connecting.current = true
     const current = generation.current
     setPhase('connecting'); setError(undefined)
@@ -98,9 +139,11 @@ export function TerminalSession({ handle, profile, path, label, temporary = fals
       if (!terminal) { setPhase('idle'); return }
       fitRef.current?.fit()
       const terminalId = await handle.open(async () => (await api<{ id: string }>('/terminals', { method: 'POST', body: JSON.stringify({ profileId: profile.id, cwd: path, cols: terminal.cols, rows: terminal.rows }) })).id, close)
-      if (generation.current !== current) return
+      if (generation.current !== current || viewRef.current?.disposed) return
+      const view = viewRef.current!
+      if (view.terminalId !== terminalId) { terminal.reset(); view.cursor = 0; view.directory = undefined; view.terminalId = terminalId }
       const attached = await handle.attach(() => api<{ inputEpoch: string }>(`/terminals/${encodeURIComponent(terminalId)}/attach`, { method: 'POST', body: JSON.stringify({ profileId: profile.id }) }))
-      if (generation.current !== current) return
+      if (generation.current !== current || viewRef.current?.disposed) return
       epochRef.current = attached.inputEpoch
       idRef.current = terminalId; setId(terminalId); setPhase('connected'); onConnected();
       void api(`/terminals/${terminalId}/resize`, { method: 'POST', body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }) }).catch(() => {})
