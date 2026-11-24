@@ -525,10 +525,12 @@ function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected
           <span className={`dsh-ssh-forward-kind is-${rule.kind}`}>{rule.kind === 'local' ? 'L' : rule.kind === 'remote' ? 'R' : 'D'}</span>
           <span className="dsh-ssh-forward-copy"><strong>{rule.name}</strong><small>{forwardSummary(rule, status)}</small></span>
           <span className={`dsh-ssh-state-label is-${status?.state ?? 'stopped'}`}>{forwardState(status)}</span>
-          <button className="dsh-ssh-icon-button" onClick={() => setEditing(rule)} aria-label={t("client.edit")}><IconEditOutline16 size={16} /></button>
-          {status?.state === 'running' ? <button className="dsh-ssh-icon-button" onClick={() => { void action(rule.id, 'stop') }} aria-label={t("client.stop")}><IconStopFill16 size={16} /></button>
-            : <button className="dsh-ssh-small-primary" onClick={() => { void action(rule.id, 'start') }}>{t("client.start")}</button>}
-          <button className="dsh-ssh-icon-button is-danger" onClick={() => { void remove(rule.id) }} aria-label={t("client.delete")}><IconTrashOutline16 size={16} /></button>
+          <span className="dsh-ssh-forward-actions">
+            <button className="dsh-ssh-icon-button" onClick={() => setEditing(rule)} aria-label={t("client.edit")}><IconEditOutline16 size={16} /></button>
+            {status?.state === 'running' ? <button className="dsh-ssh-icon-button" onClick={() => { void action(rule.id, 'stop') }} aria-label={t("client.stop")}><IconStopFill16 size={16} /></button>
+              : <button className="dsh-ssh-small-primary" onClick={() => { void action(rule.id, 'start') }}>{t("client.start")}</button>}
+            <button className="dsh-ssh-icon-button is-danger" onClick={() => { void remove(rule.id) }} aria-label={t("client.delete")}><IconTrashOutline16 size={16} /></button>
+          </span>
         </article>
       })}
     </div>

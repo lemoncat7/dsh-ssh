@@ -24,9 +24,10 @@
   -webkit-backdrop-filter: var(--ssh-glass-filter); box-shadow: var(--ssh-glass-shadow);
 }
 .dsh-ssh-workspace .dsh-ssh-host-workbench > .dsh-ssh-workbench-split { margin: 6px 12px 10px; }
-.dsh-ssh-workspace :is(.dsh-ssh-vault-list, .dsh-ssh-proxy-list) { gap: 0; overflow: hidden; }
+.dsh-ssh-workspace :is(.dsh-ssh-vault-list, .dsh-ssh-proxy-list, .dsh-ssh-forward-list) { gap: 0; overflow: hidden; }
 .dsh-ssh-workspace :is(.dsh-ssh-vault-row, .dsh-ssh-proxy-row, .dsh-ssh-forward-row, .dsh-ssh-settings-section) { border: 0; border-bottom: 1px solid var(--ssh-glass-separator); border-radius: 0; background: transparent; box-shadow: none; }
 .dsh-ssh-workspace :is(.dsh-ssh-vault-row, .dsh-ssh-proxy-row, .dsh-ssh-forward-row):hover { background: var(--ssh-hover); }
+.dsh-ssh-workspace .dsh-ssh-forward-row:last-child { border-bottom: 0; }
 .dsh-ssh-workspace .dsh-ssh-settings-stack { width: 100%; gap: 0; padding-bottom: 0; overflow: hidden; }
 .dsh-ssh-workspace :is(.dsh-ssh-workbench-terminal, .dsh-ssh-workbench-files) { background: transparent; }
 .dsh-ssh-terminal-workspace { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; container: ssh-terminals / inline-size; }
