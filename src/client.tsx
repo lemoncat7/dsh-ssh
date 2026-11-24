@@ -57,7 +57,7 @@ import { emptyAccess, useSessionAccess } from './session-access.js'
 import { subscribeSessionAccess } from './session-access-channel.js'
 import { VaultPasswordDialog } from './vault-password-dialog.js'
 import { HostSelect } from './host-select.js'
-import { Dialog, EmptyState, Field, PasswordInput, Segment, ServerGlyph, errorMessage } from './ui-components.js'
+import { Dialog, Field, PasswordInput, Segment, ServerGlyph, errorMessage } from './ui-components.js'
 import { useConfirmationDialog } from './confirmation-dialog.js'
 import { ProfileDeleteDialog, ProfileEditor } from './profile-editor.js'
 import { FileTransferWorkspace } from './file-transfer-workspace.js'
@@ -475,7 +475,7 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
       {view === 'vault' && <VaultPane entries={vaultEntries} onChanged={() => setRefreshKey(value => value + 1)} />}
       {view === 'proxies' && <ProxyPane entries={proxyEntries} onChanged={() => setRefreshKey(value => value + 1)} />}
       {view === 'settings' && <SettingsPane />}
-      {view === 'forwards' && <div className="dsh-ssh-forward-page"><label className="dsh-ssh-page-target"><span>{t('client.host')}</span><HostSelect profiles={profiles} value={selected?.id ?? ''} onChange={id => setTarget({ profileId: id, path: '~' })} /></label>{selected ? <ForwardPane key={selected.id} profiles={profiles} selected={selected} /> : <EmptyState />}</div>}
+      {view === 'forwards' && <ForwardPane profiles={profiles} />}
       {syncMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'sync'}><SyncPane active={view === 'sync'} /></div>}
       </div></div>
       {transferMounted && <div className="dsh-ssh-persistent-page" hidden={view !== 'transfer'}><FileTransferWorkspace ftpProfiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} access={access} onProfilesChanged={() => setRefreshKey(value => value + 1)} /></div>}
@@ -486,10 +486,14 @@ function RemoteWorkspace(props: ConversationProps & { controller: RemoteControll
   </main>
 }
 
-function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected: ProfileView }): JSX.Element {
+function ForwardPane({ profiles }: { profiles: ProfileView[] }): JSX.Element {
   useSshLocale()
+  const [profileId, setProfileId] = useState('')
+  const profilesById = useMemo(() => new Map(profiles.map(profile => [profile.id, profile])), [profiles])
+  const selected = profilesById.get(profileId)
   const [rules, setRules] = useState<ForwardView[]>([])
   const [statuses, setStatuses] = useState<ForwardStatus[]>([])
+  const statusesById = useMemo(() => new Map(statuses.map(status => [status.ruleId, status])), [statuses])
   const [editing, setEditing] = useState<ForwardView | 'new'>()
   const { confirm, confirmation } = useConfirmationDialog()
   const [error, setError] = useState<string>()
@@ -507,23 +511,24 @@ function ForwardPane({ profiles, selected }: { profiles: ProfileView[]; selected
       if (timer !== undefined) window.clearTimeout(timer)
     }
   }, [refresh])
-  const visible = rules.filter(rule => rule.profileId === selected.id)
+  const visible = selected ? rules.filter(rule => rule.profileId === selected.id) : rules
   const action = async (id: string, name: 'start' | 'stop'): Promise<void> => { try { await api(`/forwards/${id}/${name}`, { method: 'POST', body: '{}' }); await refresh() } catch (reason) { setError(message(reason)) } }
   const remove = (id: string): void => {
     const rule = rules.find(item => item.id === id)
     if (!rule) return
-    confirm({ title: t('client.delete2', [rule.name]), description: forwardSummary(rule, statuses.find(item => item.ruleId === id)), onConfirm: async () => { await api(`/forwards/${id}`, { method: 'DELETE' }); await refresh() } })
+    confirm({ title: t('client.delete2', [rule.name]), description: forwardSummary(rule, statusesById.get(id)), onConfirm: async () => { await api(`/forwards/${id}`, { method: 'DELETE' }); await refresh() } })
   }
   return <div className="dsh-ssh-forward-pane">
     {confirmation}
-    <div className="dsh-ssh-page-tools"><p className="dsh-ssh-page-hint">{selected.name}  {t("client.localRemoteAndDynamicSocks5")}</p><button className="dsh-ssh-primary-button" onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />{t("client.newRule")}</button></div>
+    <label className="dsh-ssh-page-target"><span>{t('client.host')}</span><HostSelect profiles={profiles} value={selected?.id ?? ''} onChange={setProfileId} emptyLabel={t('forwards.allHosts')} /></label>
+    <div className="dsh-ssh-page-tools"><p className="dsh-ssh-page-hint">{t("client.localRemoteAndDynamicSocks5")}</p><button className="dsh-ssh-primary-button" disabled={profiles.length === 0} onClick={() => setEditing('new')}><IconPlusOutline16 size={16} />{t("client.newRule")}</button></div>
     {error && <p className="dsh-ssh-inline-error">{error}</p>}
     <div className="dsh-ssh-forward-list">
-      {visible.length === 0 ? <div className="dsh-ssh-table-empty">{t("client.thisHostHasNoPortForwardingRulesYet")}</div> : visible.map(rule => {
-        const status = statuses.find(item => item.ruleId === rule.id)
+      {visible.length === 0 ? <div className="dsh-ssh-table-empty">{selected ? t("client.thisHostHasNoPortForwardingRulesYet") : t('forwards.noRules')}</div> : visible.map(rule => {
+        const status = statusesById.get(rule.id)
         return <article className="dsh-ssh-forward-row" key={rule.id}>
           <span className={`dsh-ssh-forward-kind is-${rule.kind}`}>{rule.kind === 'local' ? 'L' : rule.kind === 'remote' ? 'R' : 'D'}</span>
-          <span className="dsh-ssh-forward-copy"><strong>{rule.name}</strong><small>{forwardSummary(rule, status)}</small></span>
+          <span className="dsh-ssh-forward-copy"><strong>{rule.name}</strong>{!selected && <small>{profilesById.get(rule.profileId)?.name ?? rule.profileId}</small>}<small>{forwardSummary(rule, status)}</small></span>
           <span className={`dsh-ssh-state-label is-${status?.state ?? 'stopped'}`}>{forwardState(status)}</span>
           <span className="dsh-ssh-forward-actions">
             <button className="dsh-ssh-icon-button" onClick={() => setEditing(rule)} aria-label={t("client.edit")}><IconEditOutline16 size={16} /></button>
@@ -630,24 +635,28 @@ function ProxyEditor({ value, onClose, onSaved }: { value?: ProxyEntryView | und
   </form></Dialog>
 }
 
-function ForwardEditor({ profile, value, onClose, onSaved }: { profile: ProfileView; profiles: ProfileView[]; value?: ForwardView | undefined; onClose(): void; onSaved(): void }): JSX.Element {
+function ForwardEditor({ profile, profiles, value, onClose, onSaved }: { profile: ProfileView | undefined; profiles: ProfileView[]; value?: ForwardView | undefined; onClose(): void; onSaved(): void }): JSX.Element {
   useSshLocale()
-  const [form, setForm] = useState({ name: value?.name ?? '', kind: value?.kind ?? 'local', bindHost: value?.bindHost ?? '127.0.0.1', bindPort: String(value?.bindPort ?? 0), targetHost: value?.targetHost ?? '127.0.0.1', targetPort: String(value?.targetPort ?? 80), autoStart: value?.autoStart ?? false })
+  const [form, setForm] = useState({ profileId: value?.profileId ?? profile?.id ?? '', name: value?.name ?? '', kind: value?.kind ?? 'local', bindHost: value?.bindHost ?? '127.0.0.1', bindPort: String(value?.bindPort ?? 0), targetHost: value?.targetHost ?? '127.0.0.1', targetPort: String(value?.targetPort ?? 80), autoStart: value?.autoStart ?? false })
+  const [editingHost, setEditingHost] = useState(false)
+  const selected = profiles.find(item => item.id === form.profileId)
   const [error, setError] = useState<string>()
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
+    if (!selected || editingHost) { setError(t('client.selectAHost')); return }
     try {
-      await api(value === undefined ? '/forwards' : `/forwards/${value.id}`, { method: value === undefined ? 'POST' : 'PUT', body: JSON.stringify({ rule: { profileId: profile.id, name: form.name, kind: form.kind, bindHost: form.bindHost, bindPort: Number(form.bindPort), ...(form.kind === 'dynamic' ? {} : { targetHost: form.targetHost, targetPort: Number(form.targetPort) }), autoStart: form.autoStart } }) })
+      await api(value === undefined ? '/forwards' : `/forwards/${value.id}`, { method: value === undefined ? 'POST' : 'PUT', body: JSON.stringify({ rule: { profileId: selected.id, name: form.name, kind: form.kind, bindHost: form.bindHost, bindPort: Number(form.bindPort), ...(form.kind === 'dynamic' ? {} : { targetHost: form.targetHost, targetPort: Number(form.targetPort) }), autoStart: form.autoStart } }) })
       onSaved()
     } catch (reason) { setError(message(reason)) }
   }
-  return <Dialog title={value === undefined ? t("client.newPortForward") : t("client.edit2", [value.name])} subtitle={profile.name} onClose={onClose}><form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
+  return <Dialog title={value === undefined ? t("client.newPortForward") : t("client.edit2", [value.name])} subtitle={selected?.name} onClose={onClose}><form className="dsh-ssh-form" onSubmit={event => { void submit(event) }}>
+    <Field label={t('client.host')}><HostSelect profiles={profiles} value={form.profileId} onChange={id => setForm({ ...form, profileId: id })} onEditingChange={setEditingHost} /></Field>
     <Field label={t("client.name")}><input required value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} /></Field>
     <Field label={t("client.type")}><select value={form.kind} onChange={event => setForm({ ...form, kind: event.target.value as typeof form.kind })}><option value="local">{t("client.localForwardL")}</option><option value="remote">{t("client.remoteForwardR")}</option><option value="dynamic">{t("client.dynamicSocks5D")}</option></select></Field>
     <div className="dsh-ssh-form-grid is-host"><Field label={t("client.listenAddress")}><input required value={form.bindHost} onChange={event => setForm({ ...form, bindHost: event.target.value })} /></Field><Field label={t("client.listenPort")} hint={t("client.automaticPortHint")}><input required type="number" min="0" max="65535" value={form.bindPort} onChange={event => setForm({ ...form, bindPort: event.target.value })} /></Field></div>
     {form.kind !== 'dynamic' && <div className="dsh-ssh-form-grid is-host"><Field label={t("client.targetHost")}><input required value={form.targetHost} onChange={event => setForm({ ...form, targetHost: event.target.value })} /></Field><Field label={t("client.targetPort")}><input required type="number" min="1" max="65535" value={form.targetPort} onChange={event => setForm({ ...form, targetPort: event.target.value })} /></Field></div>}
     <label className="dsh-ssh-switch-row"><span><strong>{t("client.autoStart")}</strong><small>{t("client.restoreThisForwardWhenDshStarts")}</small></span><input type="checkbox" checked={form.autoStart} onChange={event => setForm({ ...form, autoStart: event.target.checked })} /></label>
-    {error && <p className="dsh-ssh-inline-error">{error}</p>}<div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>{t("client.cancel")}</button><button className="dsh-ssh-primary-button">{t("client.saveRule")}</button></div>
+    {error && <p className="dsh-ssh-inline-error">{error}</p>}<div className="dsh-ssh-dialog-actions"><button type="button" className="dsh-ssh-secondary-button" data-ssh-dialog-close onClick={onClose}>{t("client.cancel")}</button><button className="dsh-ssh-primary-button" disabled={!selected || editingHost}>{t("client.saveRule")}</button></div>
   </form></Dialog>
 }
 

@@ -6,7 +6,6 @@ import path from 'node:path'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { createServer } from 'node:http'
-import { execFileSync } from 'node:child_process'
 
 const { chromium } = await import(process.env.DSH_PLAYWRIGHT_MODULE ?? 'playwright')
 const repo = fileURLToPath(new URL('../', import.meta.url))
@@ -16,6 +15,7 @@ try {
   await build({
     stdin: {
       contents: `import { createRoot } from 'react-dom/client';
+        import { useState } from 'react';
         import { ForwardPane, installStyles } from './src/client.tsx';
         import { sshLocale } from './src/i18n.ts';
         import { ICON_SYMBOLS } from '@deepseek-ai/dsh-client-ui-primitives';
@@ -32,11 +32,19 @@ try {
         document.body.append(sprite);
         sshLocale.setLocale(new URLSearchParams(location.search).get('lang') || 'zh');
         installStyles();
-        const profile = {id:'host', name:'Test SSH', tags:[]};
-        createRoot(document.getElementById('root')).render(
+        const profiles = [
+          {id:'host', name:'Test SSH', host:'host.test', port:22, username:'user', tags:[]},
+          {id:'other', name:'Other SSH', host:'other.test', port:22, username:'user', tags:[]}
+        ];
+        function App() {
+          const [open, setOpen] = useState(true);
+          window.showForwards = setOpen;
+          return (
           <div className="dsh-ssh-workspace dsh-ssh-workspace-v2" style={{width:'100%', height:'100vh'}}>
-            <div className="dsh-ssh-tool-card"><ForwardPane selected={profile} profiles={[profile]} /></div>
-          </div>);`,
+            <div className="dsh-ssh-tool-card">{open && <ForwardPane profiles={profiles} />}</div>
+          </div>);
+        }
+        createRoot(document.getElementById('root')).render(<App />);`,
       resolveDir: repo, loader: 'tsx',
     },
     outfile: path.join(temp, 'fixture.js'), bundle: true, platform: 'browser', jsx: 'automatic',
@@ -44,14 +52,9 @@ try {
     nodePaths: (process.env.DSH_BROWSER_NODE_PATH ?? '').split(path.delimiter).filter(Boolean),
     alias: { react: path.join(repo, 'node_modules/react'), 'react-dom': path.join(repo, 'node_modules/react-dom') },
     plugins: [{ name: 'expose-pane-for-test', setup(builder) {
-      builder.onLoad({ filter: /\/src\/(?:client\.tsx|client\.css|workbench-pages\.css)$/ }, async ({ path: filename }) => {
-        const source = process.env.DSH_BROWSER_BASELINE
-          ? execFileSync('git', ['show', `${process.env.DSH_BROWSER_BASELINE}:${path.relative(repo, filename)}`], { cwd: repo, encoding: 'utf8' })
-          : await fs.readFile(filename, 'utf8')
-        return filename.endsWith('.tsx')
-          ? { contents: source + '\nexport { ForwardPane, installStyles };', loader: 'tsx' }
-          : { contents: source, loader: 'text' }
-      })
+      builder.onLoad({ filter: /\/src\/client\.tsx$/ }, async ({ path: filename }) => ({
+        contents: await fs.readFile(filename, 'utf8') + '\nexport { ForwardPane, installStyles };', loader: 'tsx',
+      }))
     } }],
   })
   const bundle = await fs.readFile(path.join(temp, 'fixture.js'))
@@ -67,37 +70,68 @@ try {
     const page = await browser.newPage({ viewport: { width: initialWidth, height: 900 }, hasTouch: initialWidth === 375 })
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
-    let rules = [], statuses = [], occupied = true
+    let rules = ['host', 'other'].map(profileId => ({ id: profileId, profileId, name: `${profileId} existing rule`, kind: 'local', bindHost: '127.0.0.1', bindPort: 10000, targetHost: '127.0.0.1', targetPort: 80 }))
+    let statuses = rules.map(rule => ({ ruleId: rule.id, state: 'stopped', bindHost: rule.bindHost, bindPort: rule.bindPort, connections: 0 }))
+    let occupied = true, serial = 0
     await page.route('**/ssh-local/v1/forwards**', async route => {
       const req = route.request(), url = new URL(req.url())
       const parts = url.pathname.split('/').slice(4)
+      const ruleIndex = rules.findIndex(rule => rule.id === parts[0])
+      const forwardStatus = statuses.find(item => item.ruleId === parts[0])
       let result = {}, status = 200
       if (req.method() === 'GET') result = { rules, statuses }
       else if (req.method() === 'POST' && parts.length === 0) {
-        const rule = { ...req.postDataJSON().rule, id: 'rule' }
+        const rule = { ...req.postDataJSON().rule, id: `rule-${++serial}` }
         rules.push(rule)
         statuses.push({ ruleId: rule.id, state: 'stopped', bindHost: rule.bindHost, bindPort: rule.bindPort, connections: 0 })
-        result = { rule, status: statuses[0] }
+        result = { rule, status: statuses.at(-1) }
       } else if (req.method() === 'PUT') {
-        rules[0] = { ...rules[0], ...req.postDataJSON().rule }
-        result = { rule: rules[0], status: statuses[0] }
+        rules[ruleIndex] = { ...rules[ruleIndex], ...req.postDataJSON().rule }
+        result = { rule: rules[ruleIndex], status: forwardStatus }
       } else if (parts[1] === 'start') {
-        statuses[0].state = occupied ? 'error' : 'running'
+        forwardStatus.state = occupied ? 'error' : 'running'
         if (occupied) { status = 409; result = { error: 'EADDRINUSE: address already in use' }; occupied = false }
-        else result = statuses[0]
-      } else if (parts[1] === 'stop') { statuses[0].state = 'stopped'; result = statuses[0] }
-      else if (req.method() === 'DELETE') { rules = []; statuses = [] }
+        else result = forwardStatus
+      } else if (parts[1] === 'stop') { forwardStatus.state = 'stopped'; result = forwardStatus }
+      else if (req.method() === 'DELETE') { rules = rules.filter(rule => rule.id !== parts[0]); statuses = statuses.filter(item => item.ruleId !== parts[0]) }
       await route.fulfill({ status, json: result })
     })
     await page.goto(`http://127.0.0.1:${server.address().port}/?lang=${lang}`)
     const copy = lang === 'zh'
       ? { add: '新建规则', save: '保存规则', start: '启动', edit: '编辑', stop: '停止', del: '删除' }
       : { add: 'New rule', save: 'Save rule', start: 'Start', edit: 'Edit', stop: 'Stop', del: 'Delete' }
-    const row = page.locator('.dsh-ssh-forward-row')
+    const allRows = page.locator('.dsh-ssh-forward-row')
+    const row = allRows.filter({ hasText: /Local forward|Edited forward/ })
+    const filter = page.locator('.dsh-ssh-page-target [role="combobox"]')
+    const allHosts = lang === 'zh' ? '全部主机' : 'All hosts'
+    await allRows.first().waitFor()
+    assert.equal(await filter.inputValue(), '')
+    assert.equal(await allRows.count(), 2, 'Entry defaults to all host rules')
+    await filter.click()
+    await page.getByRole('option', { name: /^Test SSH/ }).click()
+    assert.equal(await allRows.count(), 1)
+    assert.equal(await allRows.first().locator('strong').textContent(), 'host existing rule')
+    await filter.click()
+    await page.getByRole('option', { name: allHosts, exact: true }).click()
+    assert.equal(await filter.inputValue(), '')
+    assert.equal(await allRows.count(), 2)
+    await filter.click()
+    await filter.fill('Other SSH')
+    await filter.press('Enter')
+    assert.equal(await allRows.count(), 1, 'Search and keyboard selection filter the host')
+    await filter.click()
+    await filter.fill('Other')
+    await filter.fill('')
+    await filter.press('Tab')
+    assert.equal(await filter.inputValue(), '')
+    assert.equal(await allRows.count(), 2, 'Clearing the field restores all rules')
     // Keep the window unchanged throughout create, save and immediate interaction.
     await page.getByRole('button', { name: copy.add, exact: true }).click()
     const dialog = page.locator('.dsh-ssh-dialog')
-    await dialog.locator('input').first().fill('Local forward')
+    assert.equal(await dialog.getByRole('button', { name: copy.save, exact: true }).isEnabled(), false)
+    await dialog.getByRole('combobox').first().click()
+    await page.getByRole('option', { name: /^Test SSH/ }).click()
+    await dialog.locator('input:not([role="combobox"])').first().fill('Local forward')
     await dialog.getByRole('button', { name: copy.save, exact: true }).click()
     await row.waitFor()
     const checkActions = async () => {
@@ -133,15 +167,40 @@ try {
     await row.getByRole('button', { name: copy.stop, exact: true }).click()
     await row.getByRole('button', { name: copy.start, exact: true }).waitFor()
     await row.getByRole('button', { name: copy.edit, exact: true }).click()
-    await dialog.locator('input').first().fill('Edited forward')
+    assert.match(await dialog.getByRole('combobox').first().inputValue(), /^Test SSH/)
+    await dialog.locator('input:not([role="combobox"])').first().fill('Edited forward')
     await dialog.getByRole('button', { name: copy.save, exact: true }).click()
     await row.getByText('Edited forward', { exact: true }).waitFor()
     await checkActions()
     await row.getByRole('button', { name: copy.del, exact: true }).click()
     await page.locator('.dsh-ssh-confirmation .dsh-ssh-danger-button').click()
     await row.waitFor({ state: 'detached' })
+    assert.equal(await allRows.count(), 2)
+    // Filter-local state cannot leak into another SSH page or the next visit.
+    await filter.click()
+    await page.getByRole('option', { name: /^Other SSH/ }).click()
+    assert.equal(await allRows.count(), 1)
+    await page.getByRole('button', { name: copy.add, exact: true }).click()
+    assert.match(await dialog.getByRole('combobox').first().inputValue(), /^Other SSH/, 'A filtered new rule defaults to that host')
+    await dialog.locator('[data-ssh-dialog-close]').click()
+    await dialog.waitFor({ state: 'detached' })
+    await filter.click()
+    await page.getByRole('option', { name: allHosts, exact: true }).click()
+    await allRows.filter({ hasText: 'other existing rule' }).getByRole('button', { name: copy.edit, exact: true }).click()
+    assert.match(await dialog.getByRole('combobox').first().inputValue(), /^Other SSH/)
+    await dialog.getByRole('button', { name: copy.save, exact: true }).click()
+    await dialog.waitFor({ state: 'detached' })
+    assert.equal(rules.find(rule => rule.id === 'other').profileId, 'other', 'Editing uses the rule owner')
+    await filter.click()
+    await page.getByRole('option', { name: /^Other SSH/ }).click()
+    await page.evaluate(() => window.showForwards(false))
+    await allRows.waitFor({ state: 'detached' })
+    await page.evaluate(() => window.showForwards(true))
+    await allRows.first().waitFor()
+    assert.equal(await filter.inputValue(), '')
+    assert.equal(await allRows.count(), 2, 'Re-entry resets the filter to all hosts')
     assert.deepEqual(errors, [])
-    console.log(`PASS ${lang} initial=${initialWidth}px: save without resize/restart; 375–1024px actions and rounded hover; port conflict/retry/start/stop/edit/delete`)
+    console.log(`PASS ${lang} initial=${initialWidth}px: all-host entry/filter/reset/re-entry; correct editor host; save without resize/restart; 375–1024px actions/rounded hover; conflict/retry/start/stop/edit/delete`)
     await page.close()
   }
 } finally {

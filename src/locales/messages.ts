@@ -525,8 +525,8 @@ export const messages = {
     "en": "The remote directory loads once a terminal is open."
   },
   "client.localRemoteAndDynamicSocks5": {
-    "zh": "· 本地、远程与动态 SOCKS5",
-    "en": "· Local, remote and dynamic SOCKS5"
+    "zh": "本地、远程与动态 SOCKS5",
+    "en": "Local, remote and dynamic SOCKS5"
   },
   "client.newRule": {
     "zh": "新建规则",
@@ -2948,6 +2948,14 @@ export const messages = {
   "use-markdown-draft.saveFailedDraftKept": {
     "zh": "保存失败，草稿仍保留：{0}",
     "en": "Save failed; draft kept: {0}"
+  },
+  "forwards.allHosts": {
+    "zh": "全部主机",
+    "en": "All hosts"
+  },
+  "forwards.noRules": {
+    "zh": "还没有端口转发规则。",
+    "en": "No port forwarding rules yet."
   },
   "sftp-client.previewTooLarge": {
     "zh": "文件超过预览上限，请下载查看（文本 1 MB，图片/PDF 16 MB）",

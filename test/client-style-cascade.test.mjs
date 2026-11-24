@@ -23,7 +23,7 @@ test('workbench separates host management from the global terminal desk', async 
   assert.match(workspace, /RemoteWorkspaceTree catalogue onOpen=/)
   assert.match(workspace, /TerminalDesk key=\{scope\}/)
   assert.doesNotMatch(workspace, /<AdaptiveWorkspace|function HostWorkbench/)
-  assert.match(workspace, /dsh-ssh-page-target/)
+  assert.match(workspace, /view === 'forwards' && <ForwardPane profiles=\{profiles\}/)
 })
 
 test('button reset stays below component styles in the cascade', async () => {
