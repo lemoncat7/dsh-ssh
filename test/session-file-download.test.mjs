@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink, realpath } from 'node:fs/promises'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -38,7 +38,7 @@ async function fixture(t, options = {}) {
 test('downloads into the current session directory by default with complete bytes and no staging leftovers', async t => {
   const f = await fixture(t)
   const result = await f.service.download(f.request, signal(), allowed)
-  assert.equal(result.state, 'completed'); assert.equal(result.localPath, join(f.workspace, '报告.txt'))
+  assert.equal(result.state, 'completed'); assert.equal(result.localPath, join(await realpath(f.workspace), '报告.txt'))
   assert.equal(result.bytes, f.bytes.length)
   assert.deepEqual(await readFile(result.localPath), f.bytes)
   assert.deepEqual(await readdir(f.workspace), ['报告.txt'])
@@ -48,7 +48,7 @@ test('downloads into the current session directory by default with complete byte
 test('allows a relative filename in an existing session subdirectory', async t => {
   const f = await fixture(t); await mkdir(join(f.workspace, 'downloads'))
   const result = await f.service.download({ ...f.request, localPath: 'downloads/copy.txt' }, signal(), allowed)
-  assert.equal(result.localPath, join(f.workspace, 'downloads/copy.txt'))
+  assert.equal(result.localPath, join(await realpath(f.workspace), 'downloads/copy.txt'))
   assert.deepEqual(await readFile(result.localPath), f.bytes)
 })
 
