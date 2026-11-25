@@ -95,12 +95,20 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
   const replace = useCallback((next: InjectionView): Promise<InjectionView> =>
     commit(next.sessionId, () => saveSessionAccess(next), next), [commit])
 
-  const update = useCallback((patch: Partial<InjectionView>): void => {
+  const update = useCallback((patch: Partial<InjectionView>, changeMounts = false): void => {
     const currentSessionId = sessionRef.current
     if (currentSessionId === undefined) return
     const current = valueRef.current ?? emptyAccess(currentSessionId)
+    if (changeMounts && current.mountMode === 'inherit') {
+      const { mountSource, ...access } = current
+      if (!mountSource) { setError('项目挂载信息已变化，请刷新后重试'); return }
+      const next: InjectionView = { ...access, ...patch, sessionId: currentSessionId, mountMode: 'independent' }
+      delete next.mountSource
+      void commit(currentSessionId, () => saveSessionAccess(next, mountSource), next).catch(() => {})
+      return
+    }
     void replace({ ...current, ...patch, sessionId: currentSessionId }).catch(() => {})
-  }, [replace])
+  }, [commit, replace])
 
   return {
     value, loading, saving, error,
@@ -124,7 +132,7 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
     },
     setProfiles: profileIds => {
       const current = valueRef.current
-      if (current) update(withMountedProfiles(current, profileIds))
+      if (current) update(withMountedProfiles(current, profileIds), true)
     },
     toggleProject: (profileId, projectId, path) => {
       const current = valueRef.current
@@ -141,7 +149,7 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
         delete workingDirectories[profileId]
         delete workingProjectIds[profileId]
       }
-      update({ workingDirectories, workingProjectIds, mountedProjectIds: Object.fromEntries(current.profileIds.map(id => [id, id === profileId ? nextIds : mountedProjects(current, id)])) })
+      update({ workingDirectories, workingProjectIds, mountedProjectIds: Object.fromEntries(current.profileIds.map(id => [id, id === profileId ? nextIds : mountedProjects(current, id)])) }, true)
     },
     setDirectory: (profileId, path, projectId) => {
       const currentSessionId = sessionRef.current
@@ -153,7 +161,7 @@ export function useSessionAccess(sessionId?: string): SessionAccessState {
       else workingDirectories[profileId] = path
       if (projectId === undefined) delete workingProjectIds[profileId]
       else workingProjectIds[profileId] = projectId
-      update({ workingDirectories, workingProjectIds })
+      update({ workingDirectories, workingProjectIds }, true)
     },
     setPermission: permission => update({ permission }),
     setRequireCommandApproval: requireCommandApproval => update({ requireCommandApproval }),

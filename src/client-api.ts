@@ -36,6 +36,7 @@ export interface ForwardView {
 export interface ForwardStatus { ruleId: string; state: 'stopped' | 'starting' | 'running' | 'error'; bindHost: string; bindPort: number; connections: number; error?: string }
 export interface InjectionView {
   mountMode?: MountMode
+  mountSource?: Pick<WorkspaceMountConfiguration, 'workspaceId' | 'revision'>
   sessionId: string; profileIds: string[]; permission: 'exec' | 'terminal'; requireCommandApproval: boolean
   fileEndpointIds: string[]; filePermission: 'browse' | 'transfer'; requireFileApproval: boolean
   allowLocalUpload?: boolean; allowLocalDownload?: boolean
@@ -176,8 +177,8 @@ export function updateRemoteProject(profileId: string, projectId: string, projec
 export function deleteRemoteProject(profileId: string, projectId: string): Promise<void> {
   return api(`/profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' })
 }
-export function saveSessionAccess(value: InjectionView): Promise<InjectionView> {
-  return api(`/injections/${encodeURIComponent(value.sessionId)}`, { method: 'PUT', body: JSON.stringify(value) })
+export function saveSessionAccess(value: InjectionView, detachProjectMounts?: InjectionView['mountSource']): Promise<InjectionView> {
+  return api(`/injections/${encodeURIComponent(value.sessionId)}`, { method: 'PUT', body: JSON.stringify({ ...value, ...(detachProjectMounts ? { detachProjectMounts } : {}) }) })
 }
 export function loadActivity(sessionId: string, signal?: AbortSignal): Promise<ActivityView> { return api(`/activity?sessionId=${encodeURIComponent(sessionId)}`, signal ? { signal } : {}) }
 export function activityEventStreamUrl(sessionId: string): string {

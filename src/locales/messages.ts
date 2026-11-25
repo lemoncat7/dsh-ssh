@@ -40,7 +40,7 @@ export const messages = {
   "desk.mountScopeConfirm": { "zh": "确认项目挂载", "en": "Confirm project mounts" },
   "desk.mountScopeChanged": { "zh": "当前会话的项目已变化，请刷新后重试", "en": "The session’s project changed. Refresh and try again." },
   "desk.mountScopeProjectTarget": { "zh": "调整项目挂载，确认后生效", "en": "Changes take effect after confirming project mounts" },
-  "desk.mountScopeInheritedHint": { "zh": "编辑项目挂载，或将当前会话切换为单独配置", "en": "Edit project mounts or switch this session to Session only" },
+  "desk.mountScopeInheritedHint": { "zh": "修改挂载后，当前会话将自动切换为单独配置，不影响项目", "en": "Changing mounts switches this session to Session only without changing the project" },
   "desk.mountScopeHostCount": { "zh": "已挂载 {0} 台", "en": "{0} hosts mounted" },
   "host-select.search": { "zh": "输入主机名、地址或分组搜索", "en": "Search host name, address or group" },
   "host-select.show": { "zh": "展开或收起主机列表", "en": "Toggle host list" },

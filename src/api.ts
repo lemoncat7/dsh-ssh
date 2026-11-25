@@ -644,7 +644,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'GET' && segments.length === 1) {
       const sessionId = url.searchParams.get('sessionId')
       if (!sessionId) throw httpError(400, 'sessionId is required')
-      return sendJson(res, 200, url.searchParams.get('defaults') === '1' ? runtime.store.sessionAccess(sessionId) : runtime.store.injection(sessionId))
+      return sendJson(res, 200, sessionAccessView(runtime.store, sessionId, url.searchParams.get('defaults') === '1'))
     }
     const sessionId = segments[1]
     if (sessionId !== undefined && method === 'PUT' && segments[2] === 'mount-mode' && segments.length === 3) {
@@ -666,13 +666,17 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
         delete next.inheritedDirectory
         state.injections = [...state.injections.filter(item => item.sessionId !== sessionId), next]
       })
-      return sendJson(res, 200, runtime.store.sessionAccess(sessionId))
+      return sendJson(res, 200, sessionAccessView(runtime.store, sessionId, true))
     }
     if (sessionId !== undefined && method === 'PUT' && segments.length === 2) {
       requireMutationHeader(req)
       const body = await readObject(req)
       const previous = runtime.store.injection(sessionId)
       const inherited = body.mountMode === 'inherit'
+      const detach = body.detachProjectMounts
+      if (detach !== undefined && (body.mountMode !== 'independent' || typeof detach !== 'object' || detach === null || Array.isArray(detach))) {
+        throw httpError(400, 'Invalid project mount source')
+      }
       if (inherited && runtime.store.sessionAccess(sessionId).mountMode !== 'inherit') throw httpError(409, '会话挂载模式已变化，请刷新后重试')
       for (const key of ['allowLocalUpload', 'allowLocalDownload']) if (body[key] !== undefined && typeof body[key] !== 'boolean') throw httpError(400, `${key} must be boolean`)
       const profileIds = inherited ? [] : parseProfileIds(body.profileIds, runtime.store)
@@ -702,7 +706,17 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       await runtime.store.update(state => {
         const stored = state.injections.find(item => item.sessionId === sessionId)
         const currentMode = stored?.mountMode ?? (stored || !runtime.store.workspaceId(sessionId) ? 'independent' : 'inherit')
-        if (inherited && currentMode !== 'inherit' || !inherited && currentMode === 'inherit' && (stored || body.mountMode === 'independent')) {
+        if (detach !== undefined) {
+          if (currentMode !== 'inherit') throw httpError(409, '会话挂载模式已变化，请刷新后重试')
+          const source = detach as Record<string, unknown>
+          const workspace = runtime.store.workspaceMounts(sessionId, state)
+          if (!workspace || workspace.workspaceId !== source.workspaceId || workspace.revision !== source.revision) {
+            throw httpError(409, '项目挂载已变化，请刷新后重试')
+          }
+          parseProfileIds(body.profileIds, runtime.store)
+          parseProjectMounts(mountedProjectIds, profileIds, state.remoteProjects)
+          injection.mountMode = 'independent'
+        } else if (inherited && currentMode !== 'inherit' || !inherited && currentMode === 'inherit' && (stored || body.mountMode === 'independent')) {
           throw httpError(409, '会话挂载模式已变化，请刷新后重试')
         }
         if (inherited) {
@@ -722,7 +736,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
       const revoked = previous?.profileIds.filter(profileId => !effective?.profileIds.includes(profileId)) ?? []
       if (permission !== 'terminal') await runtime.aiTerminals.closeOwner(sessionId)
       else await Promise.all(revoked.map(profileId => runtime.aiTerminals.closeProfile(sessionId, profileId)))
-      return sendJson(res, 200, runtime.store.injection(sessionId))
+      return sendJson(res, 200, sessionAccessView(runtime.store, sessionId))
     }
     if (sessionId !== undefined && method === 'DELETE' && segments.length === 2) {
       requireMutationHeader(req)
@@ -1134,6 +1148,13 @@ function assertCurrentProject(current: WorkspaceMountConfiguration | undefined, 
   if (!current || current.workspaceId !== body.workspaceId || current.revision !== body.revision) {
     throw httpError(409, '项目挂载已变化，请重新进入编辑后再试')
   }
+}
+
+/** Effective source identity is returned to the UI but never persisted in session configuration. */
+function sessionAccessView(store: SshStore, sessionId: string, defaults = false) {
+  const access = defaults ? store.sessionAccess(sessionId) : store.injection(sessionId)
+  const workspace = access?.mountMode === 'inherit' ? store.workspaceMounts(sessionId) : undefined
+  return access && workspace ? { ...access, mountSource: { workspaceId: workspace.workspaceId, revision: workspace.revision } } : access
 }
 
 function parseProfileIds(value: unknown, store: SshStore): string[] {

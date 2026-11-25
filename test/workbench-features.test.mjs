@@ -10,6 +10,30 @@ import { mountedProjects, parseProjectMounts } from '../lib/project-mounts.js'
 import { registerSshApi } from '../lib/api.js'
 
 const defaults = { allowPublicBind: false, defaultCommandTimeoutMs: 30000, maxOutputChars: 32000 }
+async function mountApi(t) {
+  const memberships = new Map([['active', 'mine'], ['other', 'mine']])
+  const resolveWorkspace = id => memberships.get(id)
+  const f = await fixture(t, resolveWorkspace)
+  let route
+  const closed = []
+  registerSshApi({ register(value) { route = value; return () => {} } }, '/ssh-local/v1', {
+    store: f.store, aiTerminals: { async closeOwner(id) { closed.push(id) }, async closeProfile(...ids) { closed.push(ids) } },
+    files: { endpoint: id => id.startsWith('sftp:') ? { id } : undefined },
+  })
+  const server = createServer((req, res) => { void route.handler(req, res) })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+  const request = (path, body) => fetch(`http://127.0.0.1:${server.address().port}/ssh-local/v1${path}`, {
+    method: body === undefined ? 'GET' : 'PUT', headers: { 'Content-Type': 'application/json', 'X-DSH-SSH-Request': '1' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+  const project = await (await request('/project-mounts?sessionId=active')).json()
+  assert.equal((await request('/project-mounts?sessionId=active', { ...project, profileIds: ['a'], mountedProjectIds: { a: ['p1', 'p2'] }, workingProjectIds: { a: 'p1' } })).status, 200)
+  const read = () => request('/injections?sessionId=active&defaults=1').then(res => res.json())
+  const mode = value => request('/injections/active/mount-mode', { mode: value, workspaceId: 'mine' })
+  const detach = (value, patch = {}) => request('/injections/active', { ...value, ...patch, mountMode: 'independent', detachProjectMounts: value.mountSource })
+  return { ...f, memberships, resolveWorkspace, request, read, mode, detach, closed }
+}
 async function fixture(t, resolveWorkspace) {
   const dir = await mkdtemp(join(tmpdir(), 'ssh-workbench-test-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
@@ -142,4 +166,69 @@ test('project mounts are persisted, scoped to workspace membership and inherited
   memberships.delete('active')
   assert.equal((await saveMode('active', 'independent', null)).status, 200)
   assert.deepEqual(store.injection('active').profileIds, [])
+})
+
+test('manual mount changes atomically detach the effective project snapshot, preserving access and other sessions', async t => {
+  const f = await mountApi(t)
+  await f.mode('independent')
+  await f.request('/injections/active', { profileIds: ['b'], permission: 'terminal', requireCommandApproval: false })
+  await f.mode('inherit')
+  const effective = await f.read()
+  assert.deepEqual(effective.profileIds, ['a'])
+  const project = f.store.workspaceMounts('active')
+  const response = await f.detach(effective, { profileIds: ['a', 'b'], mountedProjectIds: { ...effective.mountedProjectIds, b: ['p3'] } })
+  assert.equal(response.status, 200)
+  const saved = await response.json()
+  assert.equal(saved.mountMode, 'independent')
+  assert.equal(saved.mountSource, undefined)
+  assert.deepEqual(saved.profileIds, ['a', 'b'])
+  assert.deepEqual(saved.mountedProjectIds.a, ['p1', 'p2'])
+  assert.equal(saved.workingDirectories.a, '/app')
+  assert.equal(saved.permission, 'terminal')
+  assert.equal(saved.requireCommandApproval, false)
+  assert.deepEqual(saved.fileEndpointIds, ['sftp:a', 'sftp:b'])
+  assert.equal(saved.filePermission, effective.filePermission)
+  assert.equal(saved.requireFileApproval, effective.requireFileApproval)
+  assert.deepEqual(f.store.workspaceMounts('active'), project)
+  assert.deepEqual(f.store.injection('other').profileIds, ['a'])
+  const reopened = await SshStore.open(f.path, defaults, f.resolveWorkspace)
+  assert.deepEqual(reopened.injection('active'), f.store.injection('active'))
+  assert.ok(!(await readFile(f.path, 'utf8')).includes('mountSource'))
+  assert.ok(!(await readFile(f.path, 'utf8')).includes('detachProjectMounts'))
+  await f.mode('inherit')
+  assert.deepEqual((await f.read()).profileIds, ['a'])
+  await f.mode('independent')
+  assert.deepEqual((await f.read()).profileIds, ['a', 'b'])
+})
+
+test('manual detachment rejects changed project or session sources without writing either configuration', async t => {
+  const f = await mountApi(t)
+  const access = await f.read(), before = f.store.snapshot()
+  for (const source of [{ ...access.mountSource, revision: 'stale' }, { ...access.mountSource, workspaceId: 'elsewhere' }, {}]) {
+    assert.equal((await f.detach({ ...access, mountSource: source })).status, 409)
+    assert.deepEqual(f.store.snapshot(), before)
+  }
+  assert.equal((await f.request('/injections/active', { ...access, mountMode: 'independent' })).status, 409)
+  assert.equal((await f.request('/injections/active', { ...access, detachProjectMounts: false })).status, 400)
+  f.memberships.set('active', 'elsewhere')
+  assert.equal((await f.detach(access)).status, 409)
+  f.memberships.set('active', 'mine')
+  await f.mode('independent')
+  const independent = f.store.snapshot()
+  assert.equal((await f.detach(access)).status, 409)
+  assert.deepEqual(f.store.snapshot(), independent)
+})
+
+test('failed or competing detach saves preserve inheritance until one complete mount change commits', async t => {
+  const f = await mountApi(t), access = await f.read(), before = f.store.snapshot()
+  const persist = f.store.persist
+  f.store.persist = async () => { throw new Error('disk unavailable') }
+  assert.equal((await f.detach(access, { profileIds: [], workingDirectories: {}, workingProjectIds: {}, mountedProjectIds: {} })).status, 500)
+  assert.deepEqual(f.store.snapshot(), before)
+  f.store.persist = persist
+  const responses = await Promise.all(Array.from({ length: 2 }, () => f.detach(access, { profileIds: [], workingDirectories: {}, workingProjectIds: {}, mountedProjectIds: {} })))
+  assert.deepEqual(responses.map(res => res.status).sort(), [200, 409])
+  assert.equal(f.store.injection('active').mountMode, 'independent')
+  assert.deepEqual(f.store.injection('active').profileIds, [])
+  assert.deepEqual(f.store.injection('other').profileIds, ['a'])
 })

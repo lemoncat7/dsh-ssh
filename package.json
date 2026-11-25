@@ -86,7 +86,8 @@
     "pack:check": "npm pack --dry-run",
     "test:sidebar-browser": "node test/sidebar-anchor.browser.mjs",
     "test:forward-browser": "node test/forward-pane.browser.mjs",
-    "test:dialog-browser": "node test/dialog-scroll.browser.mjs"
+    "test:dialog-browser": "node test/dialog-scroll.browser.mjs",
+    "test:mount-browser": "node test/mount-inheritance.browser.mjs"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.19.0",

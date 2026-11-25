@@ -103,7 +103,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
   const selectedMode = pendingMode ?? (inherited ? 'inherit' : 'independent')
   const mounts = projectMounts ?? props.access
   const mountedHostCount = mounts?.profileIds.length
-  const cannotChangeMounts = mountBusy || props.accessLoading || props.accessSaving || (!projectMounts && (!props.access || inherited))
+  const cannotChangeMounts = mountBusy || props.accessLoading || props.accessSaving || (!projectMounts && !props.access)
   const mountedGroups = JSON.stringify([...new Set(props.profiles.filter(profile => mounts?.profileIds.includes(profile.id)).map(profile => profile.group?.trim() || ''))].sort())
   useEffect(() => {
     const names: string[] = JSON.parse(mountedGroups)
@@ -189,6 +189,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     changeProfiles(enabled ? [...new Set([...current, ...profileIds])] : current.filter(id => !members.has(id)))
   }
   const toggleDirectory = (profileId: string, project: RemoteProjectView): void => {
+    if (cannotChangeMounts) return
     if (!projectMounts) { props.onToggleProject(profileId, project.id, project.path); return }
     const current = projectMounts.mountedProjectIds[profileId] ?? []
     const ids = current.includes(project.id) ? current.filter(id => id !== project.id) : [...current, project.id]
@@ -202,6 +203,7 @@ export function RemoteWorkspaceTree(props: RemoteWorkspaceTreeProps): JSX.Elemen
     } })
   }
   const setDefaultDirectory = (profileId: string, project: RemoteProjectView): void => {
+    if (cannotChangeMounts) return
     if (projectMounts) {
       setDraft({ key: scopeKey, mounts: { ...projectMounts, workingProjectIds: { ...projectMounts.workingProjectIds, [profileId]: project.id } } })
     } else props.onDirectory(profileId, project.path, project.id)
