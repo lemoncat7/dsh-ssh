@@ -108,10 +108,10 @@ test('failed streams and changed remote sizes leave no partial final file', asyn
   assert.deepEqual(await readdir(changed.workspace), [])
 })
 
-test('directories and oversized files are rejected without creating staging files', async t => {
-  for (const entry of [{ kind: 'directory' }, { kind: 'other' }, { size: 513 * 1024 * 1024 }]) {
+test('directories and invalid file sizes are rejected without creating staging files', async t => {
+  for (const entry of [{ kind: 'directory' }, { kind: 'other' }, { size: -1 }, { size: Infinity }, { size: Number.MAX_SAFE_INTEGER + 1 }]) {
     const f = await fixture(t, { entry })
-    await assert.rejects(f.service.download(f.request, signal(), allowed), /普通文件|512 MiB/)
+    await assert.rejects(f.service.download(f.request, signal(), allowed), /普通文件|大小无效/)
     assert.deepEqual(await readdir(f.workspace), [])
   }
 })

@@ -1,6 +1,7 @@
 import { defineTool, type ToolDefinition, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { SshStore } from './store.js'
 import { canTransferFiles } from './file-access-policy.js'
+import {PROFILE_CREATION_TOOLS} from './profile-tools.js'
 
 export type RegisterOperation = (definition: ToolDefinition) => () => void
 export const SSH_ENTRY = 'ssh'
@@ -14,7 +15,7 @@ export function sshOperation(exec: Pick<ToolExecution, 'name' | 'arguments'>): {
 }
 
 function allowed(name: string, store: SshStore, sessionId: string): boolean {
-  if (name === 'ssh_request_temporary_access' || name === 'ssh_temporary_exec') return true
+  if (name === 'ssh_request_temporary_access' || name === 'ssh_temporary_exec' || PROFILE_CREATION_TOOLS.has(name)) return true
   const access = store.injection(sessionId)
   if (name.startsWith('file_')) {
     if (!access?.fileEndpointIds?.length) return false
@@ -30,7 +31,7 @@ function allowed(name: string, store: SshStore, sessionId: string): boolean {
 export function sshEntry(store: SshStore, operations: ReadonlyMap<string, ToolDefinition>): ToolDefinition {
   return defineTool({
     name: SSH_ENTRY,
-    description: 'SSH and FTP/SFTP single entry: list available operations, describe one operation to get its exact parameters, then call it. Covers saved-host discovery, authorized commands/terminals, temporary SSH access, port forwarding and file transfers. Never guess IDs or replace file transfer with shell servers/base64. Only download when a saved local copy is actually needed. All session permissions and approval rules still apply.',
+    description: 'SSH and FTP/SFTP single entry: list available operations, describe one operation to get its exact parameters, then call it. 新增主机、添加 SSH、创建 FTP/FTPS 连接也在此入口。Covers connection creation, saved-host discovery, authorized commands/terminals, temporary SSH access, port forwarding and file transfers. Creating a connection saves it without granting session access. Never guess IDs or replace file transfer with shell servers/base64. Only download when a saved local copy is actually needed. All session permissions and approval rules still apply.',
     parameters: {
       action: { type: 'string', enum: ['list', 'describe', 'call'], required: true },
       tool: { type: 'string', description: 'Exact operation name from list; required for describe/call.' },

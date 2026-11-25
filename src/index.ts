@@ -73,7 +73,7 @@ export function apply(context: Context, config: SshConfig): void {
       store.markWorkspaceChanged()
       runtime.effect(() => () => { workspaceRegistry = undefined; store.markWorkspaceChanged(); revokeTerminals() })
     }) as { dispose(): unknown } | undefined
-    const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals, files, transfers)
+    const disposeTools = registerSshTools(context, store, connector, forwards, aiTerminals, files, transfers, credentials)
     const forkScope = ctx.inject?.(['sessionController'], runtime => {
       const controller = runtime.get('sessionController') as SessionForkController
       runtime.effect(() => inheritSessionForks(controller, store))

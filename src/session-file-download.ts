@@ -6,7 +6,6 @@ import { pipeline } from 'node:stream/promises'
 import type { RemoteFileSystems } from './remote-file-systems.js'
 import type { RemoteFileSystemSession } from './remote-files.js'
 
-const MAX_DOWNLOAD_BYTES = 512 * 1024 * 1024
 const DOWNLOAD_TIMEOUT_MS = 300_000
 
 interface DownloadRequest { endpointId: string; remotePath: string; sessionDirectory: string; localPath?: string }
@@ -22,7 +21,7 @@ export class SessionFileDownloads {
     if (this.active.size >= 2) throw new Error('已有两个文件正在下载，请稍后重试')
     const controller = new AbortController()
     const signal = AbortSignal.any([callerSignal, controller.signal])
-    const timer = setTimeout(() => controller.abort(new Error('文件下载超时，请重试')), DOWNLOAD_TIMEOUT_MS)
+    const timer = setTimeout(() => controller.abort(new Error('文件下载连续 5 分钟没有进展，请重试')), DOWNLOAD_TIMEOUT_MS)
     timer.unref?.()
     this.active.add(controller)
     let session: RemoteFileSystemSession | undefined
@@ -37,7 +36,7 @@ export class SessionFileDownloads {
       session = await this.files.connect(request.endpointId, signal)
       const entry = await session.stat(request.remotePath, signal)
       if (entry.kind !== 'file') throw new Error('下载工具仅支持普通文件；请指定文件路径，不要指定目录或特殊文件')
-      if (!Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > MAX_DOWNLOAD_BYTES) throw new Error('单文件下载上限为 512 MiB')
+      if (!Number.isSafeInteger(entry.size) || entry.size < 0) throw new Error('远端文件大小无效')
       const relativePath = request.localPath ?? entry.name
       validateLocalPath(relativePath)
       const candidate = path.resolve(root, relativePath)
@@ -61,7 +60,7 @@ export class SessionFileDownloads {
           try {
             signal.throwIfAborted(); assertAllowed()
             bytes += chunk.length
-            if (bytes > MAX_DOWNLOAD_BYTES) throw new Error('下载内容超过 512 MiB，已停止')
+            timer.refresh()
             callback(null, chunk)
           } catch (error) { callback(error as Error) }
         },

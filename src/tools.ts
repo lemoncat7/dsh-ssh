@@ -14,6 +14,8 @@ import { RemoteFileSystems } from './remote-file-systems.js'
 import { FileTransferManager } from './file-transfer-manager.js'
 import { registerTemporaryAccess } from './temporary-access.js'
 import { sshEntry, sshOperation } from './tool-entry.js'
+import {profileCreationTools} from './profile-tools.js'
+import type {SshCredentialVault} from './credentials.js'
 
 const textOutput = {
   schema: { type: 'string' as const },
@@ -21,7 +23,7 @@ const textOutput = {
 }
 
 const APPROVAL_TOOLS = new Set(['ssh_exec', 'ssh_terminal_open', 'ssh_terminal_send', 'ssh_terminal_signal', 'ssh_forward_start', 'ssh_forward_stop'])
-export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager, files?: RemoteFileSystems, transfers?: FileTransferManager): () => void {
+export function registerSshTools(ctx: Context, store: SshStore, connector: SshConnector, forwards: ForwardManager, terminals: AiTerminalManager, files?: RemoteFileSystems, transfers?: FileTransferManager, credentials?:SshCredentialVault): () => void {
   const tools: ToolDefinition[] = [
     listTool(store),
     cwdTool(store, connector),
@@ -38,6 +40,7 @@ export function registerSshTools(ctx: Context, store: SshStore, connector: SshCo
   const operations = new Map<string, ToolDefinition>(tools.map(tool => [tool.name, tool]))
   const register = (tool: ToolDefinition): (() => void) => { operations.set(tool.name, tool); return () => { operations.delete(tool.name) } }
   const disposers = [registerTemporaryAccess(ctx, store, connector, register)]
+  if(credentials)for(const definition of profileCreationTools(store,credentials))disposers.push(register(definition))
 
   const disposeApproval = ctx.on('tools/pre-execute', async (exec, next) => {
     const operation = sshOperation(exec)

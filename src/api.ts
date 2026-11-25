@@ -1,3 +1,4 @@
+import {createSshProfile,createFtpProfile} from './profile-creation.js'
 import { normalizeSftpPathMappings } from './sftp-path-mapping.js'
 import { exportConfiguration, previewConfiguration, importConfiguration } from './config-backup.js'
 import { randomBytes } from 'node:crypto'
@@ -277,15 +278,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'POST' && segments.length === 1) {
       requireMutationHeader(req)
       const body = await readObject(req)
-      const draft = normalizeFtpProfileDraft(body.profile)
-      if (draft.credentialId !== undefined) requiredPasswordCredential(runtime.store, draft.credentialId)
-      const secrets = normalizeSecrets(body.secrets)
-      if (draft.authMode !== 'anonymous' && draft.credentialId === undefined && !secrets.password) throw httpError(400, 'FTP password is required')
-      const now = Date.now()
-      const profile: FtpProfile = { ...draft, id: createId('ftp'), port: draft.port ?? defaultFtpPort(draft.protocol), proxy: draft.proxy ?? { type: 'none' }, initialPath: draft.initialPath ?? '/', connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, createdAt: now, updatedAt: now }
-      if (profile.authMode !== 'anonymous' && profile.credentialId === undefined) await runtime.credentials.replaceFtp(profile.id, { password: secrets.password! })
-      try { await runtime.store.update(state => { state.ftpProfiles.push(profile) }) }
-      catch (error) { if (profile.credentialId === undefined) await runtime.credentials.deleteFtp(profile.id).catch(() => {}); throw error }
+      const profile = await createFtpProfile(runtime.store, runtime.credentials, body.profile, body.secrets)
       return sendJson(res, 201, await ftpProfileView(runtime, profile))
     }
     const id = segments[1]
@@ -433,13 +426,7 @@ async function dispatch(req: IncomingMessage, res: ServerResponse, prefix: strin
     if (method === 'POST' && segments.length === 1) {
       requireMutationHeader(req)
       const body = await readObject(req)
-      const draft = normalizeProfileDraft(body.profile)
-      const secrets = normalizeSecrets(body.secrets)
-      const now = Date.now()
-      const profile: SshProfile = { ...draft, id: createId('host'), port: draft.port ?? 22, proxy: draft.proxy ?? { type: 'none' }, keepAliveIntervalMs: draft.keepAliveIntervalMs ?? 15_000, connectTimeoutMs: draft.connectTimeoutMs ?? 15_000, terminalType: draft.terminalType ?? 'xterm-256color', tags: draft.tags ?? [], createdAt: now, updatedAt: now }
-      if (profile.credentialId === undefined) await runtime.credentials.replace(profile.id, secrets)
-      try { await runtime.store.update(state => { assertProfileEndpointAvailable(state.profiles, profile); state.profiles.push(profile) }) }
-      catch (error) { if (profile.credentialId === undefined) await runtime.credentials.delete(profile.id).catch(() => {}); throw error }
+      const profile = await createSshProfile(runtime.store, runtime.credentials, body.profile, body.secrets)
       return sendJson(res, 201, await profileView(runtime, profile))
     }
     const id = segments[1]

@@ -5,8 +5,6 @@ import { pipeline } from 'node:stream/promises'
 import type { RemoteFileSystems } from './remote-file-systems.js'
 import { remoteJoin } from './remote-files.js'
 
-export const MAX_LOCAL_TRANSFER_BYTES = 512 * 1024 * 1024
-
 /** Stage first: partial uploads never appear under the requested filename. */
 export async function uploadEndpointFile(files: RemoteFileSystems, endpointId: string, directory: string, name: string, source: Readable, signal: AbortSignal, expectedSize?: number, assertAllowed: () => void = () => {}, upload?: UploadOptions) {
   if (!name || name === '.' || name === '..' || /[\\/\0\r\n]/.test(name)) throw new Error('无效的上传文件名')

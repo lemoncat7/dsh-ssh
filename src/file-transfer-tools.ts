@@ -37,7 +37,7 @@ export function registerFileTransferTools(ctx: Context, store: SshStore, files: 
 }
 
 function uploadTool(store: SshStore, uploads: SessionFileUploads): ToolDefinition {
-  return tool('file_upload_from_local', 'Upload one regular file from the current DSH session directory to an authorized FTP/FTPS/SFTP directory. localPath must be relative to the session directory, not the browser computer. Requires file transfer permission; approval policy applies. Maximum 512 MiB, 5 minutes, no overwrite. Returns remotePath only after saving. Prefer this over shell/encoding/temporary servers.', {
+  return tool('file_upload_from_local', 'Upload one regular file from the current DSH session directory to an authorized FTP/FTPS/SFTP directory. localPath must be relative to the session directory, not the browser computer. Requires file transfer permission; approval policy applies. Streams without a fixed file-size limit; stops after 5 minutes without progress. No overwrite. Returns remotePath only after saving. Prefer this over shell/encoding/temporary servers.', {
     endpointId: { type: 'string', required: true },
     localPath: { type: 'string', required: true, description: 'Relative file path within the DSH session directory.' },
     remoteDirectory: { type: 'string', required: true },
@@ -56,7 +56,7 @@ function uploadTool(store: SshStore, uploads: SessionFileUploads): ToolDefinitio
 }
 
 function downloadTool(store: SshStore, downloads: SessionFileDownloads): ToolDefinition {
-  return tool('file_download_to_local', `${DOWNLOAD_USAGE} Download one file from an authorized FTP, FTPS or SFTP endpoint into the current DSH session directory. Default: preserve the remote filename directly in that directory. Optional localPath is relative to the session directory; its parent must already exist. Never overwrite existing files. Returns the actual saved localPath only after completion. This is DSH-host local storage, NOT the browser Downloads folder. Requires file transfer permission/approval. Maximum 512 MiB per file, 5 minutes; cancellation/failure removes staging data. Directory download is not supported.`, {
+  return tool('file_download_to_local', `${DOWNLOAD_USAGE} Download one file from an authorized FTP, FTPS or SFTP endpoint into the current DSH session directory. Default: preserve the remote filename directly in that directory. Optional localPath is relative to the session directory; its parent must already exist. Never overwrite existing files. Returns the actual saved localPath only after completion. This is DSH-host local storage, NOT the browser Downloads folder. Requires file transfer permission/approval. Streams without a fixed file-size limit; stops after 5 minutes without progress. Cancellation/failure removes staging data. Directory download is not supported.`, {
     endpointId: { type: 'string', required: true, description: 'Exact authorized endpoint id from file_endpoint_list.' },
     remotePath: { type: 'string', required: true, description: 'Remote file path, not a directory.' },
     localPath: { type: 'string', description: 'Optional relative filename/path under the current session directory. Defaults to the remote filename. Parent directory must exist.' },
