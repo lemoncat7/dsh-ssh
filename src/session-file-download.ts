@@ -77,7 +77,8 @@ export class SessionFileDownloads {
       signal.throwIfAborted()
       for (const outcome of outcomes) if (outcome.status === 'rejected') throw outcome.reason
       if (bytes !== entry.size) throw new Error('远端文件大小在下载期间发生变化，请重试；未保存不完整文件')
-      const handle = await open(partial, 'r')
+      // Windows FlushFileBuffers requires a writable handle, even after streaming has finished.
+      const handle = await open(partial, 'r+')
       try { await handle.sync() } finally { await handle.close() }
       if (await realpath(request.sessionDirectory) !== root || await realpath(parent) !== parent) throw new Error('会话目录在下载期间发生变化，请重试')
       signal.throwIfAborted(); assertAllowed()

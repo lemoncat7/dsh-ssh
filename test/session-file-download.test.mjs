@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile, readFile, readdir, symlink } from 'node:fs/promises'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -14,7 +15,7 @@ async function fixture(t, options = {}) {
   const root = await mkdtemp(join(tmpdir(), 'ssh-download-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const workspace = join(root, 'workspace'); await mkdir(workspace)
-  const bytes = Buffer.from('hello 文件\n')
+  const bytes = options.bytes ?? Buffer.from('hello 文件\n')
   let connections = 0, closes = 0
   const files = { async connect(_endpoint, _signal) {
     connections++
@@ -22,7 +23,9 @@ async function fixture(t, options = {}) {
       async stat() { return { name: '报告.txt', path: '/remote/报告.txt', kind: 'file', size: bytes.length, ...options.entry } },
       async download(path, target, signal) {
         if (options.download) return options.download({ path, target, signal, workspace, bytes })
-        await pipeline(Readable.from([bytes]), target, { signal })
+        await pipeline(Readable.from((function* () {
+          for (let offset = 0; offset < bytes.length; offset += 64 * 1024) yield bytes.subarray(offset, offset + 64 * 1024)
+        })()), target, { signal })
       },
     }
   } }
@@ -49,6 +52,22 @@ test('allows a relative filename in an existing session subdirectory', async t =
   assert.deepEqual(await readFile(result.localPath), f.bytes)
 })
 
+test('durably commits empty, small UTF-8 and multi-chunk binary downloads with matching SHA256', async t => {
+  const binary = Buffer.alloc(1024 * 1024 + 139)
+  for (let i = 0; i < binary.length; i++) binary[i] = i % 251
+  const samples = [Buffer.alloc(0), Buffer.alloc(24, 'a'), Buffer.from('中文 ✓ αβγ\n'.repeat(3) + 'tail\n!'), Buffer.alloc(139, 'b'), binary]
+  for (const bytes of samples) await t.test(`${bytes.length} bytes`, async t => {
+    const f = await fixture(t, { bytes })
+    const result = await f.service.download(f.request, signal(), allowed)
+    const saved = await readFile(result.localPath)
+    assert.equal(result.bytes, bytes.length)
+    assert.equal(createHash('sha256').update(saved).digest('hex'), createHash('sha256').update(bytes).digest('hex'))
+    assert.deepEqual(saved, bytes)
+    assert.deepEqual(await readdir(f.workspace), ['报告.txt'])
+    assert.equal(f.closes(), 1)
+  })
+})
+
 test('rejects traversal, absolute destinations and a missing session cwd before connecting', async t => {
   const f = await fixture(t)
   for (const localPath of ['../escape', '/etc/file', 'C:\\file', 'a/../../escape', 'a\0b', 'a/', './a']) {
@@ -60,7 +79,7 @@ test('rejects traversal, absolute destinations and a missing session cwd before 
 
 test('does not follow destination symlinks outside the session or overwrite existing files', async t => {
   const f = await fixture(t)
-  await mkdir(join(f.root, 'outside')); await symlink(join(f.root, 'outside'), join(f.workspace, 'escape'))
+  await mkdir(join(f.root, 'outside')); await symlink(join(f.root, 'outside'), join(f.workspace, 'escape'), process.platform === 'win32' ? 'junction' : 'dir')
   await assert.rejects(f.service.download({ ...f.request, localPath: 'escape/a.txt' }, signal(), allowed), /当前会话目录/)
   await writeFile(join(f.workspace, '报告.txt'), 'keep')
   await assert.rejects(f.service.download(f.request, signal(), allowed), /未覆盖/)

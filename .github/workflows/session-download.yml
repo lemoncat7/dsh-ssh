@@ -1,0 +1,48 @@
+name: Session file download
+
+on:
+  push:
+    paths:
+      - src/session-file-download.ts
+      - test/session-file-download.test.mjs
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - scripts/build-client.mjs
+      - .github/workflows/session-download.yml
+  pull_request:
+    paths:
+      - src/session-file-download.ts
+      - test/session-file-download.test.mjs
+      - package.json
+      - package-lock.json
+      - tsconfig.json
+      - scripts/build-client.mjs
+      - .github/workflows/session-download.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: session-download-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  download:
+    name: Download on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node --test test/session-file-download.test.mjs
