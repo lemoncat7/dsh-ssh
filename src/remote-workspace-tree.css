@@ -157,6 +157,10 @@
 }
 
 .dsh-ssh-tree-group > h3:is(:hover, :has(:focus-visible)) > .dsh-ssh-group-actions { display: inline-flex; }
+.dsh-ssh-group-actions:has(> .is-mounted) { display: inline-flex; }
+@media (hover: hover) and (pointer: fine) {
+  .dsh-ssh-tree-group > h3:not(:hover):not(:has(:focus-visible)) > .dsh-ssh-group-actions > button:not(.is-mounted) { display: none; }
+}
 @media (hover: none) {
   .dsh-ssh-group-actions { display: inline-flex; }
 }
@@ -352,7 +356,12 @@
   border-color: transparent;
   color: var(--ssh-text);
   background: var(--ssh-selected);
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
+
+.dsh-ssh-tree-mount.is-mounted:disabled { opacity: .38; }
 
 .dsh-ssh-tree-mount.is-mounted:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--ssh-danger) 24%, var(--ssh-border));

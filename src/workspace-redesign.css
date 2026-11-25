@@ -91,7 +91,7 @@
 .dsh-ssh-host-catalogue .is-menu-open > .dsh-ssh-context-action { opacity: 1; pointer-events: auto; transform: none; }
 /* Mouse clicks retain DOM focus, but only keyboard focus keeps actions revealed. */
 @media (hover: hover) and (pointer: fine) {
-  .dsh-ssh-host-catalogue .dsh-ssh-tree-host-row:not(:hover):not(:has(:focus-visible)):not(.is-menu-open) > .dsh-ssh-context-action {
+  .dsh-ssh-host-catalogue .dsh-ssh-tree-host-row:not(:hover):not(:has(:focus-visible)):not(.is-menu-open) > .dsh-ssh-context-action:not(.is-mounted) {
     opacity: 0; pointer-events: none; transform: translate3d(8px,0,0) scale(.78);
   }
 }
