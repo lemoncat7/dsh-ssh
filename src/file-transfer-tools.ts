@@ -129,12 +129,13 @@ function transferStatusTool(store: SshStore, transfers: FileTransferManager): To
 }
 
 function transferCancelTool(store: SshStore, transfers: FileTransferManager): ToolDefinition {
-  return tool('file_transfer_cancel', 'Cancel a queued or running file transfer owned by this conversation.', {
+  return tool('file_transfer_cancel', 'Stop a queued or running file transfer owned by this conversation, close its endpoint connections, and return the confirmed final job state. cancelled is true only when that state is cancelled.', {
     jobId: { type: 'string', required: true },
   }, async (raw, exec) => {
     const injection = requireFileInjection(store, exec)
     if (!injection.fileEndpointIds.some(id => canTransferFiles(injection, id))) throw new Error('This session only permits remote file browsing')
-    return json({ cancelled: transfers.cancel(text(object(raw).jobId, 'jobId', 200), injection.sessionId) })
+    const job = await transfers.cancelAndWait(text(object(raw).jobId, 'jobId', 200), injection.sessionId)
+    return json({ cancelled: job.state === 'cancelled', state: job.state, job })
   })
 }
 

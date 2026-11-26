@@ -37,6 +37,8 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
   const stageGlow = useBorderGlowSurface<HTMLElement>()
   const [endpoints, setEndpoints] = useState<FileEndpointView[]>([])
   const [jobs, setJobs] = useState<TransferJobView[]>([])
+  const [cancellingJobs, setCancellingJobs] = useState<Set<string>>(() => new Set())
+  const jobsGenerationRef = useRef(0)
   const [tabs, setTabs] = useState<TransferTab[]>(() => restoreTabs())
   const [activeTabId, setActiveTabId] = useState(() => tabs[0]?.id ?? 'transfer-1')
   const [connectionsOpen, setConnectionsOpen] = useState(false)
@@ -75,7 +77,8 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     let stopped = false; let timer: number | undefined
     const poll = async (): Promise<void> => {
       if (document.visibilityState === 'hidden') { timer = window.setTimeout(() => { void poll() }, 1800); return }
-      try { const next = await loadTransferJobs(); if (!stopped) setJobs(next.filter(job => !dismissedJobIdsRef.current.has(job.id))) } catch {}
+      const generation = jobsGenerationRef.current
+      try { const next = await loadTransferJobs(); if (!stopped && generation === jobsGenerationRef.current) setJobs(next.filter(job => !dismissedJobIdsRef.current.has(job.id))) } catch {}
       if (!stopped) timer = window.setTimeout(() => { void poll() }, 800)
     }
     void poll(); return () => { stopped = true; if (timer !== undefined) clearTimeout(timer) }
@@ -139,6 +142,25 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
     try { await dismissFileTransferJob(previous.id) }
     catch (reason) { setError(errorMessage(reason)) }
   }
+  const cancelJob = async (id: string): Promise<void> => {
+    if (cancellingJobs.has(id)) return
+    setCancellingJobs(current => new Set([...current, id]))
+    try {
+      const job = await cancelFileTransfer(id)
+      jobsGenerationRef.current += 1
+      setJobs(current => current.map(item => item.id === id ? job : item))
+    } catch (reason) { setError(errorMessage(reason)) }
+    finally { setCancellingJobs(current => { const next = new Set(current); next.delete(id); return next }) }
+  }
+  const dismissJob = async (id: string): Promise<void> => {
+    try {
+      await dismissFileTransferJob(id)
+      dismissedJobIdsRef.current.add(id)
+      jobsGenerationRef.current += 1
+      setJobs(current => current.filter(job => job.id !== id))
+      if (conflictJob?.id === id) setConflictJob(undefined)
+    } catch (reason) { setError(errorMessage(reason)) }
+  }
   return <div className="dsh-ssh-transfer-workspace">
     {error && <div className="dsh-ssh-banner is-error" role="alert"><span>{error}</span><button type="button" onClick={() => setError(undefined)} aria-label={t("client.close")}><IconCloseOutline16 size={16} /></button></div>}
     <section ref={stageGlow.ref} onPointerMove={stageGlow.onPointerMove} onPointerLeave={stageGlow.onPointerLeave} className="dsh-ssh-transfer-stage dsh-ssh-border-surface">
@@ -149,7 +171,7 @@ export function FileTransferWorkspace({ ftpProfiles, vaultEntries, proxyEntries,
       {endpoints.length === 0 ? <div className="dsh-ssh-transfer-empty"><IconDataOutline16 size={24} /><strong>{t("file-transfer-workspace.noFileConnectionsAvailableYet")}</strong><p>{t("file-transfer-workspace.createAnFtpFtpsConnectionOrAddAnSsh")}</p><button type="button" className="dsh-ssh-primary-button" onClick={() => setConnectionsOpen(true)}>{t("file-transfer-workspace.newFtpConnection")}</button></div>
         : active && <div className={`dsh-ssh-transfer-panes has-${active.panes.length}`}>{active.panes.map(pane => <FileTransferPane key={pane.id} pane={pane} endpoints={endpoints} downloadConcurrency={downloadConcurrency} dragSource={dragSource} refreshRevision={directoryRevisions[directoryKey(pane.endpointId, pane.path)] ?? 0} onManageConnections={() => setConnectionsOpen(true)} onSessionAccess={() => setAccessOpen(true)} accessCount={access.value?.fileEndpointIds.filter(id => id.startsWith('ftp:')).length ?? 0} onDragSourceChange={setDragSource} onChange={patch => updateActive(tab => ({ ...tab, panes: tab.panes.map(item => item.id === pane.id ? { ...item, ...patch } : item) }))} onExternalDrop={(source, destinationDirectory) => { void dropFiles(source, pane, destinationDirectory) }} />)}</div>}
       <div className="dsh-ssh-transfer-queues">
-      <TransferQueue jobs={jobs} endpoints={endpoints} onCancel={async id => { try { await cancelFileTransfer(id); setJobs(current => current.map(job => job.id === id ? { ...job, state: 'cancelled' } : job)) } catch (reason) { setError(errorMessage(reason)) } }} onConflict={openConflict} />
+      <TransferQueue jobs={jobs} endpoints={endpoints} cancellingJobs={cancellingJobs} onCancel={cancelJob} onDismiss={dismissJob} onConflict={openConflict} />
       </div>
     </section>
     {connectionsOpen && <FtpConnectionsDialog profiles={ftpProfiles} vaultEntries={vaultEntries} proxyEntries={proxyEntries} onClose={() => setConnectionsOpen(false)} onChanged={() => { onProfilesChanged(); void refreshEndpoints() }} />}
@@ -219,7 +241,10 @@ function FileTransferPane({ pane, endpoints, downloadConcurrency, dragSource, re
     try {
       for (const file of files) {
         try { await uploadFileEndpointFile(target.endpointId, target.path, file) }
-        catch (reason) { failures.push(`${file.name}: ${errorMessage(reason)}`) }
+        catch (reason) {
+          if (reason instanceof Error && reason.name === 'AbortError') break
+          failures.push(`${file.name}: ${errorMessage(reason)}`)
+        }
       }
       if (uploadLocation.current.endpointId === target.endpointId && uploadLocation.current.path === target.path) {
         await load(target.path)
@@ -321,7 +346,7 @@ function FileEntryRow({ entry, paneId, endpointId, downloadConcurrency, sourceDi
   ><span><FileGlyph directory={directory} /><i title={entry.name}>{entry.name}</i></span><span>{directory ? '—' : formatBytes(entry.size)}</span><span title={entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText}>{entry.modifiedAt > 0 ? new Date(entry.modifiedAt).toLocaleString() : entry.modifiedAtText || '—'}</span><span className="dsh-ssh-file-row-actions dsh-ssh-context-action">{<a className="dsh-ssh-file-row-download" href={fileEndpointDownloadUrl(endpointId, entry.path, downloadConcurrency)} download={directory ? `${entry.name}.tar` : entry.name} draggable={false} aria-label={t("file-transfer-workspace.downloadLocally", [entry.name])} title={entry.kind === 'directory' ? t("file-transfer-workspace.packageAndDownloadLocally", [entry.name]) : t("file-transfer-workspace.downloadLocally", [entry.name])} onClick={trackDownloadClick}><DownloadGlyph /></a>}<button type="button" className="dsh-ssh-file-row-delete" draggable={false} aria-label={t("client.delete2", [entry.name])} title={t("client.delete2", [entry.name])} onClick={event => { event.stopPropagation(); onDelete() }}><IconTrashOutline16 size={14} /></button></span></div>
 }
 
-function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; onCancel(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {
+function TransferQueue({ jobs, endpoints, cancellingJobs, onCancel, onDismiss, onConflict }: { jobs: TransferJobView[]; endpoints: FileEndpointView[]; cancellingJobs: ReadonlySet<string>; onCancel(id: string): Promise<void>; onDismiss(id: string): Promise<void>; onConflict(job: TransferJobView): void }): JSX.Element {
   useSshLocale()
   const browserJobs = useBrowserTransferTasks()
   const active = jobs.filter(job => job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring')
@@ -333,8 +358,9 @@ function TransferQueue({ jobs, endpoints, onCancel, onConflict }: { jobs: Transf
     {combined.length === 0 ? <p>{t("file-transfer-workspace.dragFromOnePaneToAnotherOrSelectFiles")}</p> : combined.map(item => {
       if (item.kind === 'browser') return <BrowserTransferTask key={'browser-' + item.job.id} job={item.job} />
       const job = item.job
+      const cancelling = cancellingJobs.has(job.id) && !isFinished(job.state)
       const progress = job.totalBytes > 0 ? Math.min(100, job.transferredBytes / job.totalBytes * 100) : job.state === 'completed' ? 100 : 0
-      return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span>{(job.state === 'queued' || job.state === 'scanning' || job.state === 'transferring') ? <button type="button" className="dsh-ssh-icon-button" aria-label={t("file-transfer-workspace.cancelTransfer")} onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : isTransferConflict(job) ? <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>{t("file-transfer-workspace.handle")}</button> : null}</article>
+      return <article key={job.id}><span className={`dsh-ssh-transfer-state is-${job.state}`} aria-hidden="true" /><span className="dsh-ssh-transfer-job-copy"><strong>{remoteLabel(job.request.sourcePaths)} <i>→</i> {endpointName(endpoints, job.request.destinationEndpointId)}</strong><small>{cancelling ? t('browser-transfer.cancelling') : job.error ?? jobLabel(job, progress)}</small><span className="dsh-ssh-transfer-job-time">{jobTimeLabel(job)}</span><span className="dsh-ssh-transfer-progress"><i style={{ transform: `scaleX(${progress / 100})` }} /></span></span><span className="dsh-ssh-transfer-job-actions">{!isFinished(job.state) ? <button type="button" className="dsh-ssh-icon-button" disabled={cancelling} aria-label={cancelling ? t('browser-transfer.cancelling') : t("file-transfer-workspace.cancelTransfer")} onClick={() => { void onCancel(job.id) }}><IconCloseOutline16 size={15} /></button> : <>{isTransferConflict(job) && <button type="button" className="dsh-ssh-job-resolve" onClick={() => onConflict(job)}>{t("file-transfer-workspace.handle")}</button>}<button type="button" className="dsh-ssh-icon-button" aria-label={t('browser-transfer.closeRecord')} onClick={() => { void onDismiss(job.id) }}><IconCloseOutline16 size={15} /></button></>}</span></article>
     })}
   </TransferTaskList>
 }

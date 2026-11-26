@@ -57,14 +57,19 @@ export async function openSftpFileSystemSession(
 ): Promise<RemoteFileSystemSession> {
   signal?.throwIfAborted()
   const connection = await connector.connect(profileId, signal)
+  let closed = false
+  const abort = (): void => { if (!closed) { closed = true; connection.close() } }
+  signal?.addEventListener('abort', abort, { once: true })
   try {
+    signal?.throwIfAborted()
     const sftp = await openSftp(connection.client, signal)
-    const home = await realpath(sftp, '.')
+    const home = await realpath(sftp, '.', signal)
+    signal?.throwIfAborted()
     return new ReusableSftpSession(endpoint, connection, sftp, home)
   } catch (error) {
-    connection.close()
+    abort()
     throw error
-  }
+  } finally { signal?.removeEventListener('abort', abort) }
 }
 
 class ReusableSftpSession implements RemoteFileSystemSession {
@@ -166,10 +171,14 @@ class ReusableSftpSession implements RemoteFileSystemSession {
   private async run<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (this.closed) throw new Error('SFTP session is closed')
     signal?.throwIfAborted()
-    const abort = (): void => this.close()
-    signal?.addEventListener('abort', abort, { once: true })
-    try { return await operation() }
-    finally { signal?.removeEventListener('abort', abort) }
+    if (!signal) return operation()
+    return new Promise<T>((resolve, reject) => {
+      const abort = (): void => { this.close(); reject(signal.reason ?? new Error('SFTP request was aborted')) }
+      signal.addEventListener('abort', abort, { once: true })
+      Promise.resolve().then(() => { signal.throwIfAborted(); return operation() }).then(value => {
+        signal.removeEventListener('abort', abort); resolve(value)
+      }, error => { signal.removeEventListener('abort', abort); reject(error) })
+    })
   }
 }
 
@@ -424,9 +433,15 @@ function openSftp(client: import('ssh2').Client, signal?: AbortSignal): Promise<
   })
 }
 
-function realpath(sftp: SFTPWrapper, value: string): Promise<string> {
+function realpath(sftp: SFTPWrapper, value: string, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    sftp.realpath(value, (error, resolved) => error ? reject(normalizeSftpPathError(error, value)) : resolve(resolved))
+    signal?.throwIfAborted()
+    const abort = (): void => reject(signal?.reason ?? new Error('SFTP path request was aborted'))
+    signal?.addEventListener('abort', abort, { once: true })
+    sftp.realpath(value, (error, resolved) => {
+      signal?.removeEventListener('abort', abort)
+      if (error) reject(normalizeSftpPathError(error, value)); else resolve(resolved)
+    })
   })
 }
 

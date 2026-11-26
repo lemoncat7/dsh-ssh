@@ -32,6 +32,7 @@ export function BrowserTransferTask({ job }: { job: BrowserTransfer }): JSX.Elem
   switch (job.state) {
     case 'preparing': status = t('browser-transfer.preparing'); break
     case 'saving': status = t('browser-transfer.savingLocal'); break
+    case 'cancelling': status = t('browser-transfer.cancelling'); break
     case 'cancelled': status = t('file-transfer-workspace.cancelled'); break
     case 'unavailable': status = t('browser-transfer.unavailable'); break
     case 'failed': status = job.error || t('browser-transfer.failed'); break
@@ -50,7 +51,7 @@ export function BrowserTransferTask({ job }: { job: BrowserTransfer }): JSX.Elem
       <span className="dsh-ssh-transfer-job-time">{job.completedAt === undefined ? t('file-transfer-workspace.created', [new Date(job.createdAt).toLocaleTimeString()]) : t('browser-transfer.finishedAt', [new Date(job.completedAt).toLocaleTimeString()])}</span>
       {progress !== undefined && <span className="dsh-ssh-transfer-progress" role="progressbar" aria-label={job.name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><i style={{ transform: `scaleX(${progress / 100})` }} /></span>}
     </span>
-    {canCancelBrowserTransfer(job) ? <button type="button" className="dsh-ssh-icon-button" aria-label={t('file-transfer-workspace.cancelTransfer')} onClick={() => cancelBrowserTransfer(job.id)}><IconCloseOutline16 size={15} /></button> : !isBrowserTransferActive(job) && <button type="button" className="dsh-ssh-icon-button" aria-label={t('client.close')} onClick={() => dismissBrowserTransfer(job.id)}><IconCloseOutline16 size={15} /></button>}
+    {isBrowserTransferActive(job) ? <button type="button" className="dsh-ssh-icon-button" disabled={!canCancelBrowserTransfer(job)} aria-label={job.state === 'cancelling' ? t('browser-transfer.cancelling') : t('file-transfer-workspace.cancelTransfer')} title={job.state === 'saving' ? t('browser-transfer.finishingSave') : job.state === 'cancelling' ? t('browser-transfer.cancelling') : t('file-transfer-workspace.cancelTransfer')} onClick={() => cancelBrowserTransfer(job.id)}><IconCloseOutline16 size={15} /></button> : <button type="button" className="dsh-ssh-icon-button" aria-label={t('browser-transfer.closeRecord')} onClick={() => dismissBrowserTransfer(job.id)}><IconCloseOutline16 size={15} /></button>}
   </article>
 }
 

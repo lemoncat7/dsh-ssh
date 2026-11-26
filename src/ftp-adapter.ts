@@ -53,6 +53,8 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
   static async open(endpoint: RemoteEndpointView, profile: FtpProfile, password: string, dialer: NetworkDialer, signal?: AbortSignal): Promise<FtpFileSystemSession> {
     signal?.throwIfAborted()
     const client = new FtpListingClient(profile.connectTimeoutMs, { allowSeparateTransferHost: false })
+    const abort = (): void => client.close()
+    signal?.addEventListener('abort', abort, { once: true })
     client.prepareTransfer = createPassiveTransfer(profile, dialer, signal)
     const tlsOptions: tls.ConnectionOptions = {
       host: profile.host,
@@ -61,6 +63,7 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
     }
     try {
       const raw = await dialer.connect(profile.host, profile.port, profile.proxy, profile.connectTimeoutMs, signal)
+      if (signal?.aborted) { raw.destroy(); signal.throwIfAborted() }
       if (profile.protocol === 'ftps-implicit') {
         const secure = tls.connect({ ...tlsOptions, socket: raw })
         const welcome = handleWelcome(client)
@@ -76,11 +79,12 @@ class FtpFileSystemSession implements RemoteFileSystemSession {
       await client.login(profile.authMode === 'anonymous' ? 'anonymous' : profile.username, profile.authMode === 'anonymous' ? 'anonymous@' : password)
       await client.useDefaultSettings()
       if (profile.initialPath !== '/') await client.cd(profile.initialPath)
+      signal?.throwIfAborted()
       return new FtpFileSystemSession(endpoint, profile, client)
     } catch (error) {
       client.close()
       throw error
-    }
+    } finally { signal?.removeEventListener('abort', abort) }
   }
 
   async list(value: string, signal?: AbortSignal): Promise<RemoteDirectoryView> {

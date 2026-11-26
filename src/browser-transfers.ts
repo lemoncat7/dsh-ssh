@@ -5,7 +5,7 @@ export interface BrowserTransfer {
   id: string
   name: string
   direction: 'upload' | 'download'
-  state: ClientDownloadUpdate['state'] | 'waiting' | 'unavailable'
+  state: ClientDownloadUpdate['state'] | 'waiting' | 'unavailable' | 'cancelling'
   remoteBytes?: number
   transferredBytes: number
   totalBytes?: number
@@ -15,13 +15,13 @@ export interface BrowserTransfer {
 }
 let snapshot: BrowserTransfer[] = []
 const listeners = new Set<() => void>()
-const downloadControllers = new Map<string, AbortController>()
+const cancellationHandlers = new Map<string, () => void>()
 export const browserTransfers = {
   getSnapshot: () => snapshot,
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
 }
 export function updateBrowserTransfer(id: string, patch: Partial<BrowserTransfer>): void {
-  snapshot = snapshot.map(item => item.id === id ? { ...item, ...patch, ...((patch.state === 'completed' || patch.state === 'failed' || patch.state === 'cancelled') && item.completedAt === undefined ? { completedAt: Date.now() } : {}) } : item)
+  snapshot = snapshot.map(item => item.id === id && isBrowserTransferActive(item) ? { ...item, ...patch, ...((patch.state === 'completed' || patch.state === 'failed' || patch.state === 'cancelled') && item.completedAt === undefined ? { completedAt: Date.now() } : {}) } : item)
   for (const listener of listeners) listener()
 }
 export function createBrowserTransfer(name: string, direction: BrowserTransfer['direction'], totalBytes?: number): string {
@@ -41,14 +41,25 @@ export function dismissBrowserTransfer(id: string): void {
 }
 
 export function isBrowserTransferActive(job: BrowserTransfer): boolean {
-  return job.state === 'preparing' || job.state === 'transferring' || job.state === 'waiting' || job.state === 'saving'
+  return job.state === 'preparing' || job.state === 'transferring' || job.state === 'waiting' || job.state === 'saving' || job.state === 'cancelling'
 }
 
 export function canCancelBrowserTransfer(job: BrowserTransfer): boolean {
-  return downloadControllers.has(job.id) && isBrowserTransferActive(job) && job.state !== 'saving'
+  return cancellationHandlers.has(job.id) && isBrowserTransferActive(job) && job.state !== 'saving' && job.state !== 'cancelling'
 }
 
-export function cancelBrowserTransfer(id: string): void { downloadControllers.get(id)?.abort() }
+export function registerBrowserTransferCancellation(id: string, cancel: () => void): () => void {
+  cancellationHandlers.set(id, cancel)
+  return () => { if (cancellationHandlers.get(id) === cancel) cancellationHandlers.delete(id) }
+}
+
+export function cancelBrowserTransfer(id: string): void {
+  const job = snapshot.find(item => item.id === id)
+  if (!job || !canCancelBrowserTransfer(job)) return
+  const cancel = cancellationHandlers.get(id)!
+  updateBrowserTransfer(id, { state: 'cancelling' })
+  cancel()
+}
 
 /** Prefer client streaming to a user-selected file; never buffer a full Blob. */
 export function trackDownloadClick(event: MouseEvent<HTMLAnchorElement>): void {
@@ -68,12 +79,12 @@ export function trackDownloadClick(event: MouseEvent<HTMLAnchorElement>): void {
   }
   event.preventDefault()
   const controller = new AbortController()
-  downloadControllers.set(id, controller)
+  const unregister = registerBrowserTransferCancellation(id, () => controller.abort())
   let destination: ReturnType<SaveFilePicker>
   // Invoke in the click's activation scope. Never auto-fallback after cancellation
   // or denial: that would start a second, unexpected download.
   try { destination = picker.call(window, { suggestedName: name }) }
   catch (error) { destination = Promise.reject(error) }
   void saveClientDownload(url.href, destination, controller.signal, value => updateBrowserTransfer(id, value))
-    .finally(() => { downloadControllers.delete(id) })
+    .finally(unregister)
 }

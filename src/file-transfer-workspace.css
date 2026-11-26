@@ -283,7 +283,7 @@
 .dsh-ssh-transfer-queue-heading:hover .dsh-ssh-transfer-queue-disclosure { color: var(--ssh-text-muted); background: color-mix(in srgb, var(--ssh-text) 5%, transparent); }
 .dsh-ssh-transfer-job-list { display: flex; gap: 3px; max-height: 116px; padding: 0 9px 10px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .dsh-ssh-transfer-job-list > p { display: flex; min-height: 42px; align-items: center; margin: 0; padding: 0 7px; color: var(--ssh-text-subtle); font-size: var(--ssh-type-label); }
-.dsh-ssh-transfer-job-list article { display: grid; grid-template-columns: 8px minmax(210px, 292px) 28px; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 290px; padding: 7px 8px; border: 1px solid transparent; border-radius: 11px; background: transparent; transition: border-color var(--ssh-motion-fast) ease, background-color var(--ssh-motion-fast) ease; }
+.dsh-ssh-transfer-job-list article { display: grid; grid-template-columns: 8px minmax(210px, 292px) auto; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 290px; padding: 7px 8px; border: 1px solid transparent; border-radius: 11px; background: transparent; transition: border-color var(--ssh-motion-fast) ease, background-color var(--ssh-motion-fast) ease; }
 .dsh-ssh-transfer-job-list article:hover,
 .dsh-ssh-transfer-job-list article:focus-within { border-color: color-mix(in srgb, var(--ssh-border) 72%, transparent); background: color-mix(in srgb, var(--ssh-text) 4.5%, transparent); }
 .dsh-ssh-job-resolve { min-height: 28px; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--ssh-warning) 35%, var(--ssh-border)); border-radius: 7px; color: var(--ssh-warning); background: transparent; font: 600 var(--ssh-type-caption)/1 var(--ssh-font-sans); cursor: pointer; }
@@ -1017,3 +1017,5 @@
   border: 1px solid var(--ssh-access-divider);
   border-radius: 6px;
 }
+
+.dsh-ssh-transfer-job-actions { display: flex; align-items: center; gap: 4px; }

@@ -205,7 +205,11 @@ function SftpExplorer({ persistenceKey, initialPath, followPath, followControl, 
       try {
         await uploadFile(targetDirectory, file, overwrite)
       } catch (reason) {
-        if (!overwrite && reason instanceof ApiError && reason.status === 409) {
+        if (reason instanceof Error && reason.name === 'AbortError') {
+          setUploading(undefined)
+          await browse(targetDirectory, false)
+          return
+        } else if (!overwrite && reason instanceof ApiError && reason.status === 409) {
           setPendingOverwrite({ file, remaining: files.slice(index + 1), directory: targetDirectory })
         } else {
           setError(errorMessage(reason))

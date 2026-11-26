@@ -1,5 +1,5 @@
 export const SSH_API = '/ssh-local/v1'
-import { createBrowserTransfer, updateBrowserTransfer } from './browser-transfers.js'
+import { createBrowserTransfer, registerBrowserTransferCancellation, updateBrowserTransfer } from './browser-transfers.js'
 import { readUploadConcurrency } from './transfer-concurrency.js'
 import { createSharedRead } from './shared-read.js'
 import type { MountMode, WorkspaceMountConfiguration } from './domain.js'
@@ -152,7 +152,7 @@ export function moveFileEndpointEntries(request: { paneId: string; endpointId: s
 }
 export function loadTransferJobs(): Promise<TransferJobView[]> { return api('/file-transfer/jobs') }
 export function startFileTransfer(request: TransferJobView['request']): Promise<TransferJobView> { return api('/file-transfer/jobs', { method: 'POST', body: JSON.stringify(request) }) }
-export function cancelFileTransfer(jobId: string): Promise<void> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' }) }
+export function cancelFileTransfer(jobId: string): Promise<TransferJobView> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE', signal: AbortSignal.timeout(15_000) }) }
 export function dismissFileTransferJob(jobId: string): Promise<void> { return api(`/file-transfer/jobs/${encodeURIComponent(jobId)}/history`, { method: 'DELETE' }) }
 export function loadVaultEntries(): Promise<VaultEntryView[]> { return api('/vault') }
 export function loadProxyEntries(): Promise<ProxyEntryView[]> { return api('/proxies') }
@@ -251,10 +251,14 @@ function uploadBrowserFile(url: string, file: File): Promise<{ path: string; nam
   return new Promise((resolve, reject) => {
     const polling = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
-    function cleanup(): void { polling.abort(); clearTimeout(timer) }
+    let settled = false
+    let unregister = (): void => {}
+    function cleanup(): void { polling.abort(); clearTimeout(timer); unregister() }
     function failed(error: Error): void {
+      if (settled) return
+      settled = true
       cleanup()
-      updateBrowserTransfer(id, { state: 'failed', error: error.message })
+      updateBrowserTransfer(id, error.name === 'AbortError' ? { state: 'cancelled' } : { state: 'failed', error: error.message })
       reject(error)
     }
     async function poll(): Promise<void> {
@@ -270,20 +274,26 @@ function uploadBrowserFile(url: string, file: File): Promise<{ path: string; nam
       xhr.setRequestHeader('Accept', 'application/json')
       xhr.setRequestHeader('Content-Type', 'application/octet-stream')
       xhr.setRequestHeader('X-DSH-SSH-Request', '1')
-      xhr.upload.onprogress = event => updateBrowserTransfer(id, { transferredBytes: event.loaded })
-      xhr.upload.onload = () => updateBrowserTransfer(id, { state: 'waiting', transferredBytes: file.size })
+      xhr.upload.onprogress = event => { if (!settled) updateBrowserTransfer(id, { transferredBytes: event.loaded }) }
+      xhr.upload.onload = () => { if (!settled) updateBrowserTransfer(id, { state: 'waiting', transferredBytes: file.size }) }
       xhr.onerror = () => failed(new Error('上传连接失败'))
-      xhr.onabort = () => failed(new Error('上传已取消'))
+      xhr.onabort = () => failed(new DOMException('上传已取消', 'AbortError'))
       xhr.onload = () => {
+        if (settled) return
         let body: Record<string, unknown> = {}
         try { body = JSON.parse(xhr.responseText) as Record<string, unknown> } catch {}
         if (xhr.status < 200 || xhr.status >= 300) { failed(new ApiError(xhr.status, typeof body.error === 'string' ? body.error : `HTTP ${xhr.status}`, body)); return }
         if (typeof body.path !== 'string' || body.size !== file.size) { failed(new Error('上传回执大小不匹配')); return }
-        cleanup()
+        settled = true; cleanup()
         updateBrowserTransfer(id, { state: 'completed', transferredBytes: file.size })
         resolve(body as { path: string; name: string; size: number })
       }
+      unregister = registerBrowserTransferCancellation(id, () => {
+        xhr.abort()
+        failed(new DOMException('上传已取消', 'AbortError'))
+      })
       updateBrowserTransfer(id, { state: 'transferring' })
+      if (settled) return
       timer = setTimeout(() => { void poll() }, 1200)
       xhr.send(file)
     } catch (error) { failed(error instanceof Error ? error : new Error(String(error))) }
