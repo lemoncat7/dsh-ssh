@@ -88,7 +88,7 @@
 .dsh-ssh-host-catalogue .dsh-ssh-tree-host-row:is(:hover,:has(:focus-visible),.is-menu-open) .dsh-ssh-host-address { opacity: 0; }
 .dsh-ssh-host-catalogue .dsh-ssh-tree-menu-wrap:is(.is-host,.is-project) { width: 28px; height: 30px; margin: 0; }
 .dsh-ssh-host-catalogue .dsh-ssh-tree-more { width: 28px; height: 30px; opacity: 1; }
-.dsh-ssh-host-catalogue .is-menu-open > .dsh-ssh-context-action { opacity: 1; pointer-events: auto; transform: none; }
+.dsh-ssh-host-catalogue .is-menu-open .dsh-ssh-context-action { opacity: 1; pointer-events: auto; transform: none; }
 /* Mouse clicks retain DOM focus, but only keyboard focus keeps actions revealed. */
 @media (hover: hover) and (pointer: fine) {
   .dsh-ssh-host-catalogue .dsh-ssh-tree-host-row:not(:hover):not(:has(:focus-visible)):not(.is-menu-open) > .dsh-ssh-context-action:not(.is-mounted) {
@@ -176,6 +176,7 @@
 /* Plugin-owned menus: host themes intentionally style every role=menu with
    !important rules. Restrict the counter-rules to this menu boundary. */
 :is(#root,body) .dsh-ssh-tree-menu.dsh-ssh-host-popover[role="menu"] {
+  pointer-events: auto !important;
   color: var(--ssh-text) !important; background: var(--ssh-popover-surface) !important;
   border: 1px solid var(--ssh-border-strong) !important; border-radius: 9px !important;
   box-shadow: var(--ssh-shadow-md) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;

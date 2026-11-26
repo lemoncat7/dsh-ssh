@@ -27,6 +27,8 @@ try {
       import {useEffect,useState} from 'react';
       import {RemoteWorkspaceTree} from './src/remote-workspace-tree.tsx';
       import {useSessionAccess} from './src/session-access.ts';
+      import {installStyles} from './src/client.tsx';
+      installStyles();
       function App(){
         const access=useSessionAccess('active');const [selected,onSelect]=useState(null);
         useEffect(()=>{window.access=access},[access]);
@@ -43,6 +45,11 @@ try {
     outfile: path.join(temp, 'fixture.js'), bundle: true, platform: 'browser', jsx: 'automatic',
     loader: { '.css': 'text' }, nodePaths: (process.env.DSH_BROWSER_NODE_PATH ?? '').split(path.delimiter).filter(Boolean),
     alias: { react: path.join(repo, 'node_modules/react'), 'react-dom': path.join(repo, 'node_modules/react-dom') },
+    plugins: [{ name: 'production-styles', setup(builder) {
+      builder.onLoad({ filter: /\/src\/client\.tsx$/ }, async ({ path: filename }) => ({
+        contents: await fs.readFile(filename, 'utf8') + '\nexport { installStyles };', loader: 'tsx',
+      }))
+    } }],
   })
   const bundle = await fs.readFile(path.join(temp, 'fixture.js'))
   let route, failNext = false, saveRequests = 0
@@ -59,7 +66,7 @@ try {
       void route.handler(req, res); return
     }
     res.setHeader('Content-Type', req.url === '/fixture.js' ? 'text/javascript' : 'text/html')
-    res.end(req.url === '/fixture.js' ? bundle : '<div id="root"></div><script src="/fixture.js"></script>')
+    res.end(req.url === '/fixture.js' ? bundle : '<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}#root{height:100vh}</style><div id="root" class="dsh-ssh-workspace dsh-ssh-workspace-v2"></div><script src="/fixture.js"></script>')
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   browser = await chromium.launch({ args: ['--no-sandbox', '--no-proxy-server'], ...(process.env.DSH_CHROMIUM_EXECUTABLE ? { executablePath: process.env.DSH_CHROMIUM_EXECUTABLE } : {}) })
@@ -68,6 +75,7 @@ try {
     await store.update(state => Object.assign(state, structuredClone(initial)))
     saveRequests = 0; failNext = false
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
+    page.setDefaultTimeout(5000)
     page.on('pageerror', error => { throw error })
     await page.goto(`http://127.0.0.1:${server.address().port}/`)
     await page.waitForFunction(() => window.access?.value?.mountSource && !window.access.loading)
@@ -81,10 +89,25 @@ try {
     assert.deepEqual(store.injection('other').profileIds, ['a', 'c'])
     return store.injection('active')
   }
+  const clickContext = async (page, name) => {
+    const button = page.getByRole('button', { name, exact: true })
+    await button.locator('xpath=ancestor::*[@data-ssh-context-row][1]').hover()
+    try { await button.click() } catch (error) {
+      console.error('Context action diagnostics:', await button.evaluate(el => {
+        const bounds = el.getBoundingClientRect()
+        return { pointerEvents: getComputedStyle(el).pointerEvents, parent: el.parentElement.className,
+          parentPointerEvents: getComputedStyle(el.parentElement).pointerEvents,
+          rowHover: el.closest('[data-ssh-context-row]').matches(':hover'),
+          active: document.activeElement?.tagName,
+          hit: document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)?.className }
+      }))
+      throw error
+    }
+  }
   {
     const page = await open()
     await page.getByRole('button', { name: 'Alpha test@a.example.test', exact: true }).click()
-    await page.getByRole('button', { name: '挂载 Beta', exact: true }).click()
+    await clickContext(page, '挂载 Beta')
     const access = await saved(page)
     assert.deepEqual(access.profileIds, ['a', 'c', 'b'])
     assert.deepEqual(access.mountedProjectIds.a, ['app', 'logs'])
@@ -96,6 +119,7 @@ try {
   }
   for (const [button, ids] of [['卸载 Alpha', ['c']], ['挂载「Dev」整组（共 2 台）', ['a', 'c', 'b']], ['卸载「Dev」整组（共 2 台）', ['c']]]) {
     const page = await open()
+    await page.locator('.dsh-ssh-tree-group > h3').first().hover()
     await page.getByRole('button', { name: button, exact: true }).click()
     assert.deepEqual((await saved(page)).profileIds, ids)
     await page.close()
@@ -103,7 +127,7 @@ try {
   {
     const page = await open()
     await page.getByRole('button', { name: 'Alpha test@a.example.test', exact: true }).click()
-    await page.getByRole('button', { name: '挂载 archive', exact: true }).click()
+    await clickContext(page, '挂载 archive')
     assert.deepEqual((await saved(page)).mountedProjectIds.a, ['app', 'logs', 'archive'])
     await page.close()
   }
@@ -117,7 +141,7 @@ try {
   {
     const page = await open()
     await page.getByRole('button', { name: 'Alpha test@a.example.test', exact: true }).click()
-    await page.getByRole('button', { name: 'logs 的目录操作', exact: true }).click()
+    await clickContext(page, 'logs 的目录操作')
     await page.getByRole('menuitem', { name: '设为默认工作目录' }).click()
     assert.equal((await saved(page)).workingProjectIds.a, 'logs')
     await page.close()
@@ -127,13 +151,45 @@ try {
     await page.getByRole('button', { name: 'Alpha test@a.example.test', exact: true }).click()
     assert.equal(store.injection('active').mountMode, 'inherit', 'Browsing leaves inheritance intact')
     failNext = true
-    await page.getByRole('button', { name: '挂载 Beta', exact: true }).click()
+    await clickContext(page, '挂载 Beta')
     await page.waitForFunction(() => !window.access.saving && window.access.error)
     assert.equal(await page.getByRole('radio', { name: '继承项目' }).isChecked(), true)
     assert.equal(store.injection('active').mountMode, 'inherit')
     assert.deepEqual(store.injection('active').profileIds, ['a', 'c'])
-    await page.getByRole('button', { name: '挂载 Beta', exact: true }).click()
+    await clickContext(page, '挂载 Beta')
     await saved(page)
+    await page.close()
+  }
+  {
+    const page = await open()
+    const original = store.injection('active')
+    await page.getByRole('button', { name: 'Alpha test@a.example.test', exact: true }).click()
+    const trigger = page.getByRole('button', { name: 'logs 的目录操作', exact: true })
+    await clickContext(page, 'logs 的目录操作')
+    const menu = page.getByRole('menu', { name: 'logs 的目录操作', exact: true })
+    await menu.waitFor()
+    // The host can restore editor focus while a native popover remains open.
+    // Moving through the gap must not make the menu transparent to pointer input.
+    await page.locator('.dsh-ssh-search input').focus()
+    await page.mouse.move(1275, 895)
+    assert.equal(await menu.evaluate(el => el.matches(':popover-open')), true)
+    await page.waitForFunction(el => getComputedStyle(el).pointerEvents === 'auto', await trigger.locator('..').elementHandle())
+    const edit = page.getByRole('menuitem', { name: '编辑固定目录', exact: true })
+    const bounds = await edit.boundingBox()
+    assert.equal(await edit.evaluate((el, b) => el.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)), bounds), true)
+    await edit.click()
+    const dialog = page.getByRole('dialog', { name: '编辑固定目录', exact: true })
+    await dialog.waitFor()
+    await dialog.getByRole('button', { name: '取消', exact: true }).click()
+    await dialog.waitFor({ state: 'detached' })
+    await page.mouse.move(1275, 895)
+    assert.deepEqual(store.injection('active'), original, 'Menu clicks must not fall through and unmount another host')
+    await clickContext(page, 'logs 的目录操作')
+    await page.keyboard.press('Escape')
+    assert.equal(await menu.count(), 0)
+    await clickContext(page, 'logs 的目录操作')
+    await page.locator('.dsh-ssh-search input').click()
+    assert.equal(await menu.count(), 0)
     await page.close()
   }
   {
@@ -148,7 +204,7 @@ try {
     assert.equal(access.requireCommandApproval, false)
     await page.close()
   }
-  console.log('Passed 9 browser scenarios: host/group mount and unmount, directory mount and unmount, default directory, rollback/retry, permission isolation and queued edits.')
+  console.log('Passed 10 browser scenarios with production styles: mounts, directories, menu pointer input after focus loss, dismissal, rollback/retry and queued edits.')
 } finally {
   clearTimeout(watchdog)
   await browser?.close()
