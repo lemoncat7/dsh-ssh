@@ -3,7 +3,7 @@ import { currentSession } from './current-session.js'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
-type PanelProps = { sessionId?: string; visible?: boolean }
+type PanelProps = { sessionId?: string; visible?: boolean; viewId?: string | undefined }
 type TabInfo = { tab: { id: string; visible: boolean; signal: AbortSignal; actions: { close(): void } } }
 type TabProps = PanelProps & { useTabInfo(): TabInfo }
 type Sidebar = { openTab(kind: string): void }
@@ -56,7 +56,7 @@ export function createDockedPanel(
       }
     }, [sessionId, tab.id, tab.visible, tab.signal])
     // Retain the host-owned view; descendants pause work without losing xterm state.
-    return visited.current ? <div style={{ display: tab.visible ? 'contents' : 'none' }}>{render({ ...props, visible: tab.visible })}</div> : null
+    return visited.current ? <div style={{ display: tab.visible ? 'contents' : 'none' }}>{render({ ...props, visible: tab.visible, viewId: tab.id })}</div> : null
   }
   const fiber = ctx.inject(['sidebarRight', 'sidebarRightTabs'], child => {
     sidebar = child.get('sidebarRight') as Sidebar

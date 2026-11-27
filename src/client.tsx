@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
 import { SshActivityPanel, type ActivityController, type ActivityViewMode } from './activity-panel.js'
+import { disposeActivityTerminalViews } from './activity-terminal.js'
 import adaptiveUiCss from './adaptive-workspace.css'
 import borderGlowCss from './border-glow.css'
 import { useBorderGlowSurface } from './border-glow.js'
@@ -91,7 +92,7 @@ export function apply(ctx: ClientContext): void {
     child.effect(() => bindHostLocale(child.get('locale') as HostLocale), 'dsh-ssh: display language')
   })
   ctx.effect(installStyles, 'dsh-ssh: styles')
-  ctx.effect(() => disposeTerminalViews, 'dsh-ssh: retained terminal views')
+  ctx.effect(() => () => { disposeTerminalViews(); disposeActivityTerminalViews() }, 'dsh-ssh: retained terminal views')
   const docked = supportsDockedPanels(ctx)
   const activityController = createActivityController(ctx)
   const controller = createController(ctx, () => { if (!docked) activityController.close() })

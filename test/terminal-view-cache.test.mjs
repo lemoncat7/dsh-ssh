@@ -35,3 +35,34 @@ test('cache evicts detached least-recently-used views and plugin unload disposes
   cache.clear(); cache.clear()
   assert.deepEqual(disposed, ['b', 'c', 'a', 'd'])
 })
+
+test('activity keys retain independent cursors and explicit removal waits for mounted consumers', () => {
+  const cache = new TerminalViewCache(2), disposed = []
+  const create = key => () => ({ cursor: 0, dispose: () => disposed.push(key) })
+  const a = cache.acquire('session-a/terminal', create('a'))
+  a.view.cursor = 256000
+  a.release()
+  const b = cache.acquire('session-b/terminal', create('b'))
+  const again = cache.acquire('session-a/terminal', create('unexpected'))
+  assert.equal(again.view, a.view)
+  assert.equal(again.view.cursor, 256000)
+  assert.notEqual(again.view, b.view)
+  cache.drop('session-a/terminal')
+  assert.deepEqual(disposed, [], 'A mounted consumer must not be disposed mid-render')
+  again.release(); again.release()
+  assert.deepEqual(disposed, ['a'])
+  b.release(); cache.drop('session-b/terminal'); cache.drop('session-b/terminal')
+  assert.deepEqual(disposed, ['a', 'b'])
+  cache.clear()
+  assert.deepEqual(disposed, ['a', 'b'])
+})
+
+test('bounded activity cache evicts old output and plugin unload clears active and idle views once', () => {
+  const cache = new TerminalViewCache(2), disposed = []
+  const acquire = key => cache.acquire(key, () => ({ dispose: () => disposed.push(key) }))
+  acquire('a').release(); acquire('b').release(); acquire('c').release()
+  assert.deepEqual(disposed, ['a'])
+  const c = acquire('c')
+  cache.clear(); cache.clear(); c.release()
+  assert.deepEqual(disposed, ['a', 'b', 'c'])
+})
